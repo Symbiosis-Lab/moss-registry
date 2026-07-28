@@ -110,10 +110,35 @@ They are distributed exactly like any contributed plugin — same index, same
 update badge, same revocation — so that the registry is how a bundled plugin
 gets updated between moss releases.
 
-Their source is not duplicated here. It was, briefly, and the two copies
-disagreed within four days; worse, two repositories able to publish the same
-plugin id is a way to ship an artifact nobody reviewed. One publisher per id is
-the rule, and for these two it is moss.
+**Read their source on the [`first-party`](../../tree/first-party) branch.** They
+are the most installed plugins here, they run with the same host access any
+plugin gets, and asking contributors for readable source while shipping code
+nobody can read would be a poor trade. So each release publishes a copy you can
+build yourself:
+
+```bash
+git clone -b first-party https://github.com/Symbiosis-Lab/moss-registry
+cd moss-registry/github && npm ci && npm run build
+```
+
+That copy is generated and force-pushed on every moss release — do not open pull
+requests against it. It differs from moss's own tree in exactly one way:
+`@symbiosis-lab/moss-api` is pinned to a published version rather than the
+workspace one, with a committed lockfile, so it builds outside the monorepo. CI
+refuses to publish it unless every plugin builds and passes its full unit suite
+against that pin, and it refuses when a test file merely fails to *run* — a
+suite that quietly drops a file looks identical to a passing one.
+
+Rebuilding will not hand you a byte-identical copy of the released zip. That is
+expected and reported in each release's build log: `moss-api` is packaged
+differently for npm than it is inside the workspace, so the bundler drops a
+different set of unused SDK helpers. The plugin code is the same code.
+
+The source is not *maintained* here, and that is deliberate. These plugins are
+built into moss at compile time and still track an unreleased `moss-api`, so
+moss stays their single home — and one publisher per id stays a property of the
+layout rather than a rule someone has to remember: the publisher only ever looks
+at `plugins/` on `main`, which a generated branch can never reach.
 
 ## Repository layout
 
