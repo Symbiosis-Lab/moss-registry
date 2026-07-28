@@ -162,3 +162,29 @@ jobs:
       # no dependencies to test them with. Node's built-in runner needs none.
       - name: Unit tests
         run: node --test .github/scripts/*.test.mjs
+
+  # One check with a fixed name, so branch protection has something it can
+  # require. The per-plugin jobs are named after the plugin, so a rule cannot
+  # name them in advance; `revoked.json` only runs when that file changes, and a
+  # required check that never runs blocks a PR forever. This job always runs and
+  # is the only one worth requiring.
+  #
+  # Skipped counts as passing — the conditional jobs above are supposed to skip.
+  # Anything else (failure, cancelled) fails here.
+  all-checks:
+    name: all checks
+    needs: [detect, validate, revocations, scripts]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have succeeded or skipped
+        run: |
+          set -euo pipefail
+          echo '${{ toJSON(needs) }}' > needs.json
+          jq -r 'to_entries[] | "  \(.key): \(.value.result)"' needs.json
+          if jq -e 'all(.[]; .result == "success" or .result == "skipped")' needs.json >/dev/null; then
+            echo "all checks passed"
+          else
+            echo "::error::one or more validation jobs did not succeed"
+            exit 1
+          fi
