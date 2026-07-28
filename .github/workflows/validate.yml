@@ -148,6 +148,60 @@ jobs:
             node .github/scripts/validate-revocations.mjs --new registry/revoked.json
           fi
 
+  # Some plugin directories are generated — first-party source copied here from
+  # moss so it can be read and built like anyone else's. They are real source
+  # and CI builds them for real; what they are not is editable here, because the
+  # next sync overwrites whatever anyone types into them.
+  #
+  # Driven by a `.generated` marker inside the directory rather than a list in
+  # this file, so a future first-party plugin is covered the moment it is synced
+  # and nobody has to remember this job exists.
+  generated:
+    name: generated directories
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse hand edits to generated plugins
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+
+          touched=$(git diff --name-only "${BASE_SHA}"...HEAD \
+            | awk -F/ '$1 == "plugins" && NF >= 2 { print $1 "/" $2 }' | sort -u \
+            | while IFS= read -r dir; do
+                # `if`, not `[ ... ] &&`: the latter leaves the loop — and so
+                # the command substitution — exiting non-zero whenever the last
+                # directory is not generated, which set -e turns into an abort.
+                if [ -f "$dir/.generated" ]; then
+                  printf '%s\n' "$dir"
+                fi
+              done)
+
+          if [ -z "$touched" ]; then
+            echo "no generated directories touched"
+            exit 0
+          fi
+
+          # The sync itself is the one thing allowed to change them, and it
+          # pushes a branch to this repository — a fork cannot impersonate it.
+          if [ "$HEAD_REPO" = "${{ github.repository }}" ] && [ "$HEAD_REF" = "sync/first-party" ]; then
+            printf 'sync updating generated directories:\n%s\n' "$touched"
+            exit 0
+          fi
+
+          echo "::error::This pull request edits generated plugin directories:"
+          printf '  %s\n' $touched
+          echo "::error::Their source of truth is the moss repository — the next sync overwrites edits made here. Send the change to moss instead; see the .generated file in each directory."
+          exit 1
+
   scripts:
     name: registry scripts
     runs-on: ubuntu-latest
@@ -173,7 +227,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, revocations, scripts]
+    needs: [detect, validate, revocations, scripts, generated]
     if: always()
     runs-on: ubuntu-latest
     steps:
