@@ -1,0 +1,4289 @@
+directive @auth(group: String, mode: String!) on FIELD_DEFINITION
+
+directive @cacheControl(inheritMaxAge: Boolean, maxAge: Int, scope: CacheControlScope) on FIELD_DEFINITION | INTERFACE | OBJECT | UNION
+
+directive @complexity(multipliers: [String!], value: Int!) on FIELD_DEFINITION
+
+directive @constraint(contains: String, endsWith: String, exclusiveMax: Float, exclusiveMin: Float, format: String, max: Float, maxItems: Int, maxLength: Int, min: Float, minItems: Int, minLength: Int, multipleOf: Float, notContains: String, pattern: String, startsWith: String, uniqueTypeName: String) on ARGUMENT_DEFINITION | FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+
+directive @logCache(identifier: String = "id", type: String!) on FIELD_DEFINITION
+
+directive @objectCache(maxAge: Int = 1000) on FIELD_DEFINITION
+
+directive @privateCache(strict: Boolean! = false) on FIELD_DEFINITION
+
+directive @purgeCache(identifier: String = "id", type: String!) on FIELD_DEFINITION
+
+"""Rate limit within a given period of time, in seconds"""
+directive @rateLimit(ip: Boolean, limit: Int!, period: Int!) on FIELD_DEFINITION
+
+type AdStatus {
+  """
+  Whether this article is labeled as ad by human, null for not labeled yet. 
+  """
+  isAd: Boolean
+}
+
+input AddCollectionsArticlesInput {
+  articles: [ID!]!
+  collections: [ID!]!
+}
+
+input AddCreditInput {
+  amount: amount_Float_NotNull_exclusiveMin_0!
+}
+
+type AddCreditResult {
+  """The client secret of this PaymentIntent."""
+  client_secret: String!
+  transaction: Transaction!
+}
+
+input AddCurationChannelArticlesInput {
+  articles: [ID!]!
+  channel: ID!
+}
+
+type Announcement {
+  channels: [AnnouncementChannel!]!
+  content(input: TranslationArgs): String
+  cover: String
+  createdAt: DateTime!
+  expiredAt: DateTime
+  id: ID!
+  link(input: TranslationArgs): String
+  order: Int!
+  title(input: TranslationArgs): String
+  translations: [TranslatedAnnouncement!] @deprecated(reason: "Use title, content, link with TranslationArgs instead")
+  type: AnnouncementType!
+  updatedAt: DateTime!
+  visible: Boolean!
+}
+
+type AnnouncementChannel {
+  channel: Channel!
+  order: Int!
+  visible: Boolean!
+}
+
+input AnnouncementChannelInput {
+  channel: ID!
+  order: Int!
+  visible: Boolean!
+}
+
+enum AnnouncementType {
+  community
+  product
+  seminar
+}
+
+input AnnouncementsInput {
+  channel: IdentityInput
+  id: ID
+  visible: Boolean
+}
+
+input ApplyCampaignInput {
+  id: ID!
+}
+
+input AppreciateArticleInput {
+  amount: amount_Int_NotNull_min_1!
+  id: ID!
+  superLike: Boolean
+  token: String
+}
+
+type Appreciation {
+  amount: Int!
+  content: String!
+
+  """Timestamp of appreciation."""
+  createdAt: DateTime!
+  purpose: AppreciationPurpose!
+
+  """Recipient of appreciation."""
+  recipient: User!
+
+  """Sender of appreciation."""
+  sender: User
+
+  """Object that appreciation is meant for."""
+  target: Article
+}
+
+type AppreciationConnection implements Connection {
+  edges: [AppreciationEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type AppreciationEdge {
+  cursor: String!
+  node: Appreciation!
+}
+
+enum AppreciationPurpose {
+  appreciate
+  appreciateComment
+  appreciateSubsidy
+  firstPost
+  invitationAccepted
+  joinByInvitation
+  joinByTask
+  systemSubsidy
+}
+
+"""
+This type contains metadata, content, hash and related data of an article. If you
+want information about article's comments. Please check Comment type.
+"""
+type Article implements Node & PinnableWork {
+  """Access related fields on circle"""
+  access: ArticleAccess!
+
+  """Number represents how many times per user can appreciate this article."""
+  appreciateLeft: Int!
+
+  """Limit the nuhmber of appreciate per user."""
+  appreciateLimit: Int!
+
+  """Appreciations history of this article."""
+  appreciationsReceived(input: ConnectionArgs!): AppreciationConnection!
+
+  """Total number of appreciations recieved of this article."""
+  appreciationsReceivedTotal: Int!
+
+  """
+  List of assets are belonged to this article (Only the author can access currently).
+  """
+  assets: [Asset!]!
+
+  """Author of this article."""
+  author: User!
+
+  """Available translation languages."""
+  availableTranslations: [UserLanguage!]
+
+  """The number of users who bookmarked this article."""
+  bookmarkCount: Int!
+  bookmarked: Boolean!
+
+  """Associated campaigns"""
+  campaigns: [ArticleCampaign!]!
+
+  """Whether readers can comment"""
+  canComment: Boolean!
+
+  """This value determines if current viewer can SuperLike or not."""
+  canSuperLike: Boolean!
+
+  """Classifications status"""
+  classification: ArticleClassification!
+
+  """List of articles added into this article's connections."""
+  collection(input: ConnectionArgs!): ArticleConnection! @deprecated(reason: "Use connections instead")
+
+  """Collections of this article."""
+  collections(input: ConnectionArgs!): CollectionConnection!
+
+  """The counting number of comments."""
+  commentCount: Int!
+
+  """List of comments of this article."""
+  comments(input: CommentsInput!): CommentConnection!
+
+  """List of articles which added this article into their connections."""
+  connectedBy(input: ConnectionArgs!): ArticleConnection!
+  connections(input: ConnectionArgs!): ArticleConnection!
+
+  """Content (HTML) of this article."""
+  content: String!
+
+  """Different foramts of content."""
+  contents: ArticleContents!
+
+  """Article cover's link, set by author"""
+  cover: String
+
+  """Time of this article was created."""
+  createdAt: DateTime!
+
+  """IPFS hash of this article."""
+  dataHash: String!
+
+  """Cover link that is displayed on the article page"""
+  displayCover: String
+
+  """Whether current viewer has donated to this article"""
+  donated: Boolean!
+
+  """Total number of donation recieved of this article."""
+  donationCount: Int!
+
+  """Donations of this article, grouped by sender"""
+  donations(input: ConnectionArgs!): ArticleDonationConnection!
+
+  """List of featured comments of this article."""
+  featuredComments(input: FeaturedCommentsInput!): CommentConnection!
+
+  """This value determines if current viewer has appreciated or not."""
+  hasAppreciate: Boolean!
+
+  """Unique ID of this article"""
+  id: ID!
+
+  """Whether the first line of paragraph should be indented"""
+  indentFirstLine: Boolean!
+
+  """The iscnId if published to ISCN"""
+  iscnId: String
+
+  """Original language of content"""
+  language: String
+
+  """License Type"""
+  license: ArticleLicenseType!
+
+  """Media hash, composed of cid encoding, of this article."""
+  mediaHash: String!
+
+  """Whether this article is noindex"""
+  noindex: Boolean!
+  oss: ArticleOSS!
+
+  """The number determines how many comments can be set as pinned comment."""
+  pinCommentLeft: Int!
+
+  """The number determines how many pinned comments can be set."""
+  pinCommentLimit: Int!
+
+  """
+  This value determines if this article is an author selected article or not.
+  """
+  pinned: Boolean!
+
+  """List of pinned comments."""
+  pinnedComments: [Comment!]
+
+  """Cumulative reading time in seconds"""
+  readTime: Float!
+
+  """Total number of readers of this article."""
+  readerCount: Int!
+
+  """Related articles to this article."""
+  relatedArticles(input: ConnectionArgs!): ArticleConnection!
+
+  """Donation-related articles to this article."""
+  relatedDonationArticles(input: RelatedDonationArticlesInput!): ArticleConnection!
+  remark: String
+
+  """Creator message after support"""
+  replyToDonator: String
+
+  """Creator message asking for support"""
+  requestForDonation: String
+
+  """The counting number of this article."""
+  responseCount: Int!
+
+  """List of responses of a article."""
+  responses(input: ResponsesInput!): ResponseConnection!
+
+  """Time of this article was revised."""
+  revisedAt: DateTime
+
+  """Revision Count"""
+  revisionCount: Int!
+
+  """Whether content is marked as sensitive by admin"""
+  sensitiveByAdmin: Boolean!
+
+  """whether content is marked as sensitive by author"""
+  sensitiveByAuthor: Boolean!
+
+  """Short hash for shorter url addressing"""
+  shortHash: String!
+
+  """Slugified article title."""
+  slug: String!
+
+  """State of this article."""
+  state: ArticleState!
+
+  """This value determines if current Viewer has bookmarked of not."""
+  subscribed: Boolean! @deprecated(reason: "Use bookmarked instead")
+
+  """A short summary for this article."""
+  summary: String!
+
+  """This value determines if the summary is customized or not."""
+  summaryCustomized: Boolean!
+
+  """Tags attached to this article."""
+  tags: [Tag!]
+
+  """Article title."""
+  title: String!
+
+  """Transactions history of this article."""
+  transactionsReceivedBy(input: TransactionsReceivedByArgs!): UserConnection!
+
+  """Translation of article title and content."""
+  translation(input: ArticleTranslationInput): ArticleTranslation
+
+  """History versions"""
+  versions(input: ArticleVersionsInput!): ArticleVersionsConnection!
+
+  """Word count of this article."""
+  wordCount: Int
+}
+
+type ArticleAccess {
+  circle: Circle
+  secret: String
+  type: ArticleAccessType!
+}
+
+"""Enums for types of article access"""
+enum ArticleAccessType {
+  paywall
+  public
+}
+
+type ArticleArticleNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+  article: Article!
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Article!
+  type: ArticleArticleNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum ArticleArticleNoticeType {
+  ArticleNewCollected
+}
+
+type ArticleCampaign {
+  campaign: Campaign!
+  stage: CampaignStage
+}
+
+input ArticleCampaignInput {
+  campaign: ID!
+  stage: ID
+}
+
+type ArticleClassification {
+  topicChannel: TopicChannelClassification!
+}
+
+type ArticleConnection implements Connection {
+  edges: [ArticleEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ArticleContents {
+  """HTML content of this article."""
+  html: String!
+
+  """Markdown content of this article."""
+  markdown: String!
+}
+
+type ArticleDonation {
+  id: ID!
+  sender: User
+}
+
+type ArticleDonationConnection {
+  edges: [ArticleDonationEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ArticleDonationEdge {
+  cursor: String!
+  node: ArticleDonation!
+}
+
+type ArticleEdge {
+  cursor: String!
+  node: Article!
+}
+
+input ArticleInput {
+  mediaHash: String
+  shortHash: String
+}
+
+"""Enums for types of article license"""
+enum ArticleLicenseType {
+  arr
+  cc_0
+  cc_by_nc_nd_2
+  cc_by_nc_nd_4
+}
+
+type ArticleNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+  entities: [Node!]!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Article!
+  type: ArticleNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum ArticleNoticeType {
+  ArticleMentionedYou
+  ArticleNewAppreciation
+  ArticleNewSubscriber
+  ArticlePublished
+  CircleNewArticle
+  RevisedArticleNotPublished
+  RevisedArticlePublished
+  ScheduledArticlePublished
+  TopicChannelFeedbackAccepted
+}
+
+type ArticleOSS {
+  adStatus: AdStatus!
+  boost: Float!
+  inRecommendHottest: Boolean!
+  inRecommendIcymi: Boolean!
+  inRecommendNewest: Boolean!
+  inSearch: Boolean!
+  pinHistory: [PinHistory]!
+  score: Float!
+  spamStatus: SpamStatus!
+  topicChannels: [ArticleTopicChannel!] @deprecated(reason: "Use classification.topicChannel.channels instead")
+}
+
+type ArticleRecommendationActivity {
+  """Recommended articles"""
+  nodes: [Article!]
+
+  """The source type of recommendation"""
+  source: ArticleRecommendationActivitySource
+}
+
+enum ArticleRecommendationActivitySource {
+  ReadArticlesTags
+  UserDonation
+}
+
+"""Enums for an article state."""
+enum ArticleState {
+  active
+  archived
+  banned
+}
+
+type ArticleTopicChannel {
+  """Whether this article is filtered out by anti-flood in this channel"""
+  antiFlooded: Boolean!
+  channel: TopicChannel!
+
+  """Datetime when this article is classified"""
+  classicfiedAt: DateTime!
+
+  """Whether this article channel is enabled"""
+  enabled: Boolean!
+
+  """Whether this article is labeled by human, null for not labeled yet. """
+  isLabeled: Boolean!
+
+  """Whether this article is pinned"""
+  pinned: Boolean!
+
+  """Confident score by machine"""
+  score: Float
+}
+
+type ArticleTranslation {
+  content: String
+  language: String
+  model: TranslationModel
+  summary: String
+  title: String
+}
+
+input ArticleTranslationInput {
+  language: UserLanguage!
+  model: TranslationModel
+}
+
+type ArticleVersion implements Node {
+  contents: ArticleContents!
+  createdAt: DateTime!
+  dataHash: String
+  description: String
+  id: ID!
+  mediaHash: String
+  summary: String!
+  title: String!
+  translation(input: ArticleTranslationInput): ArticleTranslation
+}
+
+type ArticleVersionEdge {
+  cursor: String!
+  node: ArticleVersion!
+}
+
+type ArticleVersionsConnection implements Connection {
+  edges: [ArticleVersionEdge]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input ArticleVersionsInput {
+  after: String
+  first: first_Int_min_0
+}
+
+enum ArticlesSort {
+  mostAppreciations
+  mostBookmarks
+  mostComments
+  mostDonations
+  mostReadTime
+  newest
+}
+
+"""This type contains type, link and related data of an asset."""
+type Asset {
+  """Time of this asset was created."""
+  createdAt: DateTime!
+  draft: Boolean
+
+  """Unique ID of this Asset."""
+  id: ID!
+
+  """Link of this asset."""
+  path: String!
+
+  """Types of this asset."""
+  type: AssetType!
+  uploadURL: String
+}
+
+"""Enums for asset types."""
+enum AssetType {
+  announcementCover
+  avatar
+  campaignCover
+  circleAvatar
+  circleCover
+  collectionCover
+  cover
+  embed
+  embedaudio
+  moment
+  oauthClientAvatar
+  profileCover
+  tagCover
+}
+
+type AuthResult {
+  auth: Boolean!
+  token: String
+  type: AuthResultType!
+  user: User
+}
+
+enum AuthResultType {
+  LinkAccount
+  Login
+  Signup
+}
+
+enum AuthorsType {
+  active
+  appreciated
+  default
+  trendy
+}
+
+type Badge {
+  type: BadgeType!
+}
+
+enum BadgeType {
+  architect
+  golden_motor
+  grand_slam
+  nomad1
+  nomad2
+  nomad3
+  nomad4
+  seed
+}
+
+input BadgedUsersInput {
+  after: String
+  first: first_Int_min_0
+  type: BadgeType
+}
+
+type Balance {
+  HKD: Float!
+}
+
+input BanCampaignArticlesInput {
+  articles: [ID!]!
+  campaign: ID!
+}
+
+type BlockchainTransaction {
+  chain: Chain!
+  txHash: String!
+}
+
+type BlockedSearchKeyword {
+  """Time of this search keyword was created."""
+  createdAt: DateTime!
+
+  """Unique ID of bloked search keyword."""
+  id: ID!
+
+  """Types of this search keyword."""
+  searchKey: String!
+}
+
+enum BoostTypes {
+  Article
+  Campaign
+  Tag
+  User
+}
+
+enum CacheControlScope {
+  PRIVATE
+  PUBLIC
+}
+
+interface Campaign {
+  id: ID!
+  name: String!
+  shortHash: String!
+  state: CampaignState!
+}
+
+type CampaignApplication {
+  createdAt: DateTime!
+  state: CampaignApplicationState!
+}
+
+enum CampaignApplicationState {
+  pending
+  rejected
+  succeeded
+}
+
+type CampaignArticleConnection implements Connection {
+  edges: [CampaignArticleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CampaignArticleEdge {
+  announcement: Boolean!
+  cursor: String!
+  featured: Boolean!
+  node: Article!
+}
+
+type CampaignArticleNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+  article: Article!
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Campaign!
+  type: CampaignArticleNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum CampaignArticleNoticeType {
+  CampaignArticleFeatured
+}
+
+input CampaignArticlesFilter {
+  featured: Boolean
+  stage: ID
+}
+
+input CampaignArticlesInput {
+  after: String
+  filter: CampaignArticlesFilter
+  first: Int
+}
+
+type CampaignConnection implements Connection {
+  edges: [CampaignEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CampaignEdge {
+  cursor: String!
+  node: Campaign!
+}
+
+input CampaignInput {
+  shortHash: String!
+}
+
+type CampaignOSS {
+  boost: Float!
+  exclusive: Boolean!
+  managers: [User!]!
+}
+
+type CampaignParticipantConnection implements Connection {
+  edges: [CampaignParticipantEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CampaignParticipantEdge {
+  application: CampaignApplication
+  cursor: String!
+  node: User!
+}
+
+input CampaignParticipantsInput {
+  after: String
+  first: Int
+
+  """return all state participants"""
+  oss: Boolean = false
+}
+
+type CampaignStage {
+  description(input: TranslationArgs): String!
+  id: ID!
+  name(input: TranslationArgs): String!
+  period: DatetimeRange
+}
+
+input CampaignStageInput {
+  description: [TranslationInput!]
+  name: [TranslationInput!]!
+  period: DatetimeRangeInput
+}
+
+enum CampaignState {
+  active
+  archived
+  finished
+  pending
+}
+
+input CampaignsFilter {
+  excludes: [ID!]
+  sort: CampaignsFilterSort
+  state: CampaignsFilterState
+}
+
+enum CampaignsFilterSort {
+  writingPeriod
+}
+
+enum CampaignsFilterState {
+  active
+  finished
+}
+
+input CampaignsInput {
+  after: String
+  filter: CampaignsFilter
+  first: Int
+
+  """return pending and archived campaigns"""
+  oss: Boolean = false
+}
+
+enum Chain {
+  Optimism
+  Polygon
+}
+
+interface Channel {
+  id: ID!
+  navbarTitle(input: TranslationArgs): String!
+  shortHash: String!
+}
+
+type ChannelArticleConnection implements Connection {
+  edges: [ChannelArticleEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ChannelArticleEdge {
+  cursor: String!
+  node: Article!
+  pinned: Boolean!
+}
+
+input ChannelArticlesFilter {
+  datetimeRange: DatetimeRangeInput
+  searchKey: String
+}
+
+input ChannelArticlesInput {
+  after: String
+  filter: ChannelArticlesFilter
+  first: Int
+  oss: Boolean = false
+  sort: ArticlesSort
+}
+
+input ChannelInput {
+  shortHash: String!
+}
+
+input ChannelsInput {
+  """return all channels if true, only active channels by default"""
+  oss: Boolean = false
+}
+
+type Circle implements Node {
+  """Analytics dashboard."""
+  analytics: CircleAnalytics!
+
+  """Circle avatar's link."""
+  avatar: String @deprecated(reason: "No longer in use")
+
+  """Comments broadcasted by Circle owner."""
+  broadcast(input: CommentsInput!): CommentConnection!
+
+  """Circle cover's link."""
+  cover: String @deprecated(reason: "No longer in use")
+
+  """Created time."""
+  createdAt: DateTime! @deprecated(reason: "No longer in use")
+
+  """A short description of this Circle."""
+  description: String
+
+  """Comments made by Circle member."""
+  discussion(input: CommentsInput!): CommentConnection!
+
+  """Discussion (include replies) count of this circle."""
+  discussionCount: Int!
+
+  """Discussion (exclude replies) count of this circle."""
+  discussionThreadCount: Int!
+
+  """Human readable name of this Circle."""
+  displayName: String! @deprecated(reason: "No longer in use")
+
+  """List of Circle follower."""
+  followers(input: ConnectionArgs!): UserConnection! @deprecated(reason: "No longer in use")
+
+  """Unique ID."""
+  id: ID!
+
+  """Invitation used by current viewer."""
+  invitedBy: Invitation
+
+  """Invitations belonged to this Circle."""
+  invites: Invites!
+
+  """This value determines if current viewer is following Circle or not."""
+  isFollower: Boolean! @deprecated(reason: "No longer in use")
+
+  """This value determines if current viewer is Member or not."""
+  isMember: Boolean! @deprecated(reason: "No longer in use")
+
+  """List of Circle member."""
+  members(input: ConnectionArgs!): MemberConnection! @deprecated(reason: "No longer in use")
+
+  """Slugified name of this Circle."""
+  name: String! @deprecated(reason: "No longer in use")
+
+  """Circle owner."""
+  owner: User!
+
+  """Pinned comments broadcasted by Circle owner."""
+  pinnedBroadcast: [Comment!]
+
+  """Prices offered by this Circle."""
+  prices: [Price!]
+
+  """State of this Circle."""
+  state: CircleState! @deprecated(reason: "No longer in use")
+
+  """Updated time."""
+  updatedAt: DateTime! @deprecated(reason: "No longer in use")
+
+  """List of works belong to this Circle."""
+  works(input: ConnectionArgs!): ArticleConnection! @deprecated(reason: "No longer in use")
+}
+
+type CircleAnalytics {
+  content: CircleContentAnalytics!
+  follower: CircleFollowerAnalytics!
+  income: CircleIncomeAnalytics!
+  subscriber: CircleSubscriberAnalytics!
+}
+
+type CircleConnection implements Connection {
+  edges: [CircleEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CircleContentAnalytics {
+  paywall: [CircleContentAnalyticsDatum!]
+  public: [CircleContentAnalyticsDatum!]
+}
+
+type CircleContentAnalyticsDatum {
+  node: Article!
+  readCount: Int!
+}
+
+type CircleEdge {
+  cursor: String!
+  node: Circle!
+}
+
+type CircleFollowerAnalytics {
+  """current follower count"""
+  current: Int!
+
+  """the percentage of follower count in reader count of circle articles"""
+  followerPercentage: Float!
+
+  """subscriber count history of last 4 months"""
+  history: [MonthlyDatum!]!
+}
+
+type CircleIncomeAnalytics {
+  """income history of last 4 months"""
+  history: [MonthlyDatum!]!
+
+  """income of next month"""
+  nextMonth: Float!
+
+  """income of this month"""
+  thisMonth: Float!
+
+  """total income of all time"""
+  total: Float!
+}
+
+input CircleInput {
+  """Slugified name of a Circle."""
+  name: String!
+}
+
+type CircleNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Optional discussion/broadcast comments for bundled notices"""
+  comments: [Comment!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+
+  """Optional mention comments for bundled notices"""
+  mentions: [Comment!]
+
+  """Optional discussion/broadcast replies for bundled notices"""
+  replies: [Comment!]
+  target: Circle!
+  type: CircleNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum CircleNoticeType {
+  CircleInvitation
+  CircleNewBroadcastComments
+  CircleNewDiscussionComments
+  CircleNewFollower
+  CircleNewSubscriber
+  CircleNewUnsubscriber
+}
+
+type CircleRecommendationActivity {
+  """Recommended circles"""
+  nodes: [Circle!]
+
+  """The source type of recommendation"""
+  source: CircleRecommendationActivitySource
+}
+
+enum CircleRecommendationActivitySource {
+  UserSubscription
+}
+
+enum CircleState {
+  active
+  archived
+}
+
+type CircleSubscriberAnalytics {
+  """current invitee count"""
+  currentInvitee: Int!
+
+  """current subscriber count"""
+  currentSubscriber: Int!
+
+  """invitee count history of last 4 months"""
+  inviteeHistory: [MonthlyDatum!]!
+
+  """subscriber count history of last 4 months"""
+  subscriberHistory: [MonthlyDatum!]!
+}
+
+input ClaimLogbooksInput {
+  ethAddress: String!
+
+  """nonce from generateSigningMessage"""
+  nonce: String!
+
+  """sign'ed by wallet"""
+  signature: String!
+
+  """the message being sign'ed, including nonce"""
+  signedMessage: String!
+}
+
+type ClaimLogbooksResult {
+  ids: [ID!]
+  txHash: String!
+}
+
+input ClassifyArticlesChannelsInput {
+  ids: [ID!]!
+}
+
+input ClearReadHistoryInput {
+  id: ID
+}
+
+type Collection implements Node & PinnableWork {
+  articles(input: CollectionArticlesInput!): ArticleConnection!
+  author: User!
+
+  """Check if the collection contains the article"""
+  contains(input: NodeInput!): Boolean!
+  cover: String
+  description: String
+  id: ID!
+  likeCount: Int!
+
+  """whether current user has liked it"""
+  liked: Boolean!
+  pinned: Boolean!
+  title: String!
+  updatedAt: DateTime!
+}
+
+input CollectionArticlesInput {
+  after: String
+  before: String
+  first: first_Int_min_0
+  includeAfter: Boolean! = false
+  includeBefore: Boolean! = false
+  last: last_Int_min_0
+  reversed: Boolean! = true
+}
+
+type CollectionConnection implements Connection {
+  edges: [CollectionEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CollectionEdge {
+  cursor: String!
+  node: Collection!
+}
+
+type CollectionNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Collection!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum Color {
+  brown
+  gray
+  green
+  orange
+  pink
+  purple
+  red
+  yellow
+}
+
+"""
+This type contains content, author, descendant comments and related data of a comment.
+"""
+type Comment implements Node {
+  """Author of this comment."""
+  author: User!
+
+  """Descendant comments of this comment."""
+  comments(input: CommentCommentsInput!): CommentConnection!
+
+  """Content of this comment."""
+  content: String
+
+  """Time of this comment was created."""
+  createdAt: DateTime!
+
+  """The counting number of downvotes."""
+  downvotes: Int! @deprecated(reason: "No longer in use in querying")
+
+  """This value determines this comment is from article donator or not."""
+  fromDonator: Boolean!
+
+  """Unique ID of this comment."""
+  id: ID!
+
+  """The value determines current user's vote."""
+  myVote: Vote
+
+  """Current comment belongs to which Node."""
+  node: Node!
+
+  """Parent comment of this comment."""
+  parentComment: Comment
+
+  """This value determines this comment is pinned or not."""
+  pinned: Boolean!
+  remark: String
+
+  """A Comment that this comment replied to."""
+  replyTo: Comment
+  spamStatus: SpamStatus!
+
+  """State of this comment."""
+  state: CommentState!
+  type: CommentType!
+
+  """The counting number of upvotes."""
+  upvotes: Int!
+}
+
+type CommentCommentNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+  comment: Comment!
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Comment!
+  type: CommentCommentNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum CommentCommentNoticeType {
+  CommentNewReply
+}
+
+input CommentCommentsInput {
+  after: String
+  author: ID
+  first: first_Int_min_0
+  sort: CommentSort
+}
+
+type CommentConnection implements Connection {
+  edges: [CommentEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CommentEdge {
+  cursor: String!
+  node: Comment!
+}
+
+input CommentInput {
+  articleId: ID
+  circleId: ID
+  content: String!
+  mentions: [ID!]
+  momentId: ID
+  parentId: ID
+  replyTo: ID
+  type: CommentType!
+}
+
+type CommentNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Comment!
+  type: CommentNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum CommentNoticeType {
+  ArticleNewComment
+  CircleNewBroadcast
+  CommentLiked
+  CommentMentionedYou
+  CommentPinned
+  MomentNewComment
+  SubscribedArticleNewComment
+}
+
+"""Enums for sorting comments by time."""
+enum CommentSort {
+  newest
+  oldest
+}
+
+"""Enums for comment state."""
+enum CommentState {
+  active
+  archived
+  banned
+  collapsed
+}
+
+enum CommentType {
+  article
+  circleBroadcast
+  circleDiscussion
+  moment
+}
+
+input CommentsFilter {
+  author: ID
+  parentComment: ID
+  state: CommentState
+}
+
+input CommentsInput {
+  after: String
+  before: String
+  filter: CommentsFilter
+  first: first_Int_min_0
+  includeAfter: Boolean
+  includeBefore: Boolean
+  sort: CommentSort
+}
+
+input ConfirmVerificationCodeInput {
+  code: String!
+  email: email_String_NotNull_format_email!
+  type: VerificationCodeType!
+}
+
+input ConnectStripeAccountInput {
+  country: StripeAccountCountry!
+}
+
+type ConnectStripeAccountResult {
+  redirectUrl: String!
+}
+
+interface Connection {
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input ConnectionArgs {
+  after: String
+  filter: FilterInput
+  first: first_Int_min_0
+  oss: Boolean
+}
+
+type CryptoWallet {
+  address: String!
+
+  """ does this address own any Travelogger NFTs? this value is cached at most 1day, and refreshed at next `nfts` query 
+  """
+  hasNFTs: Boolean!
+  id: ID!
+
+  """NFT assets owned by this wallet address"""
+  nfts: [NFTAsset!]
+}
+
+enum CryptoWalletSignaturePurpose {
+  airdrop
+  connect
+  login
+  signup
+}
+
+type CurationChannel implements Channel & Node {
+  """both activePeriod and state determine if the channel is active"""
+  activePeriod: DatetimeRange!
+  articles(input: ChannelArticlesInput!): ChannelArticleConnection!
+  color: Color!
+  id: ID!
+  name(input: TranslationArgs): String!
+  navbarTitle(input: TranslationArgs): String!
+  note(input: TranslationArgs): String
+  pinAmount: Int!
+  shortHash: String!
+  showRecommendation: Boolean!
+  state: CurationChannelState!
+}
+
+enum CurationChannelState {
+  archived
+  editing
+  published
+}
+
+"""
+A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
+"""
+scalar DateTime
+
+type DatetimeRange {
+  end: DateTime
+  start: DateTime!
+}
+
+input DatetimeRangeInput {
+  end: DateTime
+  start: DateTime!
+}
+
+input DeleteAnnouncementsInput {
+  ids: [ID!]
+}
+
+input DeleteCollectionArticlesInput {
+  articles: [ID!]!
+  collection: ID!
+}
+
+input DeleteCollectionsInput {
+  ids: [ID!]!
+}
+
+input DeleteCommentInput {
+  id: ID!
+}
+
+input DeleteCurationChannelArticlesInput {
+  articles: [ID!]!
+  channel: ID!
+}
+
+input DeleteDraftInput {
+  id: ID!
+}
+
+input DeleteMomentInput {
+  id: ID!
+}
+
+input DeleteTagsInput {
+  ids: [ID!]!
+}
+
+input DirectImageUploadInput {
+  draft: Boolean
+  entityId: ID
+  entityType: EntityType!
+  mime: String
+  type: AssetType!
+  url: url_String_format_uri
+}
+
+union Donator = CryptoWallet | User
+
+"""
+This type contains content, collections, assets and related data of a draft.
+"""
+type Draft implements Node {
+  """Access related fields on circle"""
+  access: DraftAccess!
+
+  """Published article"""
+  article: Article
+
+  """List of assets are belonged to this draft."""
+  assets: [Asset!]!
+
+  """Associated campaigns"""
+  campaigns: [ArticleCampaign!]!
+
+  """Whether readers can comment"""
+  canComment: Boolean!
+  collection(input: ConnectionArgs!): ArticleConnection! @deprecated(reason: "Use connections instead")
+
+  """Collections of this draft."""
+  collections(input: ConnectionArgs!): CollectionConnection!
+
+  """Connection articles of this draft."""
+  connections(input: ConnectionArgs!): ArticleConnection!
+
+  """Content (HTML) of this draft."""
+  content: String
+
+  """Draft's cover link."""
+  cover: String
+
+  """Time of this draft was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this draft."""
+  id: ID!
+
+  """Whether the first line of paragraph should be indented"""
+  indentFirstLine: Boolean!
+
+  """Whether publish to ISCN"""
+  iscnPublish: Boolean
+
+  """License Type"""
+  license: ArticleLicenseType!
+
+  """Media hash, composed of cid encoding, of this draft."""
+  mediaHash: String
+
+  """Scheduled publish date of the article."""
+  publishAt: DateTime
+
+  """State of draft during publihsing."""
+  publishState: PublishState!
+
+  """Creator message after support"""
+  replyToDonator: String
+
+  """Creator message asking for support"""
+  requestForDonation: String
+
+  """Whether content is marked as sensitive by author"""
+  sensitiveByAuthor: Boolean!
+
+  """Slugified draft title."""
+  slug: String!
+
+  """Summary of this draft."""
+  summary: String
+
+  """This value determines if the summary is customized or not."""
+  summaryCustomized: Boolean!
+
+  """Tags are attached to this draft."""
+  tags: [String!]
+
+  """Draft title."""
+  title: String
+
+  """Last time of this draft was upadted."""
+  updatedAt: DateTime!
+
+  """The counting number of words in this draft."""
+  wordCount: Int!
+}
+
+type DraftAccess {
+  circle: Circle
+  type: ArticleAccessType!
+}
+
+type DraftConnection implements Connection {
+  edges: [DraftEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type DraftEdge {
+  cursor: String!
+  node: Draft!
+}
+
+input EditArticleInput {
+  accessType: ArticleAccessType
+
+  """which campaigns to attach"""
+  campaigns: [ArticleCampaignInput!]
+
+  """whether readers can comment"""
+  canComment: Boolean
+  circle: ID
+
+  """Deprecated, use connections instead"""
+  collection: [ID!]
+  collections: [ID!]
+  connections: [ID!]
+  content: String
+  cover: ID
+
+  """revision description"""
+  description: description_String_maxLength_140
+  id: ID!
+  indentFirstLine: Boolean
+
+  """whether publish to ISCN"""
+  iscnPublish: Boolean
+  license: ArticleLicenseType
+  pinned: Boolean
+  replyToDonator: replyToDonator_String_maxLength_140
+  requestForDonation: requestForDonation_String_maxLength_140
+  sensitive: Boolean
+  state: ArticleState
+  summary: String
+  tags: [String!]
+  title: String
+}
+
+input EmailLoginInput {
+  email: String!
+
+  """used in register"""
+  language: UserLanguage
+  passwordOrCode: String!
+  referralCode: String
+}
+
+enum EntityType {
+  announcement
+  article
+  campaign
+  circle
+  collection
+  draft
+  moment
+  tag
+  user
+}
+
+type ExchangeRate {
+  from: TransactionCurrency!
+  rate: Float!
+  to: QuoteCurrency!
+
+  """Last updated time from currency convertor APIs"""
+  updatedAt: DateTime!
+}
+
+input ExchangeRatesInput {
+  from: TransactionCurrency
+  to: QuoteCurrency
+}
+
+type Feature {
+  enabled: Boolean!
+  name: FeatureName!
+  value: Float
+}
+
+enum FeatureFlag {
+  admin
+  off
+  on
+  seeding
+}
+
+enum FeatureName {
+  add_credit
+  article_channel
+  circle_interact
+  circle_management
+  fingerprint
+  payment
+  payout
+  spam_detection
+  tag_adoption
+  verify_appreciate
+}
+
+input FeaturedCommentsInput {
+  after: String
+  first: first_Int_min_0
+  sort: CommentSort
+}
+
+input FeaturedTagsInput {
+  """ tagIds """
+  ids: [ID!]!
+}
+
+input FilterInput {
+  inRangeEnd: DateTime
+  inRangeStart: DateTime
+
+  """Used in User Articles filter, by tags or by time range, or both"""
+  tagIds: [ID!]
+}
+
+type Following {
+  circles(input: ConnectionArgs!): CircleConnection!
+  users(input: ConnectionArgs!): UserConnection!
+}
+
+union FollowingActivity = ArticleRecommendationActivity | CircleRecommendationActivity | UserAddArticleTagActivity | UserBroadcastCircleActivity | UserCreateCircleActivity | UserPostMomentActivity | UserPublishArticleActivity | UserRecommendationActivity
+
+type FollowingActivityConnection implements Connection {
+  edges: [FollowingActivityEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type FollowingActivityEdge {
+  cursor: String!
+  node: FollowingActivity!
+}
+
+input FrequentSearchInput {
+  first: first_Int_min_0
+  key: String
+}
+
+input GenerateSigningMessageInput {
+  address: String!
+  purpose: SigningMessagePurpose
+}
+
+enum GrantType {
+  authorization_code
+  refresh_token
+}
+
+type IcymiTopic implements Node {
+  archivedAt: DateTime
+  articles: [Article!]!
+  id: ID!
+  note(input: TranslationArgs): String
+  pinAmount: Int!
+  publishedAt: DateTime
+  state: IcymiTopicState!
+  title(input: TranslationArgs): String!
+}
+
+type IcymiTopicConnection implements Connection {
+  edges: [IcymiTopicEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type IcymiTopicEdge {
+  cursor: String!
+  node: IcymiTopic!
+}
+
+enum IcymiTopicState {
+  archived
+  editing
+  published
+}
+
+input IdentityInput {
+  id: ID
+  shortHash: String
+}
+
+type Invitation {
+  """Accepted time."""
+  acceptedAt: DateTime
+
+  """Invitation of current Circle."""
+  circle: Circle!
+
+  """Created time."""
+  createdAt: DateTime!
+
+  """Free period of this invitation."""
+  freePeriod: Int!
+
+  """Unique ID."""
+  id: ID!
+
+  """Target person of this invitation."""
+  invitee: Invitee!
+
+  """Creator of this invitation."""
+  inviter: User!
+
+  """Sent time."""
+  sentAt: DateTime!
+
+  """Determine it's specific state."""
+  state: InvitationState!
+}
+
+type InvitationConnection implements Connection {
+  edges: [InvitationEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type InvitationEdge {
+  cursor: String!
+  node: Invitation!
+}
+
+enum InvitationState {
+  accepted
+  pending
+  transfer_failed
+  transfer_succeeded
+}
+
+input InviteCircleInput {
+  circleId: ID!
+  freePeriod: freePeriod_Int_NotNull_exclusiveMin_0!
+  invitees: [InviteCircleInvitee!]!
+}
+
+input InviteCircleInvitee {
+  email: String
+  id: ID
+}
+
+union Invitee = Person | User
+
+type Invites {
+  """Accepted invitation list"""
+  accepted(input: ConnectionArgs!): InvitationConnection!
+
+  """Pending invitation list"""
+  pending(input: ConnectionArgs!): InvitationConnection!
+}
+
+input KeywordInput {
+  keyword: String!
+}
+
+input KeywordsInput {
+  keywords: [String!]
+}
+
+input LikeCollectionInput {
+  id: ID!
+}
+
+input LikeMomentInput {
+  id: ID!
+}
+
+type Liker {
+  """Whether liker is a civic liker"""
+  civicLiker: Boolean!
+
+  """Liker ID of LikeCoin"""
+  likerId: String
+
+  """Total LIKE left in wallet."""
+  total: Float!
+}
+
+input LogRecordInput {
+  type: LogRecordTypes!
+}
+
+enum LogRecordTypes {
+  ReadFolloweeArticles
+  ReadFollowingFeed
+  ReadResponseInfoPopUp
+}
+
+type Member {
+  """Price chosen by user when joining a Circle."""
+  price: Price!
+
+  """User who join to a Circle."""
+  user: User!
+}
+
+type MemberConnection implements Connection {
+  edges: [MemberEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type MemberEdge {
+  cursor: String!
+  node: Member!
+}
+
+input MergeTagsInput {
+  content: String!
+  ids: [ID!]!
+}
+
+input MigrationInput {
+  files: [Upload]!
+  type: MigrationType
+}
+
+enum MigrationType {
+  medium
+}
+
+type Moment implements Node {
+  articles: [Article!]!
+  assets: [Asset!]!
+  author: User!
+  commentCount: Int!
+  commentedFollowees: [User!]!
+  comments(input: CommentsInput!): CommentConnection!
+  content: String
+  createdAt: DateTime!
+  id: ID!
+  likeCount: Int!
+
+  """whether current user has liked it"""
+  liked: Boolean!
+  shortHash: String!
+  spamStatus: SpamStatus!
+  state: MomentState!
+  tags: [Tag]!
+}
+
+type MomentConnection implements Connection {
+  edges: [MomentEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type MomentEdge {
+  cursor: String!
+  node: Moment!
+}
+
+input MomentInput {
+  shortHash: String!
+}
+
+type MomentNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Moment!
+  type: MomentNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum MomentNoticeType {
+  MomentLiked
+  MomentMentionedYou
+}
+
+enum MomentState {
+  active
+  archived
+}
+
+type MonthlyDatum {
+  date: DateTime!
+  value: Float!
+}
+
+type Mutation {
+  """Add blocked search keyword to blocked_search_word db"""
+  addBlockedSearchKeyword(input: KeywordInput!): BlockedSearchKeyword!
+
+  """Add articles to the begining of the collections."""
+  addCollectionsArticles(input: AddCollectionsArticlesInput!): [Collection!]!
+
+  """Add Credit to User Wallet"""
+  addCredit(input: AddCreditInput!): AddCreditResult!
+  addCurationChannelArticles(input: AddCurationChannelArticlesInput!): CurationChannel!
+
+  """Add a social login to current user."""
+  addSocialLogin(input: SocialLoginInput!): User!
+
+  """Add a wallet login to current user."""
+  addWalletLogin(input: WalletLoginInput!): User!
+  applyCampaign(input: ApplyCampaignInput!): Campaign!
+
+  """Appreciate an article."""
+  appreciateArticle(input: AppreciateArticleInput!): Article!
+  banCampaignArticles(input: BanCampaignArticlesInput!): Campaign!
+
+  """Let Traveloggers owner claims a Logbook, returns transaction hash"""
+  claimLogbooks(input: ClaimLogbooksInput!): ClaimLogbooksResult!
+  classifyArticlesChannels(input: ClassifyArticlesChannelsInput!): Boolean!
+
+  """Clear read history for user."""
+  clearReadHistory(input: ClearReadHistoryInput!): User!
+
+  """Clear search history for user."""
+  clearSearchHistory: Boolean
+
+  """Confirm verification code from email."""
+  confirmVerificationCode(input: ConfirmVerificationCodeInput!): ID!
+
+  """Create Stripe Connect account for Payout"""
+  connectStripeAccount(input: ConnectStripeAccountInput!): ConnectStripeAccountResult!
+  deleteAnnouncements(input: DeleteAnnouncementsInput!): Boolean!
+
+  """Delete blocked search keywords from search_history db"""
+  deleteBlockedSearchKeywords(input: KeywordsInput!): Boolean
+
+  """Remove articles from the collection."""
+  deleteCollectionArticles(input: DeleteCollectionArticlesInput!): Collection!
+  deleteCollections(input: DeleteCollectionsInput!): Boolean!
+
+  """Remove a comment."""
+  deleteComment(input: DeleteCommentInput!): Comment!
+  deleteCurationChannelArticles(input: DeleteCurationChannelArticlesInput!): CurationChannel!
+
+  """Remove a draft."""
+  deleteDraft(input: DeleteDraftInput!): Boolean
+  deleteMoment(input: DeleteMomentInput!): Moment!
+  deleteTags(input: DeleteTagsInput!): Boolean
+  directImageUpload(input: DirectImageUploadInput!): Asset!
+
+  """Edit an article."""
+  editArticle(input: EditArticleInput!): Article!
+
+  """Login user."""
+  emailLogin(input: EmailLoginInput!): AuthResult!
+
+  """Get signing message."""
+  generateSigningMessage(input: GenerateSigningMessageInput!): SigningMessageResult!
+
+  """Invite others to join circle"""
+  invite(input: InviteCircleInput!): [Invitation!]
+  likeCollection(input: LikeCollectionInput!): Collection!
+  likeMoment(input: LikeMomentInput!): Moment!
+
+  """Add specific user behavior record."""
+  logRecord(input: LogRecordInput!): Boolean
+
+  """Mark all received notices as read."""
+  markAllNoticesAsRead: Boolean
+  mergeTags(input: MergeTagsInput!): Tag!
+
+  """Migrate articles from other service provider."""
+  migration(input: MigrationInput!): Boolean
+
+  """Pay to another user or article"""
+  payTo(input: PayToInput!): PayToResult!
+
+  """Payout to user"""
+  payout(input: PayoutInput!): Transaction!
+
+  """Pin a comment."""
+  pinComment(input: PinCommentInput!): Comment!
+
+  """Publish an article onto IPFS."""
+  publishArticle(input: PublishArticleInput!): Draft!
+  putAnnouncement(input: PutAnnouncementInput!): Announcement!
+
+  """Create or update a Circle."""
+  putCircle(input: PutCircleInput!): Circle!
+
+  """Add or remove Circle's articles"""
+  putCircleArticles(input: PutCircleArticlesInput!): Circle! @deprecated(reason: "No longer in use")
+  putCollection(input: PutCollectionInput!): Collection!
+
+  """Publish or update a comment."""
+  putComment(input: PutCommentInput!): Comment!
+  putCurationChannel(input: PutCurationChannelInput!): CurationChannel!
+
+  """Create or update a draft."""
+  putDraft(input: PutDraftInput!): Draft!
+
+  """update tags for showing on profile page"""
+  putFeaturedTags(input: FeaturedTagsInput!): [Tag!]
+  putIcymiTopic(input: PutIcymiTopicInput!): IcymiTopic
+  putMoment(input: PutMomentInput!): Moment!
+
+  """Create or Update an OAuth Client, used in OSS."""
+  putOAuthClient(input: PutOAuthClientInput!): OAuthClient
+  putRemark(input: PutRemarkInput!): String
+  putRestrictedUsers(input: PutRestrictedUsersInput!): [User!]!
+  putSkippedListItem(input: PutSkippedListItemInput!): [SkippedListItem!]
+  putTagChannel(input: PutTagChannelInput!): Tag!
+  putTopicChannel(input: PutTopicChannelInput!): TopicChannel!
+  putUserFeatureFlags(input: PutUserFeatureFlagsInput!): [User!]!
+  putWritingChallenge(input: PutWritingChallengeInput!): WritingChallenge!
+
+  """Read an article."""
+  readArticle(input: ReadArticleInput!): Article!
+
+  """Remove a social login from current user."""
+  removeSocialLogin(input: RemoveSocialLoginInput!): User!
+
+  """Remove a wallet login from current user."""
+  removeWalletLogin: User!
+  renameTag(input: RenameTagInput!): Tag!
+  reorderChannels(input: ReorderChannelsInput!): Boolean!
+
+  """Reorder articles in the collection."""
+  reorderCollectionArticles(input: ReorderCollectionArticlesInput!): Collection!
+
+  """Reset Liker ID"""
+  resetLikerId(input: ResetLikerIdInput!): User!
+
+  """Reset user or payment password."""
+  resetPassword(input: ResetPasswordInput!): Boolean
+  reviewTopicChannelFeedback(input: ReviewTopicChannelFeedbackInput!): TopicChannelFeedback!
+  sendCampaignAnnouncement(input: SendCampaignAnnouncementInput!): Boolean
+
+  """Send verification code for email."""
+  sendVerificationCode(input: SendVerificationCodeInput!): Boolean
+  setAdStatus(input: SetAdStatusInput!): Article!
+  setArticleTopicChannels(input: SetArticleTopicChannelsInput!): Article!
+  setBoost(input: SetBoostInput!): Node!
+
+  """Set user currency preference."""
+  setCurrency(input: SetCurrencyInput!): User!
+
+  """Set user email."""
+  setEmail(input: SetEmailInput!): User!
+  setFeature(input: SetFeatureInput!): Feature!
+
+  """Set user email login password."""
+  setPassword(input: SetPasswordInput!): User!
+  setSpamStatus(input: SetSpamStatusInput!): Writing!
+
+  """Set user name."""
+  setUserName(input: SetUserNameInput!): User!
+
+  """Upload a single file."""
+  singleFileUpload(input: SingleFileUploadInput!): Asset!
+
+  """Login/Signup via social accounts."""
+  socialLogin(input: SocialLoginInput!): AuthResult!
+
+  """Submit inappropriate content report"""
+  submitReport(input: SubmitReportInput!): Report!
+
+  """Feedback on topic channel classification"""
+  submitTopicChannelFeedback(input: SubmitTopicChannelFeedbackInput!): TopicChannelFeedback!
+
+  """Subscribe a Circle."""
+  subscribeCircle(input: SubscribeCircleInput!): SubscribeCircleResult!
+  toggleArticleRecommend(input: ToggleRecommendInput!): Article!
+
+  """Block or Unblock a given user."""
+  toggleBlockUser(input: ToggleItemInput!): User!
+  toggleBookmarkArticle(input: ToggleItemInput!): Article!
+  toggleBookmarkTag(input: ToggleItemInput!): Tag!
+
+  """Follow or unfollow a Circle."""
+  toggleFollowCircle(input: ToggleItemInput!): Circle! @deprecated(reason: "No longer in use")
+
+  """Bookmark or unbookmark tag."""
+  toggleFollowTag(input: ToggleItemInput!): Tag! @deprecated(reason: "Use toggleBookmarkTag instead")
+
+  """Follow or Unfollow current user."""
+  toggleFollowUser(input: ToggleItemInput!): User!
+  togglePinChannelArticles(input: TogglePinChannelArticlesInput!): [Channel!]!
+
+  """Pin or Unpin a comment."""
+  togglePinComment(input: ToggleItemInput!): Comment!
+  toggleSeedingUsers(input: ToggleSeedingUsersInput!): [User]!
+
+  """Bookmark or unbookmark article"""
+  toggleSubscribeArticle(input: ToggleItemInput!): Article! @deprecated(reason: "Use toggleBookmarkArticle instead")
+  toggleUsersBadge(input: ToggleUsersBadgeInput!): [User]!
+  toggleWritingChallengeFeaturedArticles(input: ToggleWritingChallengeFeaturedArticlesInput!): Campaign!
+  unbindLikerId(input: UnbindLikerIdInput!): User!
+  unlikeCollection(input: UnlikeCollectionInput!): Collection!
+  unlikeMoment(input: UnlikeMomentInput!): Moment!
+
+  """Unpin a comment."""
+  unpinComment(input: UnpinCommentInput!): Comment!
+
+  """Unsubscribe a Circle."""
+  unsubscribeCircle(input: UnsubscribeCircleInput!): Circle!
+
+  """Unvote a comment."""
+  unvoteComment(input: UnvoteCommentInput!): Comment!
+  updateArticleSensitive(input: UpdateArticleSensitiveInput!): Article!
+  updateArticleState(input: UpdateArticleStateInput!): Article!
+  updateCampaignApplicationState(input: UpdateCampaignApplicationStateInput!): Campaign!
+
+  """Update a comments' state."""
+  updateCommentsState(input: UpdateCommentsStateInput!): [Comment!]!
+
+  """Update user notification settings."""
+  updateNotificationSetting(input: UpdateNotificationSettingInput!): User!
+
+  """Update referralCode of a user, used in OSS."""
+  updateUserExtra(input: UpdateUserExtraInput!): User!
+
+  """Update user information."""
+  updateUserInfo(input: UpdateUserInfoInput!): User!
+
+  """Update state of a user, used in OSS."""
+  updateUserRole(input: UpdateUserRoleInput!): User!
+
+  """Update state of a user, used in OSS."""
+  updateUserState(input: UpdateUserStateInput!): [User!]
+
+  """Logout user."""
+  userLogout: Boolean!
+
+  """Verify user email."""
+  verifyEmail(input: VerifyEmailInput!): AuthResult!
+
+  """Upvote or downvote a comment."""
+  voteComment(input: VoteCommentInput!): Comment!
+
+  """Login/Signup via a wallet."""
+  walletLogin(input: WalletLoginInput!): AuthResult!
+
+  """Withdraw locked ERC20/native token from donation vault"""
+  withdrawLockedTokens: WithdrawLockedTokensResult!
+}
+
+""" NFT Asset """
+type NFTAsset {
+  collectionName: String!
+
+  """imageOriginalUrl: String!"""
+  contractAddress: String!
+  description: String
+  id: ID!
+  imagePreviewUrl: String
+  imageUrl: String!
+  name: String!
+}
+
+interface Node {
+  id: ID!
+}
+
+input NodeInput {
+  id: ID!
+}
+
+input NodesInput {
+  ids: [ID!]!
+}
+
+"""This interface contains common fields of a notice."""
+interface Notice {
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+type NoticeConnection implements Connection {
+  edges: [NoticeEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NoticeEdge {
+  cursor: String!
+  node: Notice!
+}
+
+type NotificationSetting {
+  articleNewAppreciation: Boolean!
+  articleNewCollected: Boolean!
+  articleNewComment: Boolean!
+  articleNewSubscription: Boolean!
+  circleMemberNewBroadcastReply: Boolean!
+  circleMemberNewDiscussion: Boolean!
+  circleMemberNewDiscussionReply: Boolean!
+  circleNewFollower: Boolean!
+
+  """for circle owners"""
+  circleNewSubscriber: Boolean!
+  circleNewUnsubscriber: Boolean!
+  email: Boolean!
+
+  """for circle members & followers"""
+  inCircleNewArticle: Boolean!
+  inCircleNewBroadcast: Boolean!
+  inCircleNewBroadcastReply: Boolean!
+  inCircleNewDiscussion: Boolean!
+  inCircleNewDiscussionReply: Boolean!
+  mention: Boolean!
+  newComment: Boolean!
+  newLike: Boolean!
+  userNewFollower: Boolean!
+}
+
+enum NotificationSettingType {
+  articleNewAppreciation
+  articleNewCollected
+  articleNewComment
+  articleNewSubscription
+  circleMemberBroadcast
+  circleMemberNewBroadcastReply
+  circleMemberNewDiscussion
+  circleMemberNewDiscussionReply
+  circleNewDiscussion
+  circleNewFollower
+
+  """for circle owners"""
+  circleNewSubscriber
+  circleNewUnsubscriber
+  email
+
+  """for circle members"""
+  inCircleNewArticle
+  inCircleNewBroadcast
+  inCircleNewBroadcastReply
+  inCircleNewDiscussion
+  inCircleNewDiscussionReply
+  mention
+  newComment
+  newLike
+  userNewFollower
+}
+
+type OAuthClient {
+  """URL for oauth client's avatar."""
+  avatar: String
+
+  """Creation Date"""
+  createdAt: DateTime!
+
+  """App Description"""
+  description: String
+
+  """Grant Types"""
+  grantTypes: [GrantType!]
+
+  """Unique Client ID of this OAuth Client."""
+  id: ID!
+
+  """App name"""
+  name: String!
+
+  """Redirect URIs"""
+  redirectURIs: [String!]
+
+  """Scopes"""
+  scope: [String!]
+
+  """Client secret"""
+  secret: String!
+
+  """Linked Developer Account"""
+  user: User
+
+  """URL for oauth client's official website"""
+  website: String
+}
+
+type OAuthClientConnection implements Connection {
+  edges: [OAuthClientEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type OAuthClientEdge {
+  cursor: String!
+  node: OAuthClient!
+}
+
+input OAuthClientInput {
+  id: ID!
+}
+
+type OSS {
+  articles(input: OSSArticlesInput!): ArticleConnection!
+  badgedUsers(input: BadgedUsersInput!): UserConnection!
+  comments(input: ConnectionArgs!): CommentConnection!
+  icymiTopics(input: ConnectionArgs!): IcymiTopicConnection!
+  moments(input: ConnectionArgs!): MomentConnection!
+  oauthClients(input: ConnectionArgs!): OAuthClientConnection!
+  reports(input: ConnectionArgs!): ReportConnection!
+  restrictedUsers(input: ConnectionArgs!): UserConnection!
+  seedingUsers(input: ConnectionArgs!): UserConnection!
+  skippedListItems(input: SkippedListItemsInput!): SkippedListItemsConnection!
+  tags(input: TagsInput!): TagConnection!
+  topicChannelFeedbacks(input: TopicChannelFeedbacksInput!): TopicChannelFeedbackConnection!
+  users(input: ConnectionArgs!): UserConnection!
+}
+
+input OSSArticlesFilterInput {
+  datetimeRange: DatetimeRangeInput
+  isSpam: Boolean
+  searchKey: String
+}
+
+input OSSArticlesInput {
+  after: String
+  filter: OSSArticlesFilterInput
+  first: first_Int_min_0
+  sort: ArticlesSort = newest
+}
+
+input Oauth1CredentialInput {
+  oauthToken: String!
+  oauthVerifier: String!
+}
+
+"""This type contains system-wise info and settings."""
+type Official {
+  """Announcements"""
+  announcements(input: AnnouncementsInput!): [Announcement!]
+
+  """Feature flag"""
+  features: [Feature!]!
+}
+
+"""The notice type contains info about official announcement."""
+type OfficialAnnouncementNotice implements Notice {
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+
+  """The link to a specific page if provided."""
+  link: String
+
+  """The message content."""
+  message: String!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+}
+
+input PayToInput {
+  amount: amount_Float_NotNull_exclusiveMin_0!
+
+  """for ERC20/native token payment"""
+  chain: Chain
+  currency: TransactionCurrency!
+  id: ID
+
+  """for HKD payment"""
+  password: String
+  purpose: TransactionPurpose!
+  recipientId: ID!
+  targetId: ID
+  txHash: String
+}
+
+type PayToResult {
+  """Only available when paying with LIKE."""
+  redirectUrl: String
+  transaction: Transaction!
+}
+
+input PayoutInput {
+  amount: amount_Float_NotNull_exclusiveMin_0!
+  password: String!
+}
+
+type Person {
+  email: email_String_NotNull_format_email!
+}
+
+input PinCommentInput {
+  id: ID!
+}
+
+type PinHistory {
+  """Which feed (IcymiTopic / Channel) the article was pinned"""
+  feed: Node!
+  pinnedAt: DateTime!
+}
+
+interface PinnableWork {
+  cover: String
+  id: ID!
+  pinned: Boolean!
+  title: String!
+}
+
+type Price {
+  """Amount of Price."""
+  amount: Float!
+
+  """Current Price belongs to whcih Circle."""
+  circle: Circle!
+
+  """Created time."""
+  createdAt: DateTime! @deprecated(reason: "No longer in use")
+
+  """Currency of Price."""
+  currency: TransactionCurrency!
+
+  """Unique ID."""
+  id: ID!
+
+  """State of Price."""
+  state: PriceState!
+
+  """Updated time."""
+  updatedAt: DateTime! @deprecated(reason: "No longer in use")
+}
+
+enum PriceState {
+  active
+  archived
+}
+
+input PublishArticleInput {
+  id: ID!
+
+  """whether publish to ISCN"""
+  iscnPublish: Boolean
+
+  """Scheduled publish date of the article."""
+  publishAt: DateTime
+}
+
+"""Enums for publishing state."""
+enum PublishState {
+  error
+  pending
+  published
+  unpublished
+}
+
+input PutAnnouncementInput {
+  channels: [AnnouncementChannelInput!]
+  content: [TranslationInput!]
+  cover: String
+  expiredAt: DateTime
+  id: ID
+  link: [TranslationInput!]
+  order: Int
+  title: [TranslationInput!]
+  type: AnnouncementType
+  visible: Boolean
+}
+
+input PutCircleArticlesInput {
+  """Access Type, `public` or `paywall` only."""
+  accessType: ArticleAccessType!
+
+  """Article Ids"""
+  articles: [ID!]
+
+  """Circle ID"""
+  id: ID!
+  license: ArticleLicenseType
+
+  """Action Type"""
+  type: PutCircleArticlesType!
+}
+
+enum PutCircleArticlesType {
+  add
+  remove
+}
+
+input PutCircleInput {
+  """Circle's subscription fee."""
+  amount: amount_Float_exclusiveMin_0
+
+  """Unique ID of a Circle's avatar."""
+  avatar: ID
+
+  """Unique ID of a Circle's cover."""
+  cover: ID
+
+  """A short description of this Circle."""
+  description: String
+
+  """Human readable name of this Circle."""
+  displayName: String
+
+  """Unique ID."""
+  id: ID
+
+  """Slugified name of a Circle."""
+  name: String
+}
+
+input PutCollectionInput {
+  cover: ID
+  description: String
+  id: ID
+  pinned: Boolean
+  title: String
+}
+
+input PutCommentInput {
+  comment: CommentInput!
+  id: ID
+}
+
+input PutCurationChannelInput {
+  activePeriod: DatetimeRangeInput
+  color: Color
+  id: ID
+  name: [TranslationInput!]
+  navbarTitle: [TranslationInput!]
+  note: [TranslationInput!]
+  pinAmount: Int
+  showRecommendation: Boolean
+  state: CurationChannelState
+}
+
+input PutDraftInput {
+  accessType: ArticleAccessType
+
+  """Which campaigns to attach"""
+  campaigns: [ArticleCampaignInput!]
+
+  """Whether readers can comment"""
+  canComment: Boolean
+  circle: ID
+
+  """Deprecated, use connections instead"""
+  collection: [ID]
+
+  """Add article to these collections when published"""
+  collections: [ID!]
+  connections: [ID!]
+  content: String
+  cover: ID
+  id: ID
+  indentFirstLine: Boolean
+
+  """Whether publish to ISCN"""
+  iscnPublish: Boolean
+
+  """Last known update timestamp for version conflict detection"""
+  lastUpdatedAt: DateTime
+  license: ArticleLicenseType
+  replyToDonator: replyToDonator_String_maxLength_140
+  requestForDonation: requestForDonation_String_maxLength_140
+  sensitive: Boolean
+  summary: String
+  tags: [String!]
+  title: String
+}
+
+input PutIcymiTopicInput {
+  articles: [ID!]
+  id: ID
+  note: [TranslationInput!]
+  pinAmount: Int
+  state: IcymiTopicState
+  title: [TranslationInput!]
+}
+
+input PutMomentInput {
+  articles: [ID!]
+  assets: [ID!]
+  content: String!
+  tags: [String!]
+}
+
+input PutOAuthClientInput {
+  avatar: ID
+  description: String
+  grantTypes: [GrantType!]
+  id: ID
+  name: String
+  redirectURIs: [String!]
+  scope: [String!]
+  secret: String
+  user: ID
+  website: website_String_format_uri
+}
+
+input PutRemarkInput {
+  id: ID!
+  remark: String!
+  type: RemarkTypes!
+}
+
+input PutRestrictedUsersInput {
+  ids: [ID!]!
+  restrictions: [UserRestrictionType!]!
+}
+
+input PutSkippedListItemInput {
+  archived: Boolean
+  id: ID
+  type: SkippedListItemType
+  value: String
+}
+
+input PutTagChannelInput {
+  enabled: Boolean
+  id: ID!
+  navbarTitle: [TranslationInput!]
+}
+
+input PutTopicChannelInput {
+  enabled: Boolean
+  id: ID
+  name: [TranslationInput!]
+  navbarTitle: [TranslationInput!]
+  note: [TranslationInput!]
+  providerId: String
+  subChannels: [ID!]
+}
+
+input PutUserFeatureFlagsInput {
+  flags: [UserFeatureFlagType!]!
+  ids: [ID!]!
+}
+
+input PutWritingChallengeInput {
+  announcements: [ID!]
+  applicationPeriod: DatetimeRangeInput
+  channelEnabled: Boolean
+  cover: ID
+  description: [TranslationInput!]
+
+  """exclude articles of this campaign in topic channels and newest"""
+  exclusive: Boolean
+  featuredDescription: [TranslationInput!]
+  id: ID
+  link: String
+  managers: [ID!]
+  name: [TranslationInput!]
+  navbarTitle: [TranslationInput!]
+  newStages: [CampaignStageInput!]
+  organizers: [ID!]
+  showAd: Boolean
+  showOther: Boolean
+  stages: [CampaignStageInput!]
+  state: CampaignState
+  writingPeriod: DatetimeRangeInput
+}
+
+type Query {
+  article(input: ArticleInput!): Article
+  campaign(input: CampaignInput!): Campaign
+  campaignOrganizers(input: ConnectionArgs!): UserConnection!
+  campaigns(input: CampaignsInput!): CampaignConnection!
+  channel(input: ChannelInput!): Channel
+  channels(input: ChannelsInput): [Channel!]!
+  circle(input: CircleInput!): Circle
+  exchangeRates(input: ExchangeRatesInput): [ExchangeRate!]
+  frequentSearch(input: FrequentSearchInput!): [String!]
+  moment(input: MomentInput!): Moment
+  node(input: NodeInput!): Node
+  nodes(input: NodesInput!): [Node!]
+  oauthClient(input: OAuthClientInput!): OAuthClient
+  oauthRequestToken: String
+  official: Official!
+  oss: OSS!
+  search(input: SearchInput!): SearchResultConnection!
+  user(input: UserInput!): User
+  viewer: User
+}
+
+enum QuoteCurrency {
+  HKD
+  TWD
+  USD
+}
+
+input ReadArticleInput {
+  id: ID!
+}
+
+type ReadHistory {
+  article: Article!
+  readAt: DateTime!
+}
+
+type ReadHistoryConnection implements Connection {
+  edges: [ReadHistoryEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ReadHistoryEdge {
+  cursor: String!
+  node: ReadHistory!
+}
+
+type RecentSearchConnection implements Connection {
+  edges: [RecentSearchEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type RecentSearchEdge {
+  cursor: String!
+  node: String!
+}
+
+input RecommendFilterInput {
+  channel: IdentityInput
+
+  """filter out followed users"""
+  followed: Boolean
+
+  """index of list, min: 0, max: 49"""
+  random: random_Int_min_0_max_49
+}
+
+input RecommendInput {
+  after: String
+  filter: RecommendFilterInput
+  first: first_Int_min_0
+  newAlgo: Boolean
+  oss: Boolean
+}
+
+"""Enums for types of recommend articles."""
+enum RecommendTypes {
+  hottest
+  icymi
+  newest
+  search
+}
+
+type Recommendation {
+  """Global user list, sort by activities in recent 6 month."""
+  authors(input: RecommendInput!): UserConnection!
+
+  """Activities based on user's following, sort by creation time."""
+  following(input: RecommendationFollowingInput!): FollowingActivityConnection!
+
+  """Global articles sort by latest activity time."""
+  hottest(input: RecommendInput!): ArticleConnection!
+
+  """'In case you missed it' recommendation."""
+  icymi(input: ConnectionArgs!): ArticleConnection!
+
+  """'In case you missed it' topic."""
+  icymiTopic: IcymiTopic
+
+  """Global articles sort by publish time."""
+  newest(input: RecommendationNewestInput!): ArticleConnection!
+
+  """Global tag list, sort by activities in recent 14 days."""
+  tags(input: RecommendInput!): TagConnection!
+}
+
+input RecommendationFollowingFilterInput {
+  type: RecommendationFollowingFilterType
+}
+
+enum RecommendationFollowingFilterType {
+  article
+}
+
+input RecommendationFollowingInput {
+  after: String
+  filter: RecommendationFollowingFilterInput
+  first: Int
+}
+
+input RecommendationNewestInput {
+  after: String
+  excludeChannelArticles: Boolean
+  filter: FilterInput
+  first: first_Int_min_0
+  oss: Boolean
+}
+
+input RefreshIPNSFeedInput {
+  """refresh how many recent articles, default to 50"""
+  numArticles: Int = 50
+  userName: String!
+}
+
+input RelatedDonationArticlesInput {
+  after: String
+  first: first_Int_min_0
+  oss: Boolean
+
+  """index of article list, min: 0, max: 49"""
+  random: random_Int_min_0_max_49
+}
+
+enum RemarkTypes {
+  Article
+  Comment
+  Feedback
+  Report
+  Tag
+  User
+}
+
+input RemoveSocialLoginInput {
+  type: SocialAccountType!
+}
+
+input RenameTagInput {
+  content: String!
+  id: ID!
+}
+
+input ReorderChannelsInput {
+  ids: [ID!]!
+}
+
+input ReorderCollectionArticlesInput {
+  collection: ID!
+  moves: [ReorderMoveInput!]!
+}
+
+input ReorderMoveInput {
+  item: ID!
+
+  """
+  The new position move to. To move item to the beginning of the list, set to 0. To the end of the list, set to the length of the list - 1.
+  """
+  newPosition: Int!
+}
+
+type Report implements Node {
+  createdAt: DateTime!
+  id: ID!
+  reason: ReportReason!
+  reporter: User!
+  target: Node!
+}
+
+type ReportConnection implements Connection {
+  edges: [ReportEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ReportEdge {
+  cursor: String!
+  node: Report!
+}
+
+enum ReportReason {
+  discrimination_insult_hatred
+  illegal_advertising
+  other
+  pornography_involving_minors
+  tort
+}
+
+input ResetLikerIdInput {
+  id: ID!
+}
+
+input ResetPasswordInput {
+  codeId: ID!
+  password: String!
+  type: ResetPasswordType
+}
+
+enum ResetPasswordType {
+  account
+  payment
+}
+
+union Response = Article | Comment
+
+type ResponseConnection implements Connection {
+  edges: [ResponseEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ResponseEdge {
+  cursor: String!
+  node: Response!
+}
+
+"""Enums for sorting responses."""
+enum ResponseSort {
+  newest
+  oldest
+}
+
+input ResponsesInput {
+  after: String
+  articleOnly: Boolean
+  before: String
+  first: first_Int_min_0
+  includeAfter: Boolean
+  includeBefore: Boolean
+  sort: ResponseSort
+}
+
+input ReviewTopicChannelFeedbackInput {
+  action: TopicChannelFeedbackAction!
+  feedback: ID!
+}
+
+"""Enums for user roles."""
+enum Role {
+  admin
+  user
+  vistor
+}
+
+enum SearchAPIVersion {
+  v20230301
+  v20230601
+}
+
+enum SearchExclude {
+  blocked
+}
+
+input SearchFilter {
+  authorId: ID
+}
+
+input SearchInput {
+  after: String
+
+  """specific condition for rule data out"""
+  exclude: SearchExclude
+
+  """extra query filter for searching"""
+  filter: SearchFilter
+  first: first_Int_min_0
+
+  """should include tags used by author"""
+  includeAuthorTags: Boolean
+
+  """search keyword"""
+  key: String!
+  oss: Boolean
+  quicksearch: Boolean
+
+  """whether this search operation should be recorded in search history"""
+  record: Boolean
+
+  """types of search target"""
+  type: SearchTypes!
+}
+
+type SearchResultConnection implements Connection {
+  edges: [SearchResultEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SearchResultEdge {
+  cursor: String!
+  node: Node!
+}
+
+enum SearchTypes {
+  Article
+  Tag
+  User
+}
+
+input SendCampaignAnnouncementInput {
+  announcement: [TranslationInput!]!
+  campaign: ID!
+  link: link_String_NotNull_format_uri!
+  password: String!
+}
+
+input SendVerificationCodeInput {
+  email: email_String_NotNull_format_email!
+
+  """email content language"""
+  language: UserLanguage
+
+  """
+  Redirect URL embedded in the verification email,
+  use code instead if not provided.
+  """
+  redirectUrl: redirectUrl_String_format_uri
+  token: String
+  type: VerificationCodeType!
+}
+
+input SetAdStatusInput {
+  id: ID!
+  isAd: Boolean!
+}
+
+input SetArticleTopicChannelsInput {
+  channels: [ID!]!
+  id: ID!
+}
+
+input SetBoostInput {
+  boost: boost_Float_NotNull_min_0!
+  id: ID!
+  type: BoostTypes!
+}
+
+input SetCurrencyInput {
+  currency: QuoteCurrency
+}
+
+input SetEmailInput {
+  email: String!
+}
+
+input SetFeatureInput {
+  flag: FeatureFlag!
+  name: FeatureName!
+  value: Float
+}
+
+input SetPasswordInput {
+  password: String!
+}
+
+input SetSpamStatusInput {
+  id: ID!
+  isSpam: Boolean!
+}
+
+input SetUserNameInput {
+  userName: String!
+}
+
+enum SigningMessagePurpose {
+  airdrop
+  claimLogbook
+  connect
+  login
+  signup
+}
+
+type SigningMessageResult {
+  createdAt: DateTime!
+  expiredAt: DateTime!
+  nonce: String!
+  purpose: SigningMessagePurpose!
+  signingMessage: String!
+}
+
+input SingleFileUploadInput {
+  draft: Boolean
+  entityId: ID
+  entityType: EntityType!
+  file: Upload
+  type: AssetType!
+  url: url_String_format_uri
+}
+
+type SkippedListItem {
+  archived: Boolean!
+  createdAt: DateTime!
+  id: ID!
+  type: SkippedListItemType!
+  updatedAt: DateTime!
+  uuid: ID!
+  value: String!
+}
+
+type SkippedListItemEdge {
+  cursor: String!
+  node: SkippedListItem
+}
+
+enum SkippedListItemType {
+  agent_hash
+  domain
+  email
+}
+
+type SkippedListItemsConnection implements Connection {
+  edges: [SkippedListItemEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+input SkippedListItemsInput {
+  after: String
+  first: first_Int_min_0
+  type: SkippedListItemType
+}
+
+type SocialAccount {
+  email: String
+  type: SocialAccountType!
+  userName: String
+}
+
+enum SocialAccountType {
+  Facebook
+  Google
+  Twitter
+}
+
+input SocialLoginInput {
+  authorizationCode: String
+
+  """OAuth2 PKCE code_verifier for Facebook and Twitter"""
+  codeVerifier: String
+
+  """used in register"""
+  language: UserLanguage
+
+  """OIDC nonce for Google"""
+  nonce: String
+
+  """oauth token/verifier in OAuth1.0a for Twitter"""
+  oauth1Credential: Oauth1CredentialInput
+  referralCode: String
+  type: SocialAccountType!
+}
+
+type SpamStatus {
+  """
+  Whether this work is labeled as spam by human, null for not labeled yet. 
+  """
+  isSpam: Boolean
+
+  """Spam confident score by machine, null for not checked yet. """
+  score: Float
+}
+
+type StripeAccount {
+  id: ID!
+  loginUrl: String!
+}
+
+enum StripeAccountCountry {
+  Australia
+  Austria
+  Belgium
+  Bulgaria
+  Canada
+  Cyprus
+  Denmark
+  Estonia
+  Finland
+  France
+  Germany
+  Greece
+  HongKong
+  Ireland
+  Italy
+  Latvia
+  Lithuania
+  Luxembourg
+  Malta
+  Netherlands
+  NewZealand
+  Norway
+  Poland
+  Portugal
+  Romania
+  Singapore
+  Slovakia
+  Slovenia
+  Spain
+  Sweden
+  UnitedKingdom
+  UnitedStates
+}
+
+input SubmitReportInput {
+  reason: ReportReason!
+  targetId: ID!
+}
+
+input SubmitTopicChannelFeedbackInput {
+  article: ID!
+  channels: [ID!]
+  type: TopicChannelFeedbackType!
+}
+
+input SubscribeCircleInput {
+  """Unique ID."""
+  id: ID!
+
+  """Wallet password."""
+  password: String
+}
+
+type SubscribeCircleResult {
+  circle: Circle!
+
+  """client secret for SetupIntent."""
+  client_secret: String
+}
+
+"""This type contains content, count and related data of an article tag."""
+type Tag implements Channel & Node {
+  """List of articles were attached with this tag."""
+  articles(input: TagArticlesInput!): ChannelArticleConnection!
+
+  """Whether this tag is enabled as a channel"""
+  channelEnabled: Boolean!
+
+  """Content of this tag."""
+  content: String!
+
+  """Time of this tag was created."""
+  createdAt: DateTime!
+  deleted: Boolean!
+
+  """Unique id of this tag."""
+  id: ID!
+
+  """This value determines if current viewer is following or not."""
+  isFollower: Boolean
+
+  """Navbar title for this tag channel"""
+  navbarTitle(input: TranslationArgs): String!
+
+  """Counts of this tag."""
+  numArticles: Int!
+  numAuthors: Int!
+  numMoments: Int!
+  oss: TagOSS!
+
+  """Tags recommended based on relations to current tag."""
+  recommended(input: RecommendInput!): TagConnection!
+
+  """Authors recommended based on relations to current tag."""
+  recommendedAuthors(input: ConnectionArgs!): UserConnection!
+  remark: String
+
+  """Short hash for shorter url addressing"""
+  shortHash: String!
+
+  """Articles and moments were attached with this tag."""
+  writings(input: WritingInput!): TagWritingConnection!
+}
+
+input TagArticlesInput {
+  after: String
+  first: first_Int_min_0
+  oss: Boolean
+  sortBy: TagArticlesSortBy = byCreatedAtDesc
+}
+
+enum TagArticlesSortBy {
+  byCreatedAtDesc
+  byHottestDesc
+}
+
+type TagConnection implements Connection {
+  edges: [TagEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type TagEdge {
+  cursor: String!
+  node: Tag!
+}
+
+type TagOSS {
+  boost: Float!
+  score: Float!
+}
+
+type TagWritingConnection implements Connection {
+  edges: [TagWritingEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type TagWritingEdge {
+  cursor: String!
+  node: Writing!
+  pinned: Boolean!
+}
+
+input TagsInput {
+  after: String
+  first: first_Int_min_0
+  sort: TagsSort
+}
+
+"""Enums for sorting tags."""
+enum TagsSort {
+  hottest
+  newest
+  oldest
+}
+
+input ToggleCircleMemberInput {
+  """Toggle value."""
+  enabled: Boolean!
+
+  """Unique ID."""
+  id: ID!
+
+  """Unique ID of target user."""
+  targetId: ID!
+}
+
+"""Common input to toggle single item for `toggleXXX` mutations"""
+input ToggleItemInput {
+  enabled: Boolean
+  id: ID!
+}
+
+input TogglePinChannelArticlesInput {
+  articles: [ID!]!
+
+  """id of TopicChannel or CurationChannel"""
+  channels: [ID!]!
+  pinned: Boolean!
+}
+
+input ToggleRecommendInput {
+  enabled: Boolean!
+  id: ID!
+  type: RecommendTypes
+}
+
+input ToggleSeedingUsersInput {
+  enabled: Boolean!
+  ids: [ID!]
+}
+
+input ToggleUsersBadgeInput {
+  enabled: Boolean!
+  ids: [ID!]!
+  type: BadgeType!
+}
+
+input ToggleWritingChallengeFeaturedArticlesInput {
+  articles: [ID!]!
+  campaign: ID!
+  enabled: Boolean!
+}
+
+type TopDonatorConnection implements Connection {
+  edges: [TopDonatorEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type TopDonatorEdge {
+  cursor: String!
+  donationCount: Int!
+  node: Donator!
+}
+
+input TopDonatorFilter {
+  inRangeEnd: DateTime
+  inRangeStart: DateTime
+}
+
+input TopDonatorInput {
+  after: String
+  filter: TopDonatorFilter
+  first: Int
+}
+
+type TopicChannel implements Channel & Node {
+  articles(input: ChannelArticlesInput!): ChannelArticleConnection!
+  enabled: Boolean!
+  id: ID!
+  name(input: TranslationArgs): String!
+  navbarTitle(input: TranslationArgs): String!
+  note(input: TranslationArgs): String
+  parent: TopicChannel
+  providerId: String
+  shortHash: String!
+}
+
+type TopicChannelClassification {
+  """
+  Which channels this article is in, null for not classified, empty for not in any channel
+  """
+  channels: [ArticleTopicChannel!]
+
+  """whether user enable channel classification"""
+  enabled: Boolean!
+
+  """Feedback from author"""
+  feedback: TopicChannelFeedback
+}
+
+type TopicChannelFeedback {
+  article: Article!
+
+  """Which channels author want to be in, empty for no channels"""
+  channels: [TopicChannel!]
+  createdAt: DateTime!
+  id: ID!
+  state: TopicChannelFeedbackState
+  type: TopicChannelFeedbackType!
+}
+
+enum TopicChannelFeedbackAction {
+  accept
+  reject
+}
+
+type TopicChannelFeedbackConnection implements Connection {
+  edges: [TopicChannelFeedbackEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type TopicChannelFeedbackEdge {
+  cursor: String!
+  node: TopicChannelFeedback!
+}
+
+enum TopicChannelFeedbackState {
+  accepted
+  pending
+  rejected
+  resolved
+}
+
+enum TopicChannelFeedbackType {
+  negative
+  positive
+}
+
+input TopicChannelFeedbacksFilterInput {
+  spam: Boolean
+  state: TopicChannelFeedbackState
+  type: TopicChannelFeedbackType
+}
+
+input TopicChannelFeedbacksInput {
+  after: String
+  filter: TopicChannelFeedbacksFilterInput
+  first: first_Int_NotNull_min_0!
+}
+
+type Transaction {
+  amount: Float!
+
+  """blockchain transaction info of ERC20/native token payment transaction"""
+  blockchainTx: BlockchainTransaction
+
+  """Timestamp of transaction."""
+  createdAt: DateTime!
+  currency: TransactionCurrency!
+  fee: Float!
+  id: ID!
+
+  """Message for end user, including reason of failure."""
+  message: String
+  purpose: TransactionPurpose!
+
+  """Recipient of transaction."""
+  recipient: User
+
+  """Sender of transaction."""
+  sender: User
+  state: TransactionState!
+
+  """Related target article or transaction."""
+  target: TransactionTarget
+}
+
+type TransactionConnection implements Connection {
+  edges: [TransactionEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+enum TransactionCurrency {
+  HKD
+  LIKE
+  USDT
+}
+
+type TransactionEdge {
+  cursor: String!
+  node: Transaction!
+}
+
+type TransactionNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: Transaction!
+  type: TransactionNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum TransactionNoticeType {
+  PaymentReceivedDonation
+  WithdrewLockedTokens
+}
+
+enum TransactionPurpose {
+  addCredit
+  curationVaultWithdrawal
+  dispute
+  donation
+  payout
+  payoutReversal
+  refund
+  subscriptionSplit
+}
+
+enum TransactionState {
+  canceled
+  failed
+  pending
+  succeeded
+}
+
+union TransactionTarget = Article | Circle | Transaction
+
+input TransactionsArgs {
+  after: String
+  filter: TransactionsFilter
+  first: first_Int_min_0
+
+  """deprecated, use TransactionsFilter.id instead."""
+  id: ID
+
+  """deprecated, use TransactionsFilter.states instead."""
+  states: [TransactionState!]
+}
+
+input TransactionsFilter {
+  currency: TransactionCurrency
+  id: ID
+  purpose: TransactionPurpose
+  states: [TransactionState!]
+}
+
+input TransactionsReceivedByArgs {
+  after: String
+  first: first_Int_min_0
+  purpose: TransactionPurpose!
+  senderId: ID
+}
+
+type TranslatedAnnouncement {
+  content: String
+  cover: String
+  language: UserLanguage!
+  link: link_String_format_uri
+  title: String
+}
+
+input TranslationArgs {
+  language: UserLanguage!
+}
+
+input TranslationInput {
+  language: UserLanguage!
+  text: String!
+}
+
+enum TranslationModel {
+  google_gemini_2_0_flash
+  google_gemini_2_5_flash
+  google_translation_v2
+  opencc
+}
+
+input UnbindLikerIdInput {
+  id: ID!
+  likerId: String!
+}
+
+input UnlikeCollectionInput {
+  id: ID!
+}
+
+input UnlikeMomentInput {
+  id: ID!
+}
+
+input UnpinCommentInput {
+  id: ID!
+}
+
+input UnsubscribeCircleInput {
+  """Unique ID."""
+  id: ID!
+}
+
+input UnvoteCommentInput {
+  id: ID!
+}
+
+input UpdateArticleSensitiveInput {
+  id: ID!
+  sensitive: Boolean!
+}
+
+input UpdateArticleStateInput {
+  id: ID!
+  state: ArticleState!
+}
+
+input UpdateCampaignApplicationStateInput {
+  campaign: ID!
+  state: CampaignApplicationState!
+  user: ID!
+}
+
+input UpdateCommentsStateInput {
+  ids: [ID!]!
+  state: CommentState!
+}
+
+input UpdateNotificationSettingInput {
+  enabled: Boolean!
+  type: NotificationSettingType!
+}
+
+input UpdateUserExtraInput {
+  id: ID!
+  referralCode: String
+}
+
+input UpdateUserInfoInput {
+  agreeOn: Boolean
+  avatar: ID
+  description: String
+  displayName: String
+  language: UserLanguage
+  paymentPassword: String
+  paymentPointer: String
+  profileCover: ID
+  referralCode: String
+}
+
+input UpdateUserRoleInput {
+  id: ID!
+  role: UserRole!
+}
+
+input UpdateUserStateInput {
+  banDays: banDays_Int_exclusiveMin_0
+  emails: [String!]
+  id: ID
+  password: String
+  state: UserState!
+}
+
+scalar Upload
+
+type User implements Node {
+  """Record of user activity, only accessable by current user."""
+  activity: UserActivity!
+
+  """user data analytics, only accessable by current user."""
+  analytics: UserAnalytics!
+
+  """Articles authored by current user."""
+  articles(input: UserArticlesInput!): ArticleConnection!
+
+  """URL for user avatar."""
+  avatar: String
+
+  """Users that blocked by current user."""
+  blockList(input: ConnectionArgs!): UserConnection!
+
+  """Artilces current user bookmarked."""
+  bookmarkedArticles(input: ConnectionArgs!): ArticleConnection!
+
+  """Tags current user bookmarked."""
+  bookmarkedTags(input: ConnectionArgs!): TagConnection!
+
+  """active applied campaigns"""
+  campaigns(input: ConnectionArgs!): CampaignConnection!
+
+  """collections authored by current user."""
+  collections(input: ConnectionArgs!): CollectionConnection!
+
+  """Articles current user commented on"""
+  commentedArticles(input: ConnectionArgs!): ArticleConnection!
+
+  """Display name on user profile, can be duplicated."""
+  displayName: String
+
+  """Drafts authored by current user."""
+  drafts(input: ConnectionArgs!): DraftConnection!
+
+  """Followers of this user."""
+  followers(input: ConnectionArgs!): UserConnection!
+
+  """Following contents of this user."""
+  following: Following!
+
+  """Global id of an user."""
+  id: ID!
+
+  """User information."""
+  info: UserInfo!
+
+  """Whether current user is blocked by viewer."""
+  isBlocked: Boolean!
+
+  """Whether current user is blocking viewer."""
+  isBlocking: Boolean!
+
+  """Whether viewer is following current user."""
+  isFollowee: Boolean!
+
+  """Whether current user is following viewer."""
+  isFollower: Boolean!
+
+  """user latest articles or collections"""
+  latestWorks: [PinnableWork!]!
+
+  """Liker info of current user"""
+  liker: Liker!
+
+  """LikerID of LikeCoin, being used by LikeCoin OAuth"""
+  likerId: String
+  notices(input: ConnectionArgs!): NoticeConnection!
+  oss: UserOSS!
+
+  """Circles belong to current user."""
+  ownCircles: [Circle!]
+
+  """Payment pointer that resolves to Open Payments endpoints"""
+  paymentPointer: String
+
+  """user pinned articles or collections"""
+  pinnedWorks: [PinnableWork!]!
+
+  """Recommendations for current user."""
+  recommendation: Recommendation!
+  remark: String
+
+  """User settings."""
+  settings: UserSettings!
+
+  """Status of current user."""
+  status: UserStatus
+
+  """Circles whiches user has subscribed."""
+  subscribedCircles(input: ConnectionArgs!): CircleConnection!
+
+  """Tags by usage order of current user."""
+  tags(input: ConnectionArgs!): TagConnection!
+
+  """Global unique user name of a user."""
+  userName: String
+
+  """User Wallet"""
+  wallet: Wallet!
+
+  """Articles and moments authored by current user."""
+  writings(input: WritingInput!): WritingConnection!
+}
+
+type UserActivity {
+  """Appreciations current user received."""
+  appreciationsReceived(input: ConnectionArgs!): AppreciationConnection!
+
+  """Total number of appreciation current user received."""
+  appreciationsReceivedTotal: Int!
+
+  """Appreciations current user gave."""
+  appreciationsSent(input: ConnectionArgs!): AppreciationConnection!
+
+  """Total number of appreciation current user gave."""
+  appreciationsSentTotal: Int!
+
+  """User reading history."""
+  history(input: ConnectionArgs!): ReadHistoryConnection!
+
+  """User search history."""
+  recentSearches(input: ConnectionArgs!): RecentSearchConnection!
+}
+
+type UserAddArticleTagActivity {
+  actor: User!
+  createdAt: DateTime!
+
+  """Article added to tag"""
+  node: Article!
+
+  """Tag added by article"""
+  target: Tag!
+}
+
+type UserAnalytics {
+  """Top donators of current user."""
+  topDonators(input: TopDonatorInput!): TopDonatorConnection!
+}
+
+input UserArticlesFilter {
+  state: ArticleState = active
+}
+
+input UserArticlesInput {
+  after: String
+  filter: UserArticlesFilter
+  first: first_Int_min_0
+  sort: UserArticlesSort = newest
+}
+
+enum UserArticlesSort {
+  mostAppreciations
+  mostComments
+  mostDonations
+  mostReaders
+  newest
+}
+
+type UserBroadcastCircleActivity {
+  actor: User!
+  createdAt: DateTime!
+
+  """Comment broadcast by actor"""
+  node: Comment!
+
+  """Circle that comment belongs to"""
+  target: Circle!
+}
+
+type UserConnection implements Connection {
+  edges: [UserEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type UserCreateCircleActivity {
+  actor: User!
+  createdAt: DateTime!
+
+  """Circle created by actor"""
+  node: Circle!
+}
+
+type UserEdge {
+  cursor: String!
+  node: User!
+}
+
+type UserFeatureFlag {
+  createdAt: DateTime!
+  type: UserFeatureFlagType!
+}
+
+enum UserFeatureFlagType {
+  bypassSpamDetection
+  readSpamStatus
+  unlimitedArticleFetch
+}
+
+enum UserGroup {
+  a
+  b
+}
+
+type UserInfo {
+  """Timestamp of user agreement."""
+  agreeOn: DateTime
+
+  """User badges."""
+  badges: [Badge!]
+
+  """Timestamp of registration."""
+  createdAt: DateTime
+
+  """Connected wallet."""
+  cryptoWallet: CryptoWallet
+
+  """User desciption."""
+  description: String
+
+  """User email."""
+  email: email_String_format_email
+
+  """Weather user email is verified."""
+  emailVerified: Boolean!
+
+  """Login address"""
+  ethAddress: String
+
+  """
+  saved tags for showing on profile page, API allows up to 100, front-end lock'ed at lower limit
+  """
+  featuredTags: [Tag!]
+
+  """Type of group."""
+  group: UserGroup!
+
+  """
+  the ipnsKey (`ipfs.io/ipns/<ipnsKey>/...`) for feed.json / rss.xml / index
+  """
+  ipnsKey: String
+  isWalletAuth: Boolean!
+
+  """Cover of profile page."""
+  profileCover: String
+
+  """User connected social accounts."""
+  socialAccounts: [SocialAccount!]!
+
+  """Is user name editable."""
+  userNameEditable: Boolean!
+}
+
+enum UserInfoFields {
+  agreeOn
+  avatar
+  description
+  displayName
+  email
+}
+
+input UserInput {
+  ethAddress: String
+  userName: String
+
+  """used for case insensitive username search """
+  userNameCaseIgnore: Boolean = false
+}
+
+enum UserLanguage {
+  en
+  zh_hans
+  zh_hant
+}
+
+type UserNotice implements Notice {
+  """List of notice actors."""
+  actors: [User!]
+
+  """Time of this notice was created."""
+  createdAt: DateTime!
+
+  """Unique ID of this notice."""
+  id: ID!
+  target: User!
+  type: UserNoticeType!
+
+  """The value determines if the notice is unread or not."""
+  unread: Boolean!
+}
+
+enum UserNoticeType {
+  UserNewFollower
+}
+
+type UserOSS {
+  boost: Float!
+  featureFlags: [UserFeatureFlag!]!
+  restrictions: [UserRestriction!]!
+  score: Float!
+}
+
+type UserPostMomentActivity {
+  actor: User!
+  createdAt: DateTime!
+
+  """Another 3 moments posted by actor"""
+  more: [Moment!]!
+
+  """Moment posted by actor"""
+  node: Moment!
+}
+
+type UserPublishArticleActivity {
+  actor: User!
+  createdAt: DateTime!
+
+  """Article published by actor"""
+  node: Article!
+}
+
+type UserRecommendationActivity {
+  """Recommended users"""
+  nodes: [User!]
+
+  """The source type of recommendation"""
+  source: UserRecommendationActivitySource
+}
+
+enum UserRecommendationActivitySource {
+  UserFollowing
+}
+
+type UserRestriction {
+  createdAt: DateTime!
+  type: UserRestrictionType!
+}
+
+enum UserRestrictionType {
+  articleHottest
+  articleNewest
+}
+
+enum UserRole {
+  admin
+  user
+}
+
+type UserSettings {
+  """User currency preference."""
+  currency: QuoteCurrency!
+
+  """User language setting."""
+  language: UserLanguage!
+
+  """Notification settings."""
+  notification: NotificationSetting
+}
+
+enum UserState {
+  active
+  archived
+  banned
+  frozen
+}
+
+type UserStatus {
+  """Number of articles published by user"""
+  articleCount: Int!
+
+  """
+  Number of chances for the user to change email in a nature day. Reset in UTC+8 0:00
+  """
+  changeEmailTimesLeft: Int!
+
+  """Number of comments posted by user."""
+  commentCount: Int!
+
+  """Number of articles donated by user"""
+  donatedArticleCount: Int!
+
+  """Weather login password is set for email login."""
+  hasEmailLoginPassword: Boolean!
+
+  """Whether user already set payment password."""
+  hasPaymentPassword: Boolean!
+
+  """Number of moments posted by user"""
+  momentCount: Int!
+
+  """Number of times of donations received by user"""
+  receivedDonationCount: Int!
+
+  """User role and access level."""
+  role: UserRole!
+
+  """User state."""
+  state: UserState!
+
+  """
+  Number of referred user registration count (in Digital Nomad Campaign).
+  """
+  totalReferredCount: Int!
+
+  """Number of total written words."""
+  totalWordCount: Int!
+
+  """Whether there are unread activities from following."""
+  unreadFollowing: Boolean!
+
+  """Number of unread notices."""
+  unreadNoticeCount: Int!
+}
+
+enum VerificationCodeType {
+  email_otp
+  email_verify
+  payment_password_reset
+  register
+}
+
+input VerifyEmailInput {
+  code: String!
+  email: String!
+}
+
+"""Enums for vote types."""
+enum Vote {
+  down
+  up
+}
+
+input VoteCommentInput {
+  id: ID!
+  vote: Vote!
+}
+
+type Wallet {
+  balance: Balance!
+
+  """The last four digits of the card."""
+  cardLast4: String
+
+  """
+  URL of Stripe Dashboard to manage subscription invoice and payment method
+  """
+  customerPortal: String
+
+  """Account of Stripe Connect to manage payout"""
+  stripeAccount: StripeAccount
+  transactions(input: TransactionsArgs!): TransactionConnection!
+}
+
+input WalletLoginInput {
+  ethAddress: String!
+
+  """used in register"""
+  language: UserLanguage
+
+  """nonce from generateSigningMessage"""
+  nonce: String!
+  referralCode: String
+
+  """sign'ed by wallet"""
+  signature: String!
+
+  """the message being sign'ed, including nonce"""
+  signedMessage: String!
+}
+
+type WithdrawLockedTokensResult {
+  transaction: Transaction!
+}
+
+union Writing = Article | Comment | Moment
+
+type WritingChallenge implements Campaign & Channel & Node {
+  announcements: [Article!]!
+  application: CampaignApplication
+  applicationPeriod: DatetimeRange
+  articles(input: CampaignArticlesInput!): CampaignArticleConnection!
+  channelEnabled: Boolean!
+  cover: String
+  description(input: TranslationArgs): String
+  featuredDescription(input: TranslationArgs): String!
+  id: ID!
+  isManager: Boolean!
+  link: String!
+  name(input: TranslationArgs): String!
+  navbarTitle(input: TranslationArgs): String!
+  organizers: [User!]!
+  oss: CampaignOSS!
+  participants(input: CampaignParticipantsInput!): CampaignParticipantConnection!
+  shortHash: String!
+  showAd: Boolean!
+  showOther: Boolean!
+  stages: [CampaignStage!]!
+  state: CampaignState!
+  writingPeriod: DatetimeRange
+}
+
+type WritingConnection implements Connection {
+  edges: [WritingEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type WritingEdge {
+  cursor: String!
+  node: Writing!
+}
+
+input WritingInput {
+  after: String
+  first: Int
+}
+
+scalar amount_Float_NotNull_exclusiveMin_0
+
+scalar amount_Float_exclusiveMin_0
+
+scalar amount_Int_NotNull_min_1
+
+scalar banDays_Int_exclusiveMin_0
+
+scalar boost_Float_NotNull_min_0
+
+scalar description_String_maxLength_140
+
+scalar email_String_NotNull_format_email
+
+scalar email_String_format_email
+
+scalar first_Int_NotNull_min_0
+
+scalar first_Int_min_0
+
+scalar freePeriod_Int_NotNull_exclusiveMin_0
+
+scalar last_Int_min_0
+
+scalar link_String_NotNull_format_uri
+
+scalar link_String_format_uri
+
+scalar random_Int_min_0_max_49
+
+scalar redirectUrl_String_format_uri
+
+scalar replyToDonator_String_maxLength_140
+
+scalar requestForDonation_String_maxLength_140
+
+scalar url_String_format_uri
+
+scalar website_String_format_uri

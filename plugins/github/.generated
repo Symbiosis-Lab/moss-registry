@@ -1,0 +1,6 @@
+Generated — do not edit here.
+
+This plugin's source of truth is the moss repository, at plugins/github.
+It is copied here on each moss release with @symbiosis-lab/moss-api
+pinned to a published version, so this repository can build it. Edits
+made here are overwritten by the next sync; send them to moss instead.

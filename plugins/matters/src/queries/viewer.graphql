@@ -1,0 +1,104 @@
+# Production queries - require authentication via x-access-token header
+# These queries use the `viewer` field which returns the authenticated user
+
+query ViewerArticles($after: String) {
+  viewer {
+    id
+    userName
+    articles(input: { first: 50, after: $after, filter: { state: active } }) {
+      totalCount
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      edges {
+        node {
+          id
+          title
+          slug
+          shortHash
+          content
+          summary
+          createdAt
+          revisedAt
+          tags {
+            id
+            content
+          }
+          cover
+        }
+      }
+    }
+  }
+}
+
+query ViewerDrafts($after: String) {
+  viewer {
+    id
+    drafts(input: { first: 50, after: $after }) {
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      edges {
+        node {
+          id
+          title
+          content
+          summary
+          createdAt
+          updatedAt
+          tags
+          cover
+        }
+      }
+    }
+  }
+}
+
+query ViewerCollections($after: String) {
+  viewer {
+    id
+    collections(input: { first: 50, after: $after }) {
+      totalCount
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      edges {
+        node {
+          id
+          title
+          description
+          cover
+          articles(input: { first: 100 }) {
+            edges {
+              node {
+                id
+                shortHash
+                title
+                slug
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+query ViewerProfile {
+  viewer {
+    id
+    userName
+    displayName
+    info {
+      description
+      profileCover
+    }
+    avatar
+    settings {
+      language
+    }
+  }
+}
