@@ -31,7 +31,11 @@ catalog with the reason.
   without raising the serial.
 
 Revocation is *not* retroactive deletion: also delete the release assets for the
-revoked versions, so a replayed index entry resolves to nothing.
+revoked versions, so a replayed index entry resolves to nothing. Delete the
+*assets*, not the tag — release tags cannot be deleted, and that is deliberate.
+A released version is final; revoking it and publishing a new one is the only
+correction, because replacing a version in place would swap bytes underneath
+everyone who already installed it.
 
 ## `index.json`
 

@@ -107,6 +107,39 @@ turnaround.
 On merge, CI packages your plugin, publishes a GitHub Release, and adds it to
 the registry index. There is no second publish step.
 
+## How changes land
+
+Merging here publishes: a commit on `main` runs a workflow holding a token that
+can cut releases and redeploy the index moss trusts. So `main` is protected, and
+the rules apply to maintainers too — not as ceremony, but because an accidental
+`git push` to `main` would otherwise *be* a publish.
+
+- **Every change goes through a pull request.** No direct pushes, including
+  from maintainers.
+- **`all checks` must pass.** One check with a fixed name that stands for all
+  the others, so the requirement does not have to guess at job names that vary
+  per PR.
+- **`main` cannot be force-pushed or deleted.** Its history is the record of
+  what was reviewed.
+- **Release tags cannot be moved or deleted.** They can only be created.
+
+Approvals are not currently required, because there is one maintainer and
+nobody can approve their own pull request. That becomes a required review the
+moment a second maintainer exists; the pull request itself is what the rule is
+buying today.
+
+### Why tags are immutable
+
+`<id>-v<version>` tags are the version record. CI reads them to check that your
+version moved forward, and the publisher treats "does this tag exist" as the
+question of whether something has already shipped. A movable tag would make both
+answers rewritable — delete one and the next run re-cuts that version from
+whatever `main` says now, quietly replacing bytes someone already installed.
+
+So a released version is final. If one turns out to be broken or harmful, the
+answer is to revoke it and publish a new version — never to replace it in place.
+That is what [`registry/revoked.json`](registry/revoked.json) is for.
+
 ## Policies
 
 These are the rules review enforces. A plugin runs with real access to the
