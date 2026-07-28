@@ -65,7 +65,7 @@ jobs:
 
             # Tag existence is the idempotence check: a docs-only merge, a
             # re-run, and a merge that bumped nothing all reach here and stop.
-            if gh release view "$tag" >/dev/null 2>&1; then
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "$id: $tag already released"
               continue
             fi
@@ -92,7 +92,7 @@ jobs:
               echo "::warning::$id declares icon \"$icon\" but dist/ has no such file; publishing without one"
             fi
 
-            gh release create "$tag" "${files[@]}" \
+            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
               --title "$id $version" \
               --notes "Built from \`$dir\` at ${GITHUB_SHA}. See the plugin's CHANGELOG.md for what changed."
             echo "::endgroup::"
