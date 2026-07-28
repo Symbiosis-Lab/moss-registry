@@ -97,11 +97,14 @@ themes/<id>/         a published theme (planned): style.css, assets, manifest,
 registry/
   revoked.json       versions moss must refuse to load (the kill switch)
 WIP/, archive/       not published to the registry
+terrarium/           dev harness for moss's plugin UI surfaces; not published
 ```
 
-`plugins/` holds exactly what the registry publishes — that is why `WIP/` and
-`archive/` sit outside it rather than being excluded by a list somewhere. CI
-selects work by the same rule.
+`plugins/` holds exactly what the registry publishes — that is why `WIP/`,
+`archive/` and `terrarium/` sit outside it rather than being excluded by a list
+somewhere. CI selects work by the same rule, and so does the publisher: a
+directory under `plugins/` gets a release and an index entry, and anything
+elsewhere in the tree does not.
 
 Installed packages land in different places, and neither overwrites work you
 authored yourself: a plugin installs to `.moss/plugins/<id>/`, a theme to
