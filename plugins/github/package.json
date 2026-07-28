@@ -34,7 +34,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Symbiosis-Lab/moss-registry.git",
-    "directory": "github"
+    "directory": "plugins/github"
   },
   "devDependencies": {
     "@amiceli/vitest-cucumber": "^5.2.1",

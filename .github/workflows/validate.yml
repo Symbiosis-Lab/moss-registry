@@ -29,17 +29,21 @@ jobs:
           fetch-depth: 0
 
       - id: detect
-        name: List changed top-level plugin directories
+        name: List changed plugin directories
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          # A "plugin" is a top-level directory containing assets/manifest.json.
-          # WIP/ and archive/ are containers, not plugins, so their nested
-          # changes reduce to a first path component that has no manifest and
-          # drop out here without needing an exclusion list.
+          # A publishable plugin is exactly `plugins/<id>/`. That is the whole
+          # rule: WIP/ and archive/ live outside plugins/ precisely because they
+          # are not published, so they need no exclusion list, and no top-level
+          # file can be mistaken for a package.
+          #
+          # The manifest check that follows is not a second identity rule — it
+          # drops a directory that the PR *deleted*, which still shows up in the
+          # diff. themes/ gets its own detect when theme validation lands (R4).
           selected=$(git diff --name-only "$BASE_SHA"...HEAD \
-            | cut -d/ -f1 | sort -u \
+            | awk -F/ '$1 == "plugins" && NF >= 2 { print $1 "/" $2 }' | sort -u \
             | while IFS= read -r dir; do
                 if [ -f "$dir/assets/manifest.json" ]; then
                   printf '%s\n' "$dir"

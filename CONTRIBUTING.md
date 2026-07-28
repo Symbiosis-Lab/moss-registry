@@ -18,19 +18,19 @@ A plugin is a TypeScript package bundled into one IIFE that moss runs in a
 sandboxed QuickJS engine. It talks to moss only through
 [`@symbiosis-lab/moss-api`](https://www.npmjs.com/package/@symbiosis-lab/moss-api).
 
-Start by copying the closest existing plugin — [`github`](./github) (a `deploy`
-plugin) or [`matters`](./matters) (`syndicate` + `import` + `login`) — and
+Start by copying the closest existing plugin — [`github`](./plugins/github) (a `deploy`
+plugin) or [`matters`](./plugins/matters) (`syndicate` + `import` + `login`) — and
 adjusting it. A plugin directory looks like:
 
 ```
-<id>/
+plugins/<id>/
   package.json          name @symbiosis-lab/moss-plugin-<id>, standalone deps
   package-lock.json      committed
   src/main.ts           exports the hook functions your capabilities declare
   assets/
     manifest.json       the contract moss reads
     icon.svg
-  dist/                 build output (committed)
+  dist/                 build output — gitignored; CI rebuilds it
   README.md             required — must include a "Network access" section
   CHANGELOG.md
 ```
@@ -62,7 +62,7 @@ adjusting it. A plugin directory looks like:
 ### Development loop
 
 ```bash
-cd <id>
+cd plugins/<id>
 npm ci
 npm run dev     # rebuilds dist/ on change
 ```
@@ -71,7 +71,7 @@ To try it in moss, point a project's plugin directory at your build — from a
 moss project folder:
 
 ```bash
-ln -s /path/to/moss-registry/<id>/dist ~/my-site/.moss/plugins/<id>
+ln -s /path/to/moss-registry/plugins/<id>/dist ~/my-site/.moss/plugins/<id>
 ```
 
 moss respects symlinked plugin directories, so your rebuilds land directly.

@@ -63,8 +63,8 @@ a project's `.moss/plugins/<id>/`.
 
 | Plugin | Package | Purpose |
 |---|---|---|
-| [github](./github) | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
-| [matters](./matters) | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
+| [github](./plugins/github) | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
+| [matters](./plugins/matters) | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
 
 ## In development (WIP)
 
@@ -87,7 +87,7 @@ Archived (no longer maintained): `astro`, `eleventy`, `gatsby`, `hugo`, `jekyll`
 ## Repository layout
 
 ```
-<plugin>/            a published plugin
+plugins/<id>/        a published plugin
   src/               TypeScript source — this is what reviewers read
   assets/            manifest.json + icon, copied verbatim into the bundle
   package.json       standalone; pins @symbiosis-lab/moss-api, own lockfile
@@ -98,6 +98,10 @@ registry/
   revoked.json       versions moss must refuse to load (the kill switch)
 WIP/, archive/       not published to the registry
 ```
+
+`plugins/` holds exactly what the registry publishes — that is why `WIP/` and
+`archive/` sit outside it rather than being excluded by a list somewhere. CI
+selects work by the same rule.
 
 Installed packages land in different places, and neither overwrites work you
 authored yourself: a plugin installs to `.moss/plugins/<id>/`, a theme to
@@ -114,7 +118,7 @@ dependency tree.
 ## Building a plugin locally
 
 ```bash
-cd <plugin>
+cd plugins/<id>
 npm ci
 npm run build      # bundles src/ -> dist/main.bundle.js and copies assets
 npm test
