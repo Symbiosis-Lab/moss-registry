@@ -10,10 +10,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-
-const RESERVED_IDS = new Set(["moss", "core", "api", "registry", "plugin", "theme"]);
-const ID_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+import { ID_RE, SEMVER_RE, RESERVED_IDS, cmpSemver, parseReleaseTag } from "./registry-rules.mjs";
 
 const failures = [];
 const notes = [];
@@ -35,17 +32,6 @@ function readJson(path) {
     fail(`${path}: not valid JSON — ${e.message}`);
     return null;
   }
-}
-
-/** Compare semver core versions. Returns 1, 0 or -1. Pre-release tags ignored. */
-function cmpSemver(a, b) {
-  const pa = a.match(SEMVER_RE), pb = b.match(SEMVER_RE);
-  if (!pa || !pb) return 0;
-  for (let i = 1; i <= 3; i++) {
-    const d = Number(pa[i]) - Number(pb[i]);
-    if (d !== 0) return d > 0 ? 1 : -1;
-  }
-  return 0;
 }
 
 // ---------------------------------------------------------------- manifest --
@@ -112,8 +98,9 @@ if (manifest) {
     note(`${id}: could not list git tags; skipping the version-bump check`);
   }
   const released = tags
-    .map((t) => t.slice(`${id}-v`.length))
-    .filter((v) => SEMVER_RE.test(v))
+    .map((t) => parseReleaseTag(t))
+    .filter((p) => p && p.id === id)
+    .map((p) => p.version)
     .sort(cmpSemver);
   const latest = released[released.length - 1];
   if (latest && manifest.version) {

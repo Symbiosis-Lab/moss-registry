@@ -50,6 +50,10 @@ npm.
 5. moss reads that index so users can install the plugin from the app, and shows
    an update badge when a newer version is published.
 
+The index is served from a single pinned origin,
+[`symbiosis-lab.org/moss-registry/index.json`](https://symbiosis-lab.org/moss-registry/index.json)
+— see [`registry/`](registry/) for what it contains and how a package is retired.
+
 Updates are never applied silently — the user chooses when to update. If a
 version turns out to be harmful it can be revoked via
 [`registry/revoked.json`](registry/revoked.json), which moss honours on its next
@@ -63,8 +67,8 @@ a project's `.moss/plugins/<id>/`.
 
 | Plugin | Package | Purpose |
 |---|---|---|
-| [github](./github) | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
-| [matters](./matters) | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
+| [github](./plugins/github) | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
+| [matters](./plugins/matters) | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
 
 ## In development (WIP)
 
@@ -87,7 +91,7 @@ Archived (no longer maintained): `astro`, `eleventy`, `gatsby`, `hugo`, `jekyll`
 ## Repository layout
 
 ```
-<plugin>/            a published plugin
+plugins/<id>/        a published plugin
   src/               TypeScript source — this is what reviewers read
   assets/            manifest.json + icon, copied verbatim into the bundle
   package.json       standalone; pins @symbiosis-lab/moss-api, own lockfile
@@ -97,7 +101,14 @@ themes/<id>/         a published theme (planned): style.css, assets, manifest,
 registry/
   revoked.json       versions moss must refuse to load (the kill switch)
 WIP/, archive/       not published to the registry
+terrarium/           dev harness for moss's plugin UI surfaces; not published
 ```
+
+`plugins/` holds exactly what the registry publishes — that is why `WIP/`,
+`archive/` and `terrarium/` sit outside it rather than being excluded by a list
+somewhere. CI selects work by the same rule, and so does the publisher: a
+directory under `plugins/` gets a release and an index entry, and anything
+elsewhere in the tree does not.
 
 Installed packages land in different places, and neither overwrites work you
 authored yourself: a plugin installs to `.moss/plugins/<id>/`, a theme to
@@ -114,7 +125,7 @@ dependency tree.
 ## Building a plugin locally
 
 ```bash
-cd <plugin>
+cd plugins/<id>
 npm ci
 npm run build      # bundles src/ -> dist/main.bundle.js and copies assets
 npm test

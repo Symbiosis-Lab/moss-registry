@@ -23,23 +23,28 @@ jobs:
     outputs:
       plugins: ${{ steps.detect.outputs.plugins }}
       any: ${{ steps.detect.outputs.any }}
+      revocations: ${{ steps.detect.outputs.revocations }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - id: detect
-        name: List changed top-level plugin directories
+        name: List changed plugin directories
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          # A "plugin" is a top-level directory containing assets/manifest.json.
-          # WIP/ and archive/ are containers, not plugins, so their nested
-          # changes reduce to a first path component that has no manifest and
-          # drop out here without needing an exclusion list.
+          # A publishable plugin is exactly `plugins/<id>/`. That is the whole
+          # rule: WIP/ and archive/ live outside plugins/ precisely because they
+          # are not published, so they need no exclusion list, and no top-level
+          # file can be mistaken for a package.
+          #
+          # The manifest check that follows is not a second identity rule — it
+          # drops a directory that the PR *deleted*, which still shows up in the
+          # diff. themes/ gets its own detect when theme validation lands (R4).
           selected=$(git diff --name-only "$BASE_SHA"...HEAD \
-            | cut -d/ -f1 | sort -u \
+            | awk -F/ '$1 == "plugins" && NF >= 2 { print $1 "/" $2 }' | sort -u \
             | while IFS= read -r dir; do
                 if [ -f "$dir/assets/manifest.json" ]; then
                   printf '%s\n' "$dir"
@@ -54,6 +59,16 @@ jobs:
             json=$(printf '%s\n' "$selected" | jq -R . | jq -sc .)
             echo "any=true" >> "$GITHUB_OUTPUT"
             echo "plugins=$json" >> "$GITHUB_OUTPUT"
+          fi
+
+          # revoked.json is not inside any plugin directory, so it used to fall
+          # through every filter above and land in a PR with no checks at all —
+          # the one file whose mistakes are silent on the client.
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qx 'registry/revoked.json'; then
+            echo "registry/revoked.json changed."
+            echo "revocations=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "revocations=false" >> "$GITHUB_OUTPUT"
           fi
 
   validate:
@@ -104,3 +119,46 @@ jobs:
       # under review — there is no committed build that could drift from it.
       - name: Validate against registry rules
         run: node .github/scripts/validate-plugin.mjs "${{ matrix.plugin }}"
+
+  revocations:
+    name: revoked.json
+    needs: detect
+    if: needs.detect.outputs.revocations == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check the change against the file it replaces
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # The serial rule is relative, so the outgoing file is half the input.
+          # A file being added for the first time has no base to compare to.
+          if git cat-file -e "${BASE_SHA}:registry/revoked.json" 2>/dev/null; then
+            git show "${BASE_SHA}:registry/revoked.json" > /tmp/revoked-base.json
+            node .github/scripts/validate-revocations.mjs /tmp/revoked-base.json registry/revoked.json
+          else
+            node .github/scripts/validate-revocations.mjs --new registry/revoked.json
+          fi
+
+  scripts:
+    name: registry scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # These decide what gets published and what gets revoked, on a repo with
+      # no dependencies to test them with. Node's built-in runner needs none.
+      - name: Unit tests
+        run: node --test .github/scripts/*.test.mjs

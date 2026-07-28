@@ -1,0 +1,152 @@
+name: publish
+
+# What makes a merged plugin installable.
+#
+# Two steps that must not be split: cut any missing releases, then regenerate
+# the index from the releases that now exist. Tag existence is the only state
+# this workflow keeps, so re-running a red run is the entire recovery procedure.
+#
+# Unlike validate.yml, this runs on reviewed code that a maintainer merged, so
+# it is allowed a write token. It still installs with --ignore-scripts, both to
+# match the artifact validate.yml built from the same source and because a
+# lockfile is a large surface to trust with a token that can publish.
+on:
+  push:
+    branches: [main]
+  # Releases created by GITHUB_TOKEN deliberately do not re-trigger workflows,
+  # so this fires only for releases pushed from outside — moss publishing its
+  # first-party plugin artifacts on its own release. Their index entries would
+  # otherwise wait for the next unrelated merge here.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Runs serialize. Two merges landing together must not race to build the same
+# index, and cancelling a half-finished publish would leave releases without
+# index entries.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: cut missing releases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags are the version record
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build and release every plugin whose tag is missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          published=0
+          for dir in plugins/*/; do
+            dir="${dir%/}"
+            id="$(basename "$dir")"
+            manifest="$dir/assets/manifest.json"
+            [ -f "$manifest" ] || { echo "$id: no assets/manifest.json, skipping"; continue; }
+
+            version="$(jq -r '.version' "$manifest")"
+            tag="${id}-v${version}"
+
+            # Tag existence is the idempotence check: a docs-only merge, a
+            # re-run, and a merge that bumped nothing all reach here and stop.
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$id: $tag already released"
+              continue
+            fi
+
+            echo "::group::$id -> $tag"
+            ( cd "$dir" && npm ci --ignore-scripts --no-audit --no-fund && npm run build )
+
+            # The artifact is the flat contents of dist/ — manifest.json,
+            # the bundle, and the icon — because that is what moss extracts
+            # into .moss/plugins/<id>/.
+            zip_name="${id}-${version}.zip"
+            ( cd "$dir/dist" && zip -qr "$GITHUB_WORKSPACE/$zip_name" . )
+
+            files=("$zip_name")
+
+            # The icon rides along as its own asset so the catalog can show it
+            # before anything is installed, without reaching for a second origin.
+            icon="$(jq -r '.icon // "icon.svg"' "$manifest")"
+            if [ -f "$dir/dist/$icon" ]; then
+              icon_asset="${id}-${version}-icon.${icon##*.}"
+              cp "$dir/dist/$icon" "$icon_asset"
+              files+=("$icon_asset")
+            else
+              echo "::warning::$id declares icon \"$icon\" but dist/ has no such file; publishing without one"
+            fi
+
+            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+              --title "$id $version" \
+              --notes "Built from \`$dir\` at ${GITHUB_SHA}. See the plugin's CHANGELOG.md for what changed."
+            echo "::endgroup::"
+            published=$((published + 1))
+          done
+
+          echo "released $published package(s)"
+
+  index:
+    name: index and deploy
+    # Always: the index must be regenerated even when nothing new was cut, since
+    # a release pushed from moss arrives without this repo changing at all.
+    needs: release
+    if: always() && needs.release.result != 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/configure-pages@v5
+
+      - name: Generate index.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p public
+          # serial is the run number: monotonic, and clients reject anything
+          # lower than the highest they have seen. Renaming or recreating this
+          # workflow file resets it, which would strand every client on the
+          # last-known-good copy — don't.
+          node .github/scripts/build-index.mjs --serial "${{ github.run_number }}" --out public/index.json
+          cat public/index.json
+
+      - name: Stage revoked.json alongside it
+        run: |
+          set -euo pipefail
+          # Deployed from the repo, not generated: revocations are hand-written
+          # and reviewed. Clients fetch both from the one pinned origin.
+          cp registry/revoked.json public/revoked.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

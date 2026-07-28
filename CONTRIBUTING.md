@@ -18,19 +18,19 @@ A plugin is a TypeScript package bundled into one IIFE that moss runs in a
 sandboxed QuickJS engine. It talks to moss only through
 [`@symbiosis-lab/moss-api`](https://www.npmjs.com/package/@symbiosis-lab/moss-api).
 
-Start by copying the closest existing plugin — [`github`](./github) (a `deploy`
-plugin) or [`matters`](./matters) (`syndicate` + `import` + `login`) — and
+Start by copying the closest existing plugin — [`github`](./plugins/github) (a `deploy`
+plugin) or [`matters`](./plugins/matters) (`syndicate` + `import` + `login`) — and
 adjusting it. A plugin directory looks like:
 
 ```
-<id>/
+plugins/<id>/
   package.json          name @symbiosis-lab/moss-plugin-<id>, standalone deps
   package-lock.json      committed
   src/main.ts           exports the hook functions your capabilities declare
   assets/
     manifest.json       the contract moss reads
     icon.svg
-  dist/                 build output (committed)
+  dist/                 build output — gitignored; CI rebuilds it
   README.md             required — must include a "Network access" section
   CHANGELOG.md
 ```
@@ -59,10 +59,21 @@ adjusting it. A plugin directory looks like:
 - `requires` declares host capabilities that need granting. Today the only
   recognized value is `"execute_binary"` (running arbitrary native processes).
 
+Your manifest is also the catalog copy. The index is generated from the manifest
+inside your published zip — nothing about your plugin is written down a second
+time, so there is nowhere for the two to drift apart. Worth filling in:
+
+- `display_name` — what users see. Without it the catalog falls back to your id,
+  so `matters` reads as "matters" rather than "Matters".
+- `description` and `author` — shown on the tile.
+- `icon` — published as its own release asset so the catalog can show it before
+  anything is installed. Defaults to `icon.svg`.
+- `repository` and `homepage` — links out from the tile, if you have them.
+
 ### Development loop
 
 ```bash
-cd <id>
+cd plugins/<id>
 npm ci
 npm run dev     # rebuilds dist/ on change
 ```
@@ -71,7 +82,7 @@ To try it in moss, point a project's plugin directory at your build — from a
 moss project folder:
 
 ```bash
-ln -s /path/to/moss-registry/<id>/dist ~/my-site/.moss/plugins/<id>
+ln -s /path/to/moss-registry/plugins/<id>/dist ~/my-site/.moss/plugins/<id>
 ```
 
 moss respects symlinked plugin directories, so your rebuilds land directly.
