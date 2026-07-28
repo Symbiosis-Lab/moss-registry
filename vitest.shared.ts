@@ -5,8 +5,11 @@
  * (douban, substack, xiaohongshu, x, linkedin, etc.) share near-identical
  * vitest configs. These factories eliminate that duplication.
  *
+ * Every consumer sits two levels down — plugins/<id>/, WIP/<id>/, archive/<id>/ —
+ * so the specifier is always "../../vitest.shared.ts".
+ *
  * Usage (archive unit tests):
- *   import { createArchiveUnitConfig } from "../vitest.shared.ts";
+ *   import { createArchiveUnitConfig } from "../../vitest.shared.ts";
  *   export default createArchiveUnitConfig(import.meta.dirname);
  *
  * Usage (archive e2e tests):
@@ -14,7 +17,7 @@
  *   export default createArchiveE2eConfig();
  *
  * Usage (social plugin with happy-dom unit tests):
- *   import { createSocialPluginConfig } from "../vitest.shared.ts";
+ *   import { createSocialPluginConfig } from "../../vitest.shared.ts";
  *   export default createSocialPluginConfig(import.meta.dirname);
  */
 import { defineConfig, type UserConfig } from "vitest/config";
