@@ -64,6 +64,15 @@ if (manifest) {
     fail(`${id}: manifest.version "${manifest.version}" is not valid semver`);
   }
 
+  // The directory decides which kind of package this is; the manifest may
+  // restate it so the artifact is self-describing once it leaves the repo, but
+  // it may not disagree. Two declarations that can differ are worse than one.
+  if (manifest.type !== undefined && manifest.type !== "plugin") {
+    fail(
+      `${id}: manifest.type is ${JSON.stringify(manifest.type)} but this is under plugins/, which publishes plugins. A theme lives in themes/<id>/ and is never executed.`,
+    );
+  }
+
   // package.json must agree, or the published zip and the npm package drift.
   const pkgPath = join(dir, "package.json");
   const pkg = existsSync(pkgPath) ? readJson(pkgPath) : null;

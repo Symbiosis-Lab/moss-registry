@@ -105,7 +105,13 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   }
 
   const entry = {
-    type: "plugin",
+    // Which kind of package this is. The directory decides it — plugins/<id>/
+    // or themes/<id>/ — and the manifest restates it so the artifact is
+    // self-describing once it is out of the repo and the index has only the
+    // release to read. validate-plugin.mjs rejects a manifest whose type
+    // disagrees with the directory it sits in, so the two cannot drift.
+    // Absent means plugin: every package published before themes existed.
+    type: manifest.type ?? "plugin",
     id,
     display_name: manifest.display_name ?? id,
     version,
