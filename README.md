@@ -104,41 +104,25 @@ a project's `.moss/plugins/<id>/`.
 | github | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
 | matters | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
 
-Both are **first-party**: they ship bundled inside moss, their source lives in
-the moss repository, and moss publishes their releases here on each of its own.
-They are distributed exactly like any contributed plugin — same index, same
-update badge, same revocation — so that the registry is how a bundled plugin
-gets updated between moss releases.
+Both are **first-party** — they ship bundled inside moss — and neither is a
+special case here. Their source sits in `plugins/` like everyone else's, this
+repository's CI builds it, and the release it publishes is the one moss
+installs. Bundling only decides what a fresh moss starts with; the registry is
+how a bundled plugin gets updated between moss releases.
 
-**Read their source on the [`first-party`](../../tree/first-party) branch.** They
-are the most installed plugins here, they run with the same host access any
-plugin gets, and asking contributors for readable source while shipping code
-nobody can read would be a poor trade. So each release publishes a copy you can
-build yourself:
+They are the most installed plugins here and they run with the same host access
+any plugin gets, so holding them to a weaker standard than a contributor's would
+be exactly backwards. Read them, build them:
 
 ```bash
-git clone -b first-party https://github.com/Symbiosis-Lab/moss-registry
-cd moss-registry/github && npm ci && npm run build
+cd plugins/github && npm ci && npm run build
 ```
 
-That copy is generated and force-pushed on every moss release — do not open pull
-requests against it. It differs from moss's own tree in exactly one way:
-`@symbiosis-lab/moss-api` is pinned to a published version rather than the
-workspace one, with a committed lockfile, so it builds outside the monorepo. CI
-refuses to publish it unless every plugin builds and passes its full unit suite
-against that pin, and it refuses when a test file merely fails to *run* — a
-suite that quietly drops a file looks identical to a passing one.
-
-Rebuilding will not hand you a byte-identical copy of the released zip. That is
-expected and reported in each release's build log: `moss-api` is packaged
-differently for npm than it is inside the workspace, so the bundler drops a
-different set of unused SDK helpers. The plugin code is the same code.
-
-The source is not *maintained* here, and that is deliberate. These plugins are
-built into moss at compile time and still track an unreleased `moss-api`, so
-moss stays their single home — and one publisher per id stays a property of the
-layout rather than a rule someone has to remember: the publisher only ever looks
-at `plugins/` on `main`, which a generated branch can never reach.
+Their directories carry a `.generated` marker, because their source of truth is
+the moss repository — moss copies them here on each release, with
+`@symbiosis-lab/moss-api` pinned to a published version and a lockfile
+committed so this repository can build them standalone. CI refuses a pull
+request that edits a marked directory; send the change to moss instead.
 
 ## Repository layout
 
@@ -148,6 +132,7 @@ plugins/<id>/        a published plugin
   assets/            manifest.json + icon, copied verbatim into the bundle
   package.json       standalone; pins @symbiosis-lab/moss-api, own lockfile
   dist/              build output — gitignored; CI builds it from src/
+  .generated         only on generated dirs — source of truth is moss
 themes/<id>/         a published theme (planned): style.css, assets, manifest,
                      preview.png — no executable entry point
 registry/

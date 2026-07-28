@@ -18,6 +18,12 @@ A plugin is a TypeScript package bundled into one IIFE that moss runs in a
 sandboxed QuickJS engine. It talks to moss only through
 [`@symbiosis-lab/moss-api`](https://www.npmjs.com/package/@symbiosis-lab/moss-api).
 
+The closest working examples are the first-party plugins in this repository —
+[`github`](./plugins/github) (a `deploy` plugin) and
+[`matters`](./plugins/matters) (`syndicate` + `import` + `login`). Read them and
+copy the shape; just don't *edit* them here, since they carry a `.generated`
+marker and are copied in from moss on each release.
+
 The SDK's own documentation is the reference for what a hook receives and
 returns; everything below is what this repository additionally requires. A
 plugin directory looks like:
