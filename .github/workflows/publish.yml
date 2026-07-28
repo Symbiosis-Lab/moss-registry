@@ -13,12 +13,18 @@ name: publish
 on:
   push:
     branches: [main]
-  # Releases created by GITHUB_TOKEN deliberately do not re-trigger workflows,
-  # so this fires only for releases pushed from outside — moss publishing its
-  # first-party plugin artifacts on its own release. Their index entries would
-  # otherwise wait for the next unrelated merge here.
-  release:
-    types: [published]
+  # Deliberately NOT `release: published`, which reads like the obvious trigger
+  # for "moss pushed a first-party artifact" and cannot work. A release event
+  # runs with github.ref set to the *tag*, and the github-pages environment only
+  # accepts deployments from main — so the deploy job is rejected at environment
+  # gating before a single step runs, producing a failed run with no logs to
+  # explain it. Tried on 2026-07-28; runs 30333789782 and 30333791769.
+  #
+  # Keeping the environment restricted to main is worth more than the
+  # convenience: it means the bytes moss trusts can only ever be deployed by a
+  # run on the reviewed default branch. So the cross-repo signal is an explicit
+  # dispatch on main instead — moss's publish-plugins.yml calls this after it
+  # creates releases.
   workflow_dispatch:
 
 # Runs serialize. Two merges landing together must not race to build the same
@@ -104,7 +110,7 @@ jobs:
   index:
     name: index and deploy
     # Always: the index must be regenerated even when nothing new was cut, since
-    # a release pushed from moss arrives without this repo changing at all.
+    # a dispatch from moss arrives without this repo changing at all.
     needs: release
     if: always() && needs.release.result != 'failure'
     runs-on: ubuntu-latest
