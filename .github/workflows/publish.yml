@@ -22,9 +22,18 @@ on:
   #
   # Keeping the environment restricted to main is worth more than the
   # convenience: it means the bytes moss trusts can only ever be deployed by a
-  # run on the reviewed default branch. So the cross-repo signal is an explicit
-  # dispatch on main instead — moss's publish-plugins.yml calls this after it
-  # creates releases.
+  # run on the reviewed default branch.
+  #
+  # So moss signals explicitly, via repository_dispatch rather than by
+  # triggering this workflow directly. Two reasons, both load-bearing:
+  # repository_dispatch always runs on the default branch, which is what the
+  # environment requires; and creating one needs only contents:write, which the
+  # token already has because it creates the releases. Dispatching a workflow
+  # would additionally need actions:write — the token does not have it, and
+  # widening a cross-repo publishing token to satisfy a trigger choice is the
+  # wrong direction.
+  repository_dispatch:
+    types: [publish-index]
   workflow_dispatch:
 
 # Runs serialize. Two merges landing together must not race to build the same
