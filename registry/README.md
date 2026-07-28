@@ -44,13 +44,20 @@ cannot describe something other than the bytes it points at.
 moss fetches both files from one pinned origin:
 
 ```
-https://symbiosis-lab.github.io/moss-registry/index.json
-https://symbiosis-lab.github.io/moss-registry/revoked.json
+https://symbiosis-lab.org/moss-registry/index.json
+https://symbiosis-lab.org/moss-registry/revoked.json
 ```
 
 That origin is a trust anchor, not a deployment detail. v1 files are unsigned, so
 whoever serves the bytes is trusted — which is why there is exactly one origin,
 no mirrors and no fallbacks.
+
+**Pin that host, not `symbiosis-lab.github.io`.** The organization serves Pages
+under its own domain, so the `github.io` form answers `301` and redirects here.
+A trust anchor may not ride on a redirect: the thing being trusted would be
+whatever the redirect points at that day. Two consequences follow — HTTPS is
+enforced on this site, and DNS control of `symbiosis-lab.org` is now part of the
+anchor alongside merge rights on this repo.
 
 A release is indexed when it is **published** (not a draft, not a prerelease),
 its tag reads `<id>-v<semver>`, and the manifest in its zip agrees with that tag.

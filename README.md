@@ -51,7 +51,7 @@ npm.
    an update badge when a newer version is published.
 
 The index is served from a single pinned origin,
-[`symbiosis-lab.github.io/moss-registry/index.json`](https://symbiosis-lab.github.io/moss-registry/index.json)
+[`symbiosis-lab.org/moss-registry/index.json`](https://symbiosis-lab.org/moss-registry/index.json)
 — see [`registry/`](registry/) for what it contains and how a package is retired.
 
 Updates are never applied silently — the user chooses when to update. If a
