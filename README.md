@@ -50,6 +50,10 @@ npm.
 5. moss reads that index so users can install the plugin from the app, and shows
    an update badge when a newer version is published.
 
+The index is served from a single pinned origin,
+[`symbiosis-lab.github.io/moss-registry/index.json`](https://symbiosis-lab.github.io/moss-registry/index.json)
+— see [`registry/`](registry/) for what it contains and how a package is retired.
+
 Updates are never applied silently — the user chooses when to update. If a
 version turns out to be harmful it can be revoked via
 [`registry/revoked.json`](registry/revoked.json), which moss honours on its next

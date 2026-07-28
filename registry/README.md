@@ -35,6 +35,32 @@ revoked versions, so a replayed index entry resolves to nothing.
 
 ## `index.json`
 
-Not committed. It is generated on merge from the set of existing release tags
-(with each zip's sha256) and published to GitHub Pages, so it always describes
-what has actually been released rather than what someone hand-edited.
+Not committed. It is generated on merge from the set of existing releases (with
+each zip's sha256) and deployed to GitHub Pages alongside this file, so it always
+describes what has actually been released rather than what someone hand-edited.
+Every field comes from the manifest *inside* the published zip, so an entry
+cannot describe something other than the bytes it points at.
+
+moss fetches both files from one pinned origin:
+
+```
+https://symbiosis-lab.github.io/moss-registry/index.json
+https://symbiosis-lab.github.io/moss-registry/revoked.json
+```
+
+That origin is a trust anchor, not a deployment detail. v1 files are unsigned, so
+whoever serves the bytes is trusted — which is why there is exactly one origin,
+no mirrors and no fallbacks.
+
+A release is indexed when it is **published** (not a draft, not a prerelease),
+its tag reads `<id>-v<semver>`, and the manifest in its zip agrees with that tag.
+Of the releases for an id, only the highest version is listed.
+
+Two consequences worth knowing:
+
+- **Drafting a release is how a package leaves the catalog.** It is the retirement
+  mechanism, not just bookkeeping — an old release left published keeps being
+  offered to users. Un-drafting puts it back.
+- A release whose zip disagrees with its tag **fails the run** rather than being
+  skipped. Quietly dropping it would look to every client exactly like a
+  revocation.

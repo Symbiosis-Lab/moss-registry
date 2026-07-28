@@ -2,8 +2,10 @@
 node_modules/
 target/
 
-# Build outputs (keep dist/ for now, will be gitignored later)
-# dist/
+# Build outputs: dist/ is gitignored per package, not here, so each plugin's
+# .gitignore stands on its own when the directory is read in isolation. CI
+# rebuilds dist/ from source, which is what makes "what a reviewer reads is what
+# ships" true.
 
 # Coverage
 coverage/

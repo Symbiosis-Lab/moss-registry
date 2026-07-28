@@ -59,6 +59,17 @@ plugins/<id>/
 - `requires` declares host capabilities that need granting. Today the only
   recognized value is `"execute_binary"` (running arbitrary native processes).
 
+Your manifest is also the catalog copy. The index is generated from the manifest
+inside your published zip — nothing about your plugin is written down a second
+time, so there is nowhere for the two to drift apart. Worth filling in:
+
+- `display_name` — what users see. Without it the catalog falls back to your id,
+  so `matters` reads as "matters" rather than "Matters".
+- `description` and `author` — shown on the tile.
+- `icon` — published as its own release asset so the catalog can show it before
+  anything is installed. Defaults to `icon.svg`.
+- `repository` and `homepage` — links out from the tile, if you have them.
+
 ### Development loop
 
 ```bash
