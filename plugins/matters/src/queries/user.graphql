@@ -1,0 +1,85 @@
+# Testing queries - no authentication required
+# These queries use the `user` field which returns public user data
+# Used for E2E tests against matters.icu without credentials
+
+query UserArticles($userName: String!, $after: String) {
+  user(input: { userName: $userName }) {
+    id
+    userName
+    articles(input: { first: 50, after: $after, filter: { state: active } }) {
+      totalCount
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      edges {
+        node {
+          id
+          title
+          slug
+          shortHash
+          content
+          summary
+          language
+          createdAt
+          revisedAt
+          tags {
+            id
+            content
+          }
+          cover
+        }
+      }
+    }
+  }
+}
+
+# Note: Drafts are NOT available via user query (requires authentication)
+# For testing draft functionality, use mocked data
+
+query UserCollections($userName: String!, $after: String) {
+  user(input: { userName: $userName }) {
+    id
+    collections(input: { first: 50, after: $after }) {
+      totalCount
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      edges {
+        node {
+          id
+          title
+          description
+          cover
+          articles(input: { first: 100 }) {
+            edges {
+              node {
+                id
+                shortHash
+                title
+                slug
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+query UserProfile($userName: String!) {
+  user(input: { userName: $userName }) {
+    id
+    userName
+    displayName
+    info {
+      description
+      profileCover
+    }
+    avatar
+    settings {
+      language
+    }
+  }
+}
