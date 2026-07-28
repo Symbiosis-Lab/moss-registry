@@ -101,8 +101,19 @@ a project's `.moss/plugins/<id>/`.
 
 | Plugin | Package | Purpose |
 |---|---|---|
-| [github](./plugins/github) | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
-| [matters](./plugins/matters) | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
+| github | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
+| matters | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
+
+Both are **first-party**: they ship bundled inside moss, their source lives in
+the moss repository, and moss publishes their releases here on each of its own.
+They are distributed exactly like any contributed plugin — same index, same
+update badge, same revocation — so that the registry is how a bundled plugin
+gets updated between moss releases.
+
+Their source is not duplicated here. It was, briefly, and the two copies
+disagreed within four days; worse, two repositories able to publish the same
+plugin id is a way to ship an artifact nobody reviewed. One publisher per id is
+the rule, and for these two it is moss.
 
 ## In development (WIP)
 
