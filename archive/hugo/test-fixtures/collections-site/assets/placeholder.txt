@@ -1,2 +1,0 @@
-This is a placeholder file for the assets folder.
-In real usage, this would contain images, CSS, JS files, etc.

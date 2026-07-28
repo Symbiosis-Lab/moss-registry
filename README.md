@@ -115,24 +115,6 @@ disagreed within four days; worse, two repositories able to publish the same
 plugin id is a way to ship an artifact nobody reviewed. One publisher per id is
 the rule, and for these two it is moss.
 
-## In development (WIP)
-
-Functional but not yet recommended for general use.
-
-| Plugin | Package | Purpose |
-|---|---|---|
-| [douban](./WIP/douban) | `@symbiosis-lab/moss-plugin-douban` | Import and cross-post content from douban |
-| [linkedin](./WIP/linkedin) | `@symbiosis-lab/moss-plugin-linkedin` | Cross-post to LinkedIn |
-| [substack](./WIP/substack) | `@symbiosis-lab/moss-plugin-substack` | Cross-post to Substack |
-| [x](./WIP/x) | `@symbiosis-lab/moss-plugin-x` | Cross-post to X |
-| [xiaohongshu](./WIP/xiaohongshu) | `@symbiosis-lab/moss-plugin-xiaohongshu` | Cross-post to Xiaohongshu |
-
-`terrarium` is an internal harness for exercising moss's plugin UI surfaces, not
-a user-facing plugin.
-
-Archived (no longer maintained): `astro`, `eleventy`, `gatsby`, `hugo`, `jekyll`
-— see [`archive/`](./archive).
-
 ## Repository layout
 
 ```
@@ -145,15 +127,18 @@ themes/<id>/         a published theme (planned): style.css, assets, manifest,
                      preview.png — no executable entry point
 registry/
   revoked.json       versions moss must refuse to load (the kill switch)
-WIP/, archive/       not published to the registry
-terrarium/           dev harness for moss's plugin UI surfaces; not published
 ```
 
-`plugins/` holds exactly what the registry publishes — that is why `WIP/`,
-`archive/` and `terrarium/` sit outside it rather than being excluded by a list
-somewhere. CI selects work by the same rule, and so does the publisher: a
-directory under `plugins/` gets a release and an index entry, and anything
-elsewhere in the tree does not.
+Everything here is published, or is the metadata describing what is published.
+Unfinished experiments, retired plugins and internal test harnesses used to live
+here too, inherited from the days when this repository was a generated mirror of
+moss's `plugins/` directory. They are back in moss now: this repository is
+public and its contents are an offer to users, so anything nobody should install
+does not belong in it.
+
+`plugins/` holds exactly what the registry publishes, which is what lets CI and
+the publisher both select work by the same rule — a directory under `plugins/`
+gets validated, released and indexed, and nothing elsewhere in the tree does.
 
 Installed packages land in different places, and neither overwrites work you
 authored yourself: a plugin installs to `.moss/plugins/<id>/`, a theme to
