@@ -205,6 +205,17 @@ test("declared optional fields are carried through", () => {
   assert.equal(entry.icon_url, "https://example.invalid/icon.svg");
 });
 
+test("kind comes from the manifest, defaulting to plugin", () => {
+  // Every package published before themes existed has no type field, and a
+  // client that saw those entries must keep reading them the same way.
+  assert.equal(toEntry(candidate, manifest, { sha256: "a", sizeBytes: 1 }).type, "plugin");
+  assert.equal(
+    toEntry(candidate, { ...manifest, type: "theme" }, { sha256: "a", sizeBytes: 1 }).type,
+    "theme",
+    "the index carries theme entries so a v1 client can skip what it does not recognise",
+  );
+});
+
 test("display_name falls back to the id so the catalog always has a label", () => {
   assert.equal(toEntry(candidate, manifest, { sha256: "a", sizeBytes: 1 }).display_name, "github");
   assert.equal(

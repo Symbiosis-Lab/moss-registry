@@ -12,24 +12,58 @@ reads to offer them. **Pull requests are welcome** — see
 
 ## Plugins and themes
 
-Two kinds of package live here, and the difference is worth stating plainly
-because it decides how each is reviewed:
+Two kinds of package live here. The difference is not a label — it decides
+whether moss ever executes your code, which is why it also decides how you are
+reviewed.
 
-- A **plugin** *does* something. It is code moss executes on your machine, in a
+- A **plugin** *does* something. It is code moss runs on your machine, in a
   sandboxed JavaScript engine with access to host functions — the network, your
-  project's files, and (when declared) running native programs. Plugins
-  accumulate: several can be active at once, each activated by the capabilities
-  it declares.
+  project's files, and (when declared) native programs.
 - A **theme** *looks like* something. It is presentation the site build reads —
-  CSS and assets, never code moss runs. Themes are exclusive: exactly one is
-  active, chosen by a pointer in your project's config.
-
-The registry is the layer they share: submit, review, release, index, install,
-update, revoke. It does not care which kind it is moving.
+  CSS and assets. moss never executes it.
 
 The practical rule: **if it needs to run code, it is a plugin; if it only
 changes how things look, it is a theme.** A theme that wants logic is really a
-plugin (moss has a presentation hook for exactly that).
+plugin, and moss has a presentation hook for exactly that.
+
+### What actually differs
+
+|  | plugin | theme |
+|---|---|---|
+| lives in | `plugins/<id>/` | `themes/<id>/` |
+| moss executes it | yes, sandboxed | never |
+| how many are active | many at once, each by the capabilities it declares | exactly one, chosen by a pointer in your config |
+| installs to | `.moss/plugins/<id>/` | `.moss/themes/<id>/` |
+| review reads | source, dependencies, host capabilities | CSS and assets |
+| revoking it | stops it loading on every machine that refreshes | cannot recall a site already published with it |
+
+That last row is an honest asymmetry rather than an oversight. Revocation is a
+kill switch for code that runs; a theme's output has already left for someone's
+website by the time anyone could revoke it. It is why v1 themes are CSS and
+assets with no `script.js` — the thing that makes them un-revokable is also the
+thing that makes them safe enough not to need it.
+
+### How the difference is recorded
+
+**The directory decides.** A package under `plugins/` is a plugin and one under
+`themes/` is a theme; there is no separate switch to set and nothing to keep in
+sync. Your `manifest.json` may restate it as `"type"`, because once the artifact
+is a release zip the directory is no longer visible and moss should still be able
+to tell what it is holding — but CI rejects a manifest whose `type` disagrees
+with where it lives. Two declarations that can differ are worse than one.
+
+That kind travels to moss as the `type` field on the package's index entry, and
+**moss ignores entries whose `type` it does not recognise.** That rule is what
+makes the schema genuinely theme-ready rather than theme-ready in principle: a
+copy of moss shipped today keeps working unchanged on the day the first theme
+appears in the index, instead of choking on an entry it was never taught about.
+
+The registry itself is the layer the two kinds share — submit, review, release,
+index, install, update, revoke — and none of it cares which kind is moving.
+
+> **Status:** plugins are live; themes are designed but not yet published. There
+> is no `themes/` directory here yet, and CI has no theme rules. The `type` field
+> exists in the index from day one anyway, for the compatibility reason above.
 
 > Previously this repo was a read-only mirror, generated from the moss monorepo
 > and force-pushed on each sync — which is why older docs said PRs could not be
