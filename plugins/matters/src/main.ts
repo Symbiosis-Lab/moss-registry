@@ -1837,11 +1837,12 @@ export function absolutizeRelativeHrefs(html: string, baseUrl: string): string {
 /**
  * Strip moss's heading-anchor permalinks from headings.
  *
- * moss appends `<a class="moss-heading-anchor" href="#…"><span
- * aria-hidden="true">#</span></a>` to every heading for web navigation. On the
- * site the `#` is hover-only chrome (CSS), but matters' sanitizer keeps the
- * anchor's text, so headings syndicate as e.g. "1.#" (a stray, linked `#`).
- * The `#` is not content, so we remove the whole anchor before syndication.
+ * moss appends an empty `<a class="moss-heading-anchor" href="#…"></a>` to
+ * every heading for web navigation; the `#` a reader sees is drawn by CSS
+ * (`::after`), not text. It syndicates as an empty link — and before the glyph
+ * moved into CSS it syndicated as "1.#", a stray linked `#`, because matters'
+ * sanitizer kept the anchor's text. Neither is content, so we remove the whole
+ * anchor before syndication and this keeps working either way.
  * Verified 2026-06-16 against `server.matters.icu`.
  *
  * Exported for unit testing.

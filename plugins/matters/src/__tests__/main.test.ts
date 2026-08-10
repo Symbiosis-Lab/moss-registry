@@ -735,26 +735,39 @@ describe("wrapImagesForMatters", () => {
 // ============================================================================
 //
 // moss appends a permalink anchor to every heading:
-//   <h2 id="1.">1.<a class="moss-heading-anchor" href="#1." aria-label="…">
-//     <span aria-hidden="true">#</span></a></h2>
-// On the web the `#` is hover-only chrome, but matters' sanitizer keeps the
-// anchor's text — so headings render as "1.#" (a stray `#`, linked). This is
-// web-only chrome, not content, so we strip the whole anchor on syndication.
-// Verified 2026-06-16 against server.matters.icu (the `#` survives without this).
+//   <h2 id="1.">1.<a class="moss-heading-anchor" href="#1." aria-label="…"></a></h2>
+// The `#` a reader sees is drawn by CSS (`::after`), so the anchor is empty —
+// but it is still web-only chrome, and an empty link is not content either, so
+// we strip the whole anchor on syndication.
+//
+// It used to hold a real `<span aria-hidden="true">#</span>`, which matters'
+// sanitizer kept, so headings syndicated as "1.#" — a stray, linked `#`.
+// Verified 2026-06-16 against server.matters.icu. That shape is still in every
+// already-published article and in output from an older moss, so the stripper
+// must keep handling both; one test below pins the legacy form.
 
 describe("stripHeadingAnchors", () => {
   it("removes the moss-heading-anchor permalink from a heading", () => {
     const html =
-      '<h1 id="1." data-source-line="8">1.<a class="moss-heading-anchor" href="#1." aria-label="Permalink to this section"><span aria-hidden="true">#</span></a></h1>';
+      '<h1 id="1." data-source-line="8">1.<a class="moss-heading-anchor" href="#1." aria-label="Permalink to this section"></a></h1>';
     expect(stripHeadingAnchors(html)).toBe('<h1 id="1." data-source-line="8">1.</h1>');
   });
 
   it("strips anchors from multiple headings, leaving heading text intact", () => {
     const html =
-      '<h2>Intro<a class="moss-heading-anchor" href="#intro"><span aria-hidden="true">#</span></a></h2>' +
+      '<h2>Intro<a class="moss-heading-anchor" href="#intro"></a></h2>' +
       "<p>body</p>" +
-      '<h3>详情<a class="moss-heading-anchor" href="#详情"><span aria-hidden="true">#</span></a></h3>';
+      '<h3>详情<a class="moss-heading-anchor" href="#详情"></a></h3>';
     expect(stripHeadingAnchors(html)).toBe("<h2>Intro</h2><p>body</p><h3>详情</h3>");
+  });
+
+  // The pre-2026-08-09 shape, when the `#` was a real text node. Still arrives
+  // from an older moss and from anything already published, and it is the one
+  // that syndicates visibly wrong if the stripper stops matching it.
+  it("still strips the legacy anchor that carried a literal #", () => {
+    const html =
+      '<h2>Intro<a class="moss-heading-anchor" href="#intro"><span aria-hidden="true">#</span></a></h2>';
+    expect(stripHeadingAnchors(html)).toBe("<h2>Intro</h2>");
   });
 
   it("tolerates attribute order and extra classes on the anchor", () => {
@@ -777,7 +790,7 @@ describe("stripHeadingAnchors", () => {
 describe("normalizeHtmlForMatters - strips heading anchors", () => {
   it("removes the permalink # and downgrades h1→h2 in one pass", () => {
     const html =
-      '<h1 id="1.">1.<a class="moss-heading-anchor" href="#1."><span aria-hidden="true">#</span></a></h1>';
+      '<h1 id="1.">1.<a class="moss-heading-anchor" href="#1."></a></h1>';
     const result = normalizeHtmlForMatters(html);
     expect(result).toBe('<h2 id="1.">1.</h2>');
     expect(result).not.toContain("#");
