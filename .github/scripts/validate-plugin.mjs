@@ -64,6 +64,15 @@ if (manifest) {
     fail(`${id}: manifest.version "${manifest.version}" is not valid semver`);
   }
 
+  // Validation is not additionalProperties:false, so a misspelled optional
+  // key silently means false and the author never learns. Type-check the two
+  // booleans the index re-emits for catalog presentation.
+  for (const field of ["preview", "requires_stack"]) {
+    if (manifest[field] !== undefined && typeof manifest[field] !== "boolean") {
+      fail(`${id}: manifest.${field} must be a boolean when present, got ${JSON.stringify(manifest[field])}`);
+    }
+  }
+
   // The directory decides which kind of package this is; the manifest may
   // restate it so the artifact is self-describing once it leaves the repo, but
   // it may not disagree. Two declarations that can differ are worse than one.

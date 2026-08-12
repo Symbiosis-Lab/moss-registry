@@ -75,3 +75,25 @@ Two consequences worth knowing:
 - A release whose zip disagrees with its tag **fails the run** rather than being
   skipped. Quietly dropping it would look to every client exactly like a
   revocation.
+
+### What the index re-emits from a manifest
+
+The rule, so the field list is never re-debated: **the index re-emits every
+manifest field that drives pre-install catalog presentation.** Post-install
+fields (`config_schema`, `contributes`, `domain`, `domains`, `entry`,
+`config_verify`) stay out — once the plugin is installed, its own manifest is
+authoritative for those.
+
+Two optional booleans, both omitted when false so older entries serialize
+unchanged:
+
+- **`preview`** — the publisher says this version is not ready to be offered
+  by default. This is *presentation, never a safety mechanism*: safety is
+  `revoked.json` (fail-closed) or drafting the release. moss's current
+  interpretation is stricter than VS Code's "preview" badge: the row is
+  omitted from the catalog entirely unless the user has turned on preview
+  features. moss may relax that to a badged, visible row at any time without
+  an index change or a republish. Because release zips are immutable, **a
+  readiness change requires publishing a new version.**
+- **`requires_stack`** — first install pulls a machine-wide companion runtime;
+  clients use it to show a download-consent surface before install.
