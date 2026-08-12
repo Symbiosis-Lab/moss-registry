@@ -131,6 +131,21 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   if (manifest.requires?.length) entry.requires = manifest.requires;
   if (icon) entry.icon_url = icon.browser_download_url;
 
+  // Catalog-presentation bits, re-emitted from the manifest so a remote row
+  // renders exactly like a bundled one. `preview` says the publisher does not
+  // consider this version ready to be offered by default (moss ADR-053);
+  // `requires_stack` says first install pulls a machine-wide companion
+  // runtime. Both are omitted when false, so an entry for a package that
+  // declares neither is byte-identical to what this script emitted before
+  // the fields existed.
+  //
+  // The rule for what belongs here: re-emit every manifest field that drives
+  // PRE-INSTALL catalog presentation. Post-install fields (config_schema,
+  // contributes, domain, domains, entry, config_verify) stay out — the
+  // installed manifest is authoritative for those.
+  if (manifest.preview === true) entry.preview = true;
+  if (manifest.requires_stack === true) entry.requires_stack = true;
+
   return entry;
 }
 

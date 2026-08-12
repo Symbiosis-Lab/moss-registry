@@ -188,21 +188,27 @@ test("a manifest that disagrees with its tag throws rather than dropping the pac
 });
 
 test("absent optional fields are omitted, not emitted empty", () => {
+  // preview/requires_stack omitted-when-false pins byte-identical output for
+  // every already-published package — what makes the index rebuild safe.
   const entry = toEntry(candidate, manifest, { sha256: "a", sizeBytes: 1 });
   assert.ok(!("repository" in entry));
   assert.ok(!("homepage" in entry));
   assert.ok(!("min_moss_version" in entry));
   assert.ok(!("icon_url" in entry));
+  assert.ok(!("preview" in entry));
+  assert.ok(!("requires_stack" in entry));
 });
 
 test("declared optional fields are carried through", () => {
-  const rich = { ...manifest, repository: "https://example.invalid/repo", homepage: "https://example.invalid", min_moss_version: "0.8.0" };
+  const rich = { ...manifest, repository: "https://example.invalid/repo", homepage: "https://example.invalid", min_moss_version: "0.8.0", preview: true, requires_stack: true };
   const withIcon = { ...candidate, icon: { browser_download_url: "https://example.invalid/icon.svg" } };
   const entry = toEntry(withIcon, rich, { sha256: "a", sizeBytes: 1 });
   assert.equal(entry.repository, "https://example.invalid/repo");
   assert.equal(entry.homepage, "https://example.invalid");
   assert.equal(entry.min_moss_version, "0.8.0");
   assert.equal(entry.icon_url, "https://example.invalid/icon.svg");
+  assert.equal(entry.preview, true);
+  assert.equal(entry.requires_stack, true);
 });
 
 test("kind comes from the manifest, defaulting to plugin", () => {
