@@ -1,0 +1,55 @@
+{
+  "name": "ipfs",
+  "display_name": "IPFS",
+  "version": "0.1.0",
+  "description": "Publish your site to IPFS (Pinata or a local Kubo node)",
+  "author": "moss team",
+  "entry": "main.bundle.js",
+  "capabilities": [
+    "deploy"
+  ],
+  "global_name": "IpfsPlugin",
+  "domain": "pinata.cloud",
+  "icon": "icon.svg",
+  "config": {
+    "provider": "pinata",
+    "gateway": "",
+    "pin_name": "",
+    "use_ipns": true,
+    "relative_urls": true,
+    "node_rpc": "",
+    "co_pin": false
+  },
+  "config_schema": {
+    "provider": "string",
+    "gateway": "string",
+    "pin_name": "string",
+    "use_ipns": "boolean",
+    "relative_urls": "boolean",
+    "node_rpc": "string",
+    "co_pin": "boolean"
+  },
+  "config_labels": {
+    "provider": "IPFS Provider",
+    "gateway": "Custom Gateway Host",
+    "pin_name": "Pin Name",
+    "use_ipns": "Use IPNS (stable name)",
+    "relative_urls": "Gateway-Portable Links",
+    "node_rpc": "Node RPC Endpoint",
+    "co_pin": "Co-Pin to Both Backends"
+  },
+  "config_descriptions": {
+    "provider": "Where to pin your site: \"pinata\" (hosted) or \"local\" (your own Kubo daemon).",
+    "gateway": "Optional gateway host for View-site links, e.g. gateway.pinata.cloud. Blank uses dweb.link.",
+    "pin_name": "Label for the pin in your provider. Defaults to your site name.",
+    "use_ipns": "Publish a stable IPNS name so your URL and DNSLink domain don't change every deploy.",
+    "relative_urls": "Rewrite absolute links in HTML to relative ones so the site renders on any IPFS gateway.",
+    "node_rpc": "Kubo RPC endpoint for the local provider. Blank uses this machine (127.0.0.1:5001); set it to publish through an always-on node (NAS, VPS).",
+    "co_pin": "After each deploy, also pin the same content to the other backend when it's available \u2014 same address, one more copy."
+  },
+  "min_moss_version": "0.7.21",
+  "requires": [
+    "execute_binary"
+  ],
+  "repository": "https://github.com/Symbiosis-Lab/moss-registry"
+}
