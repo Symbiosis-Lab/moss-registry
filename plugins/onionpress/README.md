@@ -34,6 +34,25 @@ Transport uses the sanctioned `execute_binary` host-fn (`curl` + `tar`) — the
 same escape hatch the github plugin uses for git. No new moss host-fn and no
 moss release are required.
 
+## Network access
+
+**No external hosts.** Every request this plugin makes goes to your own machine
+over loopback:
+
+- `http://127.0.0.1:<port>/wp-json/onionpress/v1` — the OnionPress receiver's
+  REST namespace, probed on ports `8080, 18080, 28080, 38080, 48080`
+  (multi-user installs offset the port by +10000 per user). Three endpoints are
+  used: `GET /status` (discovery and liveness), `POST /generation` (upload the
+  build tar), and `POST /commit` (flip the live site).
+
+Requests are issued with `curl` through the `execute_binary` host function —
+`curl` for transport and `tar` for packing the generation are the whole reason
+this plugin declares `requires: ["execute_binary"]`.
+
+The site's `.onion` address is never fetched from here. The receiver runs its
+own Tor-routed reachability check and reports the outcome in `/status`; this
+plugin only reads that field.
+
 ## Sideloading for a real test
 
 See [SIDELOAD.md](./SIDELOAD.md).
