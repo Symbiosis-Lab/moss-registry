@@ -4,6 +4,8 @@
 
 ### Changed
 
+- The plugin now marks itself as a preview in its manifest (`"preview": true`). It appears in moss's plugin catalog only for users who have turned on preview features — replacing the hidden-for-everyone list moss used to keep in its own binary. Sideloaded and already-installed copies stay visible and manageable either way.
+
 - The plugin now declares `requires: ["execute_binary"]` in its manifest. moss has begun refusing privileged host capabilities that a plugin has not declared, and this plugin runs `git` to publish. Without the declaration, publishing to GitHub Pages would stop working.
 - The plugin now states its display name and the oldest moss it supports, so it reads as "GitHub" rather than "Github" wherever moss lists it — in Settings today, and in the plugin catalog arriving in a future release. Its published copy is now built and released from moss itself; the registry previously kept a second copy of the source, which had already begun to diverge.
 
