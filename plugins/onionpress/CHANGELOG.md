@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-12
+
+- Changed: the plugin's preview status and companion-stack requirement now
+  travel with it into the plugin registry. The 0.3.0 release was cut from a
+  snapshot that predated the two manifest declarations, so its registry entry
+  couldn't say either; this release exists to carry them (release artifacts
+  are immutable — a manifest correction is always a new version).
+
 ## [0.3.0] - 2026-08-09
 
 - Changed: the plugin now answers one question — is the site live, or is it

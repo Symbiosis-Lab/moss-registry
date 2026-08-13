@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-onionpress",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Publish moss sites to a self-hosted OnionPress (.onion) receiver",
   "main": "dist/main.js",
   "scripts": {
