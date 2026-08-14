@@ -60,7 +60,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   sendMessage: vi.fn().mockResolvedValue(undefined),
   reportProgress: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
-  reportComplete: vi.fn().mockResolvedValue(undefined),
   emitEvent: vi.fn().mockResolvedValue(undefined),
   // R7: onEvent mock that captures the callback for emitBrowserUrlChanged
   onEvent: (...args: unknown[]) => mockOnEvent(...args),

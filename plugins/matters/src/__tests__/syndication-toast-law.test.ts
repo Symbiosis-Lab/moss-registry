@@ -65,7 +65,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   setMessageContext: vi.fn(),
   sendMessage: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
-  reportComplete: vi.fn().mockResolvedValue(undefined),
   emitEvent: vi.fn().mockResolvedValue(undefined),
   // R7: waitForPublishOrClose calls onEvent('browser-url-changed').
   // Without this mock the rewritten function throws on import.
