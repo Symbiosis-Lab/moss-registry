@@ -21,7 +21,6 @@ const feature = await loadFeature("features/deploy/validation.feature");
 vi.mock("../../src/utils", () => ({
   reportProgress: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
-  reportComplete: vi.fn().mockResolvedValue(undefined),
   setCurrentHookName: vi.fn(),
   showToast: vi.fn().mockResolvedValue(undefined),
   dismissToast: vi.fn().mockResolvedValue(undefined),
