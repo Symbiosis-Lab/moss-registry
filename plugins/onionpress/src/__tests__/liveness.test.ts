@@ -3,11 +3,13 @@
  *
  * These exist because the old copy said "the address should resolve within a
  * minute" and the user hit it during an outage where nothing resolved within a
- * minute or at all.
+ * minute or at all. The user-facing sentences moved to moss with the toast
+ * itself (single-author consolidation, 2026-08-17); what remains here is the
+ * verdict, which travels as data in `deployment.metadata.liveness`.
  */
 
 import { describe, it, expect } from "vitest";
-import { classifyLiveness, livenessMessage, livenessToastVariant } from "../liveness";
+import { classifyLiveness } from "../liveness";
 
 describe("classifyLiveness", () => {
   it("a confirmed Tor-routed fetch is live", () => {
@@ -32,24 +34,5 @@ describe("classifyLiveness", () => {
     // there at all. Reporting it as live is moss#917.
     expect(classifyLiveness(false, "takeover")).toBe("not-live");
     expect(classifyLiveness(true, "takeover")).toBe("not-live");
-  });
-});
-
-describe("livenessMessage", () => {
-  it("promises nothing about when", () => {
-    for (const verdict of ["live", "not-live", "checking"] as const) {
-      const message = livenessMessage(verdict);
-      expect(message).not.toMatch(/minute|shortly|soon|should resolve/i);
-    }
-  });
-
-  it("only the live verdict reads as success", () => {
-    expect(livenessToastVariant("live")).toBe("success");
-    expect(livenessToastVariant("not-live")).toBe("info");
-    expect(livenessToastVariant("checking")).toBe("info");
-  });
-
-  it("says live plainly when it is live", () => {
-    expect(livenessMessage("live")).toBe("Your site is live.");
   });
 });

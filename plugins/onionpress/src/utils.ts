@@ -9,12 +9,7 @@ import {
   setMessageContext,
   reportProgress as sdkReportProgress,
   reportError as sdkReportError,
-  showToast as sdkShowToast,
-  type ToastOptions,
 } from "@symbiosis-lab/moss-api";
-
-// Re-export ToastOptions type for convenience
-export type { ToastOptions };
 
 // ============================================================================
 // Plugin Configuration
@@ -53,7 +48,5 @@ export async function reportError(
   await sdkReportError(error, context, fatal);
 }
 
-/** Show a toast notification in the main moss UI. */
-export async function showToast(options: ToastOptions | string): Promise<void> {
-  await sdkShowToast(options);
-}
+// No showToast wrapper, deliberately: this plugin's outcome UX travels as data
+// in `HookResult.toast`, never as an imperative SDK call. See main.ts.

@@ -11,7 +11,7 @@
  *
  * Transport is plain loopback HTTP via the sanctioned `execute_binary`
  * (`curl` + `tar`) — the same escape hatch the github plugin uses for git.
- * See `receiver-contract.md` for the full wire contract.
+ * See `docs/static-publish-protocol.md` (in the OnionPress fork) for the full wire contract.
  */
 
 import type { DeployContext, HookResult } from "./types";
@@ -25,24 +25,18 @@ import {
   waitForReachability,
   receiverSupportsReachability,
 } from "./receiver";
-import { setCurrentHookName, reportProgress, reportError, showToast } from "./utils";
+import { setCurrentHookName, reportProgress, reportError } from "./utils";
 import { DEPLOY_HEARTBEAT_INTERVAL_MS } from "./constants";
-import { classifyLiveness, livenessMessage, livenessToastVariant } from "./liveness";
+import { classifyLiveness } from "./liveness";
 
-/**
- * One id across every toast this deploy raises, so moss can veto the lot with
- * a single `suppressFeedbackToast` while a surface that already carries the
- * outcome is on screen.
- *
- * That surface is the first-publish wizard: it shows the onion address, a copy
- * button and "View on Tor", none of which a toast can offer, and on first
- * publish the two appeared together. Sharing one id also means a later toast
- * in the same deploy patches the earlier one in place instead of stacking.
- *
- * Keep this string in sync with `ONIONPRESS_DEPLOY_TOAST_ID` in
- * `frontend/app/workflows/deploy/onionpress-publish-modal.ts`.
- */
-const DEPLOY_TOAST_ID = "onionpress-deploy";
+// This hook raises no toasts. moss owns every status surface (see moss's
+// docs/reference/plugin-architecture-boundary.md: the task/progress UI is
+// moss's; hooks must survive without a UI) — the hook describes its outcome
+// in `HookResult.toast` and returns evidence in `deployment.metadata`, and
+// moss's publish-verdict pipeline renders checking/live/failed from there.
+// The SDK-toast era ended 2026-08-17: a plugin-raised "Checking whether your
+// site is live…" toast survived two app-side redesigns of this exact surface
+// because it lived on the wrong side of the boundary.
 
 // ============================================================================
 // Hook Implementation
@@ -63,14 +57,12 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
     const message =
       "No running OnionPress found. Start OnionPress on this machine, then Publish again.";
     await reportError(message, "deploy", true);
-    await showToast({
-      message: "Start OnionPress first, then Publish again.",
-      variant: "error",
-      duration: 7000,
-      id: DEPLOY_TOAST_ID,
-    });
     console.error("OnionPress Deployer: no receiver on any known port");
-    return { success: false, message };
+    return {
+      success: false,
+      message,
+      toast: { outcome: "error", title: "Start OnionPress first, then Publish again." },
+    };
   }
   console.log(`   Receiver found on port ${endpoint.port} (v${endpoint.status.receiver_version})`);
 
@@ -97,7 +89,7 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
     currentStep = 6;
     currentPhase = "Uploading to OnionPress...";
     await reportProgress("deploying", currentStep, 10, currentPhase);
-    await uploadGeneration(endpoint.baseUrl, genId, tarPath);
+    await uploadGeneration(endpoint.baseUrl, genId, tarPath, endpoint.status.receiver_version);
 
     // ── 4. Commit — atomic flip, returns the onion URL ────────────────────
     currentStep = 9;
@@ -136,14 +128,11 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
     const verdict = classifyLiveness(reachable, httpCode);
     console.log(`   Published: ${onionUrl} (${verdict}${httpCode ? `, ${httpCode}` : ""})`);
 
-    await showToast({
-      message: livenessMessage(verdict),
-      variant: livenessToastVariant(verdict),
-      actions: [{ label: "View site", url: onionUrl }],
-      duration: 8000,
-      id: DEPLOY_TOAST_ID,
-    });
-
+    // No toast on success, deliberately — even for `live`. Post-upload status
+    // belongs to moss's verdict pipeline (advisory while checking, one final
+    // toast at alive-or-failed), which keeps watching after this returns and
+    // has strictly better evidence than this bounded poll. A toast raised
+    // here would race that surface with a weaker answer.
     return {
       success: true,
       message:
@@ -168,13 +157,14 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
     const message = error instanceof Error ? error.message : String(error);
     await reportError(message, "deploy", true);
     console.error(`OnionPress Deployer: Failed - ${message}`);
-    await showToast({
-      message: message.length > 60 ? message.slice(0, 60) + "..." : message,
-      variant: "error",
-      duration: 6000,
-      id: DEPLOY_TOAST_ID,
-    });
-    return { success: false, message };
+    return {
+      success: false,
+      message,
+      toast: {
+        outcome: "error",
+        title: message.length > 60 ? message.slice(0, 60) + "..." : message,
+      },
+    };
   } finally {
     clearInterval(heartbeat);
     if (tarPath) {

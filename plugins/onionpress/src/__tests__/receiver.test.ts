@@ -25,6 +25,7 @@ import {
   fetchStatus,
   waitForReachability,
   receiverSupportsReachability,
+  receiverSupportsMultipartUpload,
 } from "../receiver";
 
 const mockExecuteBinary = vi.mocked(executeBinary);
@@ -199,7 +200,7 @@ describe("packGeneration", () => {
 describe("uploadGeneration", () => {
   const BASE = "http://127.0.0.1:8080/wp-json/onionpress/v1";
 
-  it("POSTs the raw tar as application/x-tar to /generation?id=<genId>", async () => {
+  it("with no receiver version (legacy default), POSTs the raw tar as application/x-tar", async () => {
     mockExecuteBinary.mockResolvedValueOnce(exec(true, JSON.stringify({ ok: true, generation: "moss-42" })));
 
     await uploadGeneration(BASE, "moss-42", "/tmp/moss-42.tar");
@@ -218,6 +219,35 @@ describe("uploadGeneration", () => {
     ]);
   });
 
+  it("against a receiver_version < 1.2, POSTs the legacy raw body (unchanged)", async () => {
+    mockExecuteBinary.mockResolvedValueOnce(exec(true, JSON.stringify({ ok: true, generation: "moss-42" })));
+
+    await uploadGeneration(BASE, "moss-42", "/tmp/moss-42.tar", "1.1");
+
+    const call = mockExecuteBinary.mock.calls[0][0];
+    expect(call.args).toContain("--data-binary");
+    expect(call.args).not.toContain("-F");
+  });
+
+  it("against a receiver_version >= 1.2, POSTs multipart with the tar in a `tar` part", async () => {
+    mockExecuteBinary.mockResolvedValueOnce(exec(true, JSON.stringify({ ok: true, generation: "moss-42" })));
+
+    await uploadGeneration(BASE, "moss-42", "/tmp/moss-42.tar", "1.2");
+
+    const call = mockExecuteBinary.mock.calls[0][0];
+    expect(call.binaryPath).toBe("curl");
+    expect(call.args).toEqual([
+      "-sS",
+      "-X",
+      "POST",
+      "-F",
+      "tar=@/tmp/moss-42.tar",
+      `${BASE}/generation?id=moss-42`,
+    ]);
+    // curl must set its own multipart boundary — never override Content-Type.
+    expect(call.args).not.toContain("-H");
+  });
+
   it("throws when the receiver replies ok:false (so the deploy aborts before commit)", async () => {
     mockExecuteBinary.mockResolvedValueOnce(
       exec(true, JSON.stringify({ ok: false, error: "path traversal rejected" })),
@@ -234,6 +264,32 @@ describe("uploadGeneration", () => {
     await expect(uploadGeneration(BASE, "moss-42", "/tmp/moss-42.tar")).rejects.toThrow(
       "Upload to OnionPress failed",
     );
+  });
+});
+
+describe("receiverSupportsMultipartUpload", () => {
+  it("is false for versions below 1.2", () => {
+    expect(receiverSupportsMultipartUpload("1")).toBe(false);
+    expect(receiverSupportsMultipartUpload("1.0")).toBe(false);
+    expect(receiverSupportsMultipartUpload("1.1")).toBe(false);
+  });
+
+  it("is true for 1.2 and above", () => {
+    expect(receiverSupportsMultipartUpload("1.2")).toBe(true);
+    expect(receiverSupportsMultipartUpload("1.3")).toBe(true);
+    expect(receiverSupportsMultipartUpload("2")).toBe(true);
+    expect(receiverSupportsMultipartUpload("2.0")).toBe(true);
+  });
+
+  it("treats missing or unparseable versions as legacy", () => {
+    expect(receiverSupportsMultipartUpload(undefined)).toBe(false);
+    expect(receiverSupportsMultipartUpload(null)).toBe(false);
+    expect(receiverSupportsMultipartUpload("")).toBe(false);
+    expect(receiverSupportsMultipartUpload("not-a-version")).toBe(false);
+  });
+
+  it("compares numerically, not lexicographically (\"1.10\" > \"1.2\")", () => {
+    expect(receiverSupportsMultipartUpload("1.10")).toBe(true);
   });
 });
 

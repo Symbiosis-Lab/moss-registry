@@ -51,25 +51,9 @@ export function classifyLiveness(
   return "checking";
 }
 
-/**
- * The sentence for each verdict.
- *
- * None of these predicts a time. "Live" is the only claim we make, and we make
- * it only when the receiver confirmed a real Tor-routed fetch of the site
- * itself.
- */
-export function livenessMessage(verdict: Liveness): string {
-  switch (verdict) {
-    case "live":
-      return "Your site is live.";
-    case "not-live":
-      return "Published, but your site isn't live yet — moss is still working on it.";
-    case "checking":
-      return "Published. Checking whether your site is live…";
-  }
-}
-
-/** Success is reserved for the one verdict that is unambiguously good news. */
-export function livenessToastVariant(verdict: Liveness): "success" | "info" {
-  return verdict === "live" ? "success" : "info";
-}
+// The per-verdict user-facing sentences that used to live here
+// (livenessMessage / livenessToastVariant) moved with the toast itself: moss
+// owns every status surface, and the publish wording ladder is
+// `frontend/app/workflows/deploy/publish-verify-strings.ts`. This module's
+// remaining job is the verdict, which travels as data in
+// `deployment.metadata.liveness`.

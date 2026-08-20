@@ -1,8 +1,8 @@
 /**
  * OnionPress deployer constants.
  *
- * These mirror the moss-receiver ↔ moss plugin v1 wire contract
- * (`receiver-contract.md`). Both sides implement exactly these values.
+ * These mirror the static-receiver wire contract, `docs/static-publish-protocol.md`
+ * in the OnionPress fork. Both sides implement exactly these values.
  */
 
 /**

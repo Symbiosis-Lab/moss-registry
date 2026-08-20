@@ -141,7 +141,7 @@ deploying silently:
 - **Deploying.** The plugin (`plugins/onionpress/src/main.ts`) discovers the
   receiver, tars `.moss/build/current`, `POST`s it to `/generation`, then
   `POST /commit` flips the generation symlink atomically and returns the onion
-  URL. Wire details: `plugins/onionpress/receiver-contract.md`.
+  URL. Wire details: the fork's `docs/static-publish-protocol.md`.
 - **Confirming reachability.** Because the moss.7 receiver reports
   `receiver_version: "1.1"` and an `onion_reachable` tri-state, the plugin then
   polls `/status` for up to ~20 s (2 s interval) waiting for the receiver's own
@@ -245,7 +245,7 @@ An empty first command means the settings never reached the container. Check
 the spelling in `~/.onionpress/config` — unknown keys are ignored silently —
 and confirm the launcher is new enough to read them at all: the bridge settings
 were implemented in the Python start path first and were not read by the bash
-launcher moss drives until the fix in `Symbiosis-Lab/onionpress#3`. Against an
+launcher moss drives until the fix in `guoliu/onionpress#3`. Against an
 older bundle the config is correct and simply never arrives.
 
 ## Troubleshooting
@@ -301,7 +301,7 @@ stack with no binary to stop it. Stop it from the menu bar app, then retry.
 **"Upload to OnionPress failed …" / "OnionPress commit failed …"** — the
 receiver rejected the generation. Its guards are path traversal in the tar and
 top-level names colliding with WordPress reserved paths; see
-`receiver-contract.md`.
+the fork's `docs/static-publish-protocol.md`.
 
 **"OnionPress is not installed (… missing) — install the stack first"** — the
 onionname CLI commands (suggest/check/register) resolve the staged binary and
@@ -321,7 +321,7 @@ is still connecting.
   Testers do not sideload; the plugin is bundled and `src-tauri/build.rs`
   rebuilds it from source whenever `dist/` is older than `src/`.
 - Wire contract between plugin and receiver:
-  [`plugins/onionpress/receiver-contract.md`](../../../plugins/onionpress/receiver-contract.md).
+  the fork's `docs/static-publish-protocol.md`.
 - Design history: [2026-07-21-onionpress-full-integration](../../archive/2026-07-21-onionpress-full-integration.md)
   (roadmap and locked decisions) and
   [2026-07-31-onionpress-reachability-verification-design](../../archive/2026-07-31-onionpress-reachability-verification-design.md)

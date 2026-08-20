@@ -1,6 +1,6 @@
 {
   "name": "onionpress",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Publish moss sites to a self-hosted OnionPress (.onion) receiver",
   "author": "moss team",
   "entry": "main.bundle.js",
