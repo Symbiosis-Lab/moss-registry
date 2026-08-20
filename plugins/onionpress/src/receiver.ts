@@ -1,11 +1,12 @@
 /**
  * OnionPress receiver client.
  *
- * Speaks the moss-receiver ↔ moss plugin v1 wire contract (`receiver-contract.md`)
- * over plain loopback HTTP, using the sanctioned `execute_binary` escape hatch to
- * run `curl` and `tar` — exactly as the github plugin uses `execute_binary` for
- * git. NO moss-api HTTP host-fn is used for the tar upload (moss-api only offers
- * multipart; the receiver reads a raw tar from `php://input`).
+ * Speaks the static-receiver wire contract — `docs/static-publish-protocol.md`
+ * in the OnionPress fork — over plain loopback HTTP, using the sanctioned
+ * `execute_binary` escape hatch to run `curl` and `tar` — exactly as the github
+ * plugin uses `execute_binary` for git. NO moss-api HTTP host-fn is used for
+ * the tar upload (moss-api only offers multipart; the receiver reads a raw tar
+ * from `php://input`).
  *
  * All commands run with the default working directory (the project root), the
  * same way the github plugin resolves `project_path`: `execute_binary` reads it
@@ -151,6 +152,23 @@ export function receiverSupportsReachability(version: string): boolean {
   return major > 1 || (major === 1 && minor >= 1);
 }
 
+/**
+ * Does this receiver accept the v1.2 multipart carrier on `POST /generation`?
+ *
+ * A receiver older than 1.2 only understands a raw `application/x-tar` body —
+ * sending it a multipart part instead would upload nothing (`$request->get_body()`
+ * on a multipart request is empty). A missing/unparseable `receiver_version`
+ * (e.g. `/status` didn't reply, or some future non-numeric scheme) is treated as
+ * legacy: this is the client's fallback default, not the receiver's.
+ */
+export function receiverSupportsMultipartUpload(version: string | undefined | null): boolean {
+  if (!version) return false;
+  const parts = version.split(".").map((n) => parseInt(n, 10));
+  if (parts.some((n) => Number.isNaN(n))) return false;
+  const [major = 0, minor = 0] = parts;
+  return major > 1 || (major === 1 && minor >= 2);
+}
+
 /** Outcome of {@link waitForReachability}. */
 export interface ReachabilityOutcome {
   /** `null` when the poll window elapsed without the receiver resolving it —
@@ -278,7 +296,14 @@ export async function packGeneration(
 // ============================================================================
 
 /**
- * `POST /generation?id=<genId>` with the raw tar as the request body.
+ * `POST /generation?id=<genId>`, carrier chosen by the receiver's advertised
+ * version (from `/status`, see {@link receiverSupportsMultipartUpload}):
+ *
+ *  - `>= 1.2`: multipart/form-data, tar in a part named `tar` (`curl -F`).
+ *    curl sets its own boundary in the `Content-Type` header — do not
+ *    override it, or the receiver can't parse the parts.
+ *  - otherwise: the legacy raw body upload, unchanged.
+ *
  * Throws when curl fails or the receiver replies `ok:false` — this ABORTS the
  * deploy before `/commit`, so a rejected/partial upload is never committed.
  */
@@ -286,19 +311,24 @@ export async function uploadGeneration(
   baseUrl: string,
   genId: string,
   tarPath: string,
+  receiverVersion?: string | null,
 ): Promise<void> {
+  const args = receiverSupportsMultipartUpload(receiverVersion)
+    ? ["-sS", "-X", "POST", "-F", `tar=@${tarPath}`, `${baseUrl}/generation?id=${genId}`]
+    : [
+        "-sS",
+        "-X",
+        "POST",
+        "--data-binary",
+        `@${tarPath}`,
+        "-H",
+        "Content-Type: application/x-tar",
+        `${baseUrl}/generation?id=${genId}`,
+      ];
+
   const result = await executeBinary({
     binaryPath: "curl",
-    args: [
-      "-sS",
-      "-X",
-      "POST",
-      "--data-binary",
-      `@${tarPath}`,
-      "-H",
-      "Content-Type: application/x-tar",
-      `${baseUrl}/generation?id=${genId}`,
-    ],
+    args,
     workingDir: ".",
     timeoutMs: 300_000,
     env: {},

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-20
+
+- Added: large sites upload without running the machine out of memory. The tar was previously sent as one raw request body, which buffered roughly twice its size in memory on the way out and again inside the receiver before the plugin's code ever ran; it is now streamed from disk as a multipart upload at constant memory. Gated on what the receiver reports it supports (`receiver_version` 1.2 or newer, checked numerically, with a missing or unreadable version treated as older): an older receiver keeps the exact request it always got, so nothing has to be upgraded in step. A 65 MB / 302-file publish was verified end to end on a cold stack.
+- Changed: the plugin no longer raises its own status toasts. What happened travels back to moss as data in the hook's result, and moss renders it under the same rules as every other channel — which is what stops two different authors describing one publish on the same screen. A successful publish is deliberately silent from the plugin's side, because moss keeps watching after the hook returns and knows more than the plugin's bounded check ever could; failures still speak, since nothing runs afterwards to report them.
+- Changed: the toast shown while the reachability check is still unresolved no longer opens with "Published." — it now reads "Checking whether your site is live…". Leading with "Published" was reporting success before verification: on a publish whose site never comes reachable, that premature claim was the only thing the user ever saw, because the follow-up liveness watch deliberately reports nothing but good news. Success wording still arrives only with the `live` verdict.
+- Changed: a fresh install now pins OnionPress `v2.4.110-moss.1`. The previous pin was cut hours before the fix that lets a publish of any real size complete, so every stack installed from it could accept a site and then fail on it — PHP's memory limit never reached the running container, and the virtual machine's 1 GB default left the system killing large publishes rather than PHP reporting them. The stack now injects the limit at runtime and defaults to 2 GB.
+- Changed: the stack is downloaded from `guoliu/onionpress`, the fork's new home, rather than through a redirect from its old one. Same asset, same checksum — this only stops a future release shipping a URL that works by redirect alone.
+
 ## [0.3.1] - 2026-08-12
 
 - Changed: the plugin's preview status and companion-stack requirement now

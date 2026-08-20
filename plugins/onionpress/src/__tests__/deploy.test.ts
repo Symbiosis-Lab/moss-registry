@@ -29,7 +29,6 @@ vi.mock("../utils", () => ({
   setCurrentHookName: vi.fn(),
   reportProgress: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
-  showToast: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
@@ -40,7 +39,7 @@ import {
   cleanupTar,
   waitForReachability,
 } from "../receiver";
-import { showToast, reportError } from "../utils";
+import { reportError } from "../utils";
 import { deploy } from "../main";
 
 const mockDiscover = vi.mocked(discoverReceiver);
@@ -49,7 +48,6 @@ const mockUpload = vi.mocked(uploadGeneration);
 const mockCommit = vi.mocked(commitGeneration);
 const mockCleanup = vi.mocked(cleanupTar);
 const mockWaitForReachability = vi.mocked(waitForReachability);
-const mockShowToast = vi.mocked(showToast);
 const mockReportError = vi.mocked(reportError);
 
 /** A discovered receiver on the default single-user port. */
@@ -106,6 +104,7 @@ describe("deploy — success", () => {
       "http://127.0.0.1:8080/wp-json/onionpress/v1",
       "moss-123",
       "/tmp/moss-123.tar",
+      "1.1",
     );
     expect(mockCommit).toHaveBeenCalledWith(
       "http://127.0.0.1:8080/wp-json/onionpress/v1",
@@ -127,15 +126,15 @@ describe("deploy — success", () => {
     expect(typeof result.deployment!.deployed_at).toBe("string");
   });
 
-  it("shows a success toast with a clickable onion URL", async () => {
-    await deploy(CONTEXT);
+  it("returns no toast on success — post-upload status belongs to moss's verdict pipeline", async () => {
+    // Even a confirmed-live publish stays silent here: moss keeps watching
+    // after the hook returns and settles the verdict with strictly better
+    // evidence than this bounded poll. A toast raised from the hook would
+    // race that surface with a weaker answer.
+    const result = await deploy(CONTEXT);
 
-    expect(mockShowToast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variant: "success",
-        actions: [{ label: "View site", url: "http://abcdef1234567890.onion/" }],
-      }),
-    );
+    expect(result.success).toBe(true);
+    expect(result.toast).toBeUndefined();
   });
 });
 
@@ -144,7 +143,7 @@ describe("deploy — success", () => {
 // ============================================================================
 
 describe("deploy — no receiver", () => {
-  it("fails with a Start-OnionPress toast and never packs or commits", async () => {
+  it("fails with a Start-OnionPress toast in the result and never packs or commits", async () => {
     mockDiscover.mockResolvedValue(null);
 
     const result = await deploy(CONTEXT);
@@ -153,11 +152,11 @@ describe("deploy — no receiver", () => {
     expect(mockPack).not.toHaveBeenCalled();
     expect(mockUpload).not.toHaveBeenCalled();
     expect(mockCommit).not.toHaveBeenCalled();
-    expect(mockShowToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "error" }),
-    );
-    expect(mockShowToast.mock.calls[0][0]).toMatchObject({
-      message: expect.stringContaining("OnionPress"),
+    // The outcome travels as data; moss renders it. Actionable wording — the
+    // user can fix this one themselves.
+    expect(result.toast).toMatchObject({
+      outcome: "error",
+      title: expect.stringContaining("OnionPress"),
     });
   });
 });
@@ -180,6 +179,10 @@ describe("deploy — failed upload aborts before commit", () => {
     expect(mockCleanup).toHaveBeenCalledWith("/tmp/moss-123.tar");
     expect(mockReportError).toHaveBeenCalled();
     expect(result.message).toContain("path traversal rejected");
+    // Errors DO carry a toast — a failed publish needs the user's attention,
+    // and no later verdict pipeline runs to say so. Title is display-bounded.
+    expect(result.toast?.outcome).toBe("error");
+    expect(result.toast!.title.length).toBeLessThanOrEqual(63);
   });
 });
 
@@ -192,55 +195,45 @@ describe("deploy — reachability confirmation", () => {
     mockDiscover.mockResolvedValue(endpoint());
   });
 
-  it("says the site is live when the receiver confirms it", async () => {
+  it("reports live in the metadata when the receiver confirms it — still no toast", async () => {
     mockWaitForReachability.mockResolvedValue({ reachable: true, httpCode: "301" });
 
     const result = await deploy(CONTEXT);
 
     expect(result.success).toBe(true);
-    expect(mockShowToast).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "Your site is live.", variant: "success" }),
-    );
+    expect(result.toast).toBeUndefined();
     expect(result.deployment!.metadata.onion_reachable).toBe("true");
     expect(result.deployment!.metadata.liveness).toBe("live");
+    expect(result.message).toContain("live");
   });
 
-  it("says NOT live — and predicts nothing — when the receiver confirms it isn't", async () => {
+  it("reports not-live in the metadata when OnionHeaven answered instead of the site", async () => {
     // `takeover` means OnionHeaven answered, not the site: a 302 to a Wayback
     // snapshot that predates the post the user just published (moss#917).
+    // The verdict travels as data; moss's pipeline decides what (if anything)
+    // to say about it, with fresher evidence than this bounded poll.
     mockWaitForReachability.mockResolvedValue({ reachable: false, httpCode: "takeover" });
 
     const result = await deploy(CONTEXT);
 
     // The publish itself still succeeded — only the liveness claim changes.
     expect(result.success).toBe(true);
-    expect(mockShowToast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variant: "info",
-        message: expect.stringContaining("isn't live yet"),
-        actions: [{ label: "View site", url: "http://abcdef1234567890.onion/" }],
-      }),
-    );
-    const [{ message }] = mockShowToast.mock.calls[mockShowToast.mock.calls.length - 1];
-    expect(message).not.toMatch(/within a minute|should resolve/i);
+    expect(result.toast).toBeUndefined();
     expect(result.deployment!.metadata.liveness).toBe("not-live");
+    // The hook's own message must not claim live on failover evidence.
+    expect(result.message).not.toContain("live on Tor");
   });
 
   it("claims neither way when the poll window elapses without an answer", async () => {
     // The COMMON case: descriptor publication routinely outlasts the poll
-    // window. It used to show the plain success toast, which claimed live on
+    // window. It used to show a plain success toast, which claimed live on
     // no evidence; moss settles the verdict after the publish instead.
     mockWaitForReachability.mockResolvedValue({ reachable: null, httpCode: null });
 
     const result = await deploy(CONTEXT);
 
     expect(result.success).toBe(true);
-    expect(mockShowToast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: "Published. Checking whether your site is live…",
-        variant: "info",
-      }),
-    );
+    expect(result.toast).toBeUndefined();
     expect(result.deployment!.metadata.onion_reachable).toBe("unknown");
     expect(result.deployment!.metadata.liveness).toBe("checking");
   });

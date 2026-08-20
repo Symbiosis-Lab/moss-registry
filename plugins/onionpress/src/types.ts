@@ -3,7 +3,7 @@
  *
  * Common types (DeployContext, HookResult, DeploymentInfo, etc.) are imported
  * from @symbiosis-lab/moss-api. The receiver wire shapes below mirror
- * `receiver-contract.md`.
+ * `docs/static-publish-protocol.md` (in the OnionPress fork).
  */
 
 // Re-export SDK types for convenience
@@ -15,7 +15,7 @@ export type {
 } from "@symbiosis-lab/moss-api";
 
 // ============================================================================
-// OnionPress receiver wire shapes (receiver-contract.md)
+// OnionPress receiver wire shapes (docs/static-publish-protocol.md in the fork)
 // ============================================================================
 
 /**

@@ -1,10 +1,11 @@
 {
   "name": "matters",
-  "version": "1.4.11",
+  "version": "1.4.12",
   "display_name": "Matters",
   "description": "Syndicate your articles to Matters.town (POSSE)",
   "author": "moss team",
   "min_moss_version": "0.7.23",
+  "preview": true,
   "entry": "main.bundle.js",
   "capabilities": [
     "process",

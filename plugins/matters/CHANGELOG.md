@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _Pending publish — cumulative since `1.1.2` (last released on main); full detail under [1.4.0] and [1.2.0]._
 
+- Changed (`1.4.12`): the plugin now marks itself as a preview in its manifest, so moss offers
+  it only to people who have turned on preview features. It is not ready to be offered to
+  everyone yet, and a channel that half-works is worse to meet than one that isn't offered at
+  all. An already-installed copy is untouched: it stays
+  listed, configurable and fully functional, because an install is real state and readiness only
+  decides what gets *offered*. Turning preview features on in App Settings brings it back into
+  the catalog.
+
 - Changed (`1.4.11`): no behaviour change, recorded because the thing it depends on moved: moss's heading permalink is now an **empty** `<a class="moss-heading-anchor">`, with the `#` drawn in CSS rather than written as text. `stripHeadingAnchors` already removed the whole anchor rather than its text, so it keeps working across the change — a syndicated heading reads "1." either way. The version moves only because the source file did (the release gate cannot tell a comment from a behaviour change, and should not try); an installed site that updates to it gets identical bundle bytes. Before the glyph moved into CSS, Matters' sanitizer kept the anchor's text and the heading syndicated as "1.#", a stray linked `#`; that is the failure this function exists to prevent, and the tests now pin both forms so a future revert cannot silently reintroduce it.
 
 - Changed (`1.4.10`): the plugin now states its display name and the oldest moss it supports, so it reads as "Matters" rather than a lowercase id wherever moss lists it — including the plugin catalog arriving in a future release. Its published copy is now built and released from moss itself; the registry previously kept a second copy of the source, which had already begun to diverge.

@@ -11,7 +11,7 @@ onion service. Deploy is loopback-only: the plugin probes for the receiver on
 `127.0.0.1`, uploads a tar of `.moss/build/current`, and commits it.
 
 The wire protocol between this plugin and the receiver is pinned in
-[`receiver-contract.md`](../../receiver-contract.md) (repo root).
+`docs/static-publish-protocol.md` in the OnionPress fork.
 
 ## How it works
 
@@ -22,8 +22,10 @@ On Publish, the `deploy` hook:
    `receiver_version`. No receiver → a "Start OnionPress first" toast.
 2. **Packs** the current generation — `tar -cf /tmp/moss-<ts>.tar -C
    .moss/build/current .` (follows the `current` symlink).
-3. **Uploads** the tar — `POST /generation?id=moss-<ts>` as
-   `application/x-tar`. A rejected upload aborts before commit.
+3. **Uploads** the tar — `POST /generation?id=moss-<ts>`, as multipart
+   (`curl -F tar=@...`) against a receiver advertising `receiver_version >=
+   1.2`, or as a raw `application/x-tar` body against an older receiver. A
+   rejected upload aborts before commit.
 4. **Commits** — `POST /commit` flips the live site and returns the onion URL.
 5. **Cleans up** the temporary tar.
 
