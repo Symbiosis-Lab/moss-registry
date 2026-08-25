@@ -13,12 +13,12 @@
  * fall back to the per-provider IPNS path.
  */
 
-import { getTauriCore } from "@symbiosis-lab/moss-api";
+import { getKey, signWithKey } from "@symbiosis-lab/moss-api";
 import type { IpfsPluginConfig } from "./types";
 import { updateConfig } from "./config";
 import { kuboRpcBase } from "./gateways";
 import { postMultipart } from "./http";
-import { bytesToBase64Js, base64ToBytesJs } from "./relative-urls";
+import { bytesToBase64Js } from "./relative-urls";
 import {
   ipnsNameFromPublicKey,
   ipnsRecordData,
@@ -29,32 +29,6 @@ import { IPNS_PUBLISH_TIMEOUT_MS } from "./constants";
 
 /** The plugin-scoped key name backing every project's identity IPNS name. */
 const KEY_NAME = "ipns";
-
-// ---------------------------------------------------------------------------
-// Keystore wire calls.
-//
-// These mirror moss-api's keystore.ts (getKey/signWithKey) at the invoke
-// level. The published npm SDK (0.10.0) does not export the wrappers yet, so
-// — as with resolve_binary_command — the plugin invokes the host commands
-// directly and degrades when a build doesn't register them. Switch to the
-// official imports once moss-api ships them.
-// ---------------------------------------------------------------------------
-
-async function mossKeyPublicKey(name: string, algorithm: "ed25519"): Promise<Uint8Array> {
-  const w = await getTauriCore().invoke<{ publicKeyBase64: string }>("key_get_or_create", {
-    name,
-    algorithm,
-  });
-  return base64ToBytesJs(w.publicKeyBase64);
-}
-
-async function mossSignWithKey(name: string, payload: Uint8Array): Promise<Uint8Array> {
-  const res = await getTauriCore().invoke<{ signatureBase64: string }>("key_sign", {
-    name,
-    payloadBase64: bytesToBase64Js(payload),
-  });
-  return base64ToBytesJs(res.signatureBase64);
-}
 
 /** Record lifetime and TTL (republished on every deploy). */
 const RECORD_LIFETIME_MS = 48 * 60 * 60 * 1000;
@@ -71,8 +45,8 @@ export interface IdentityPublishResult {
  */
 export async function identityIpnsName(): Promise<string | undefined> {
   try {
-    const publicKey = await mossKeyPublicKey(KEY_NAME, "ed25519");
-    return ipnsNameFromPublicKey(publicKey);
+    const key = await getKey(KEY_NAME, "ed25519");
+    return ipnsNameFromPublicKey(key.publicKey);
   } catch (e) {
     console.log(`   Identity IPNS unavailable (keystore API missing?): ${e instanceof Error ? e.message : e}`);
     return undefined;
@@ -102,7 +76,7 @@ export async function publishIdentityIpns(
       ttlNs: RECORD_TTL_NS,
     };
     const data = ipnsRecordData(input);
-    const signatureV2 = await mossSignWithKey(KEY_NAME, ipnsSignablePayload(data));
+    const signatureV2 = await signWithKey(KEY_NAME, ipnsSignablePayload(data));
     const record = ipnsRecordProtobuf(input, data, signatureV2);
 
     const res = await postMultipart(

@@ -47,7 +47,8 @@
     "node_rpc": "Kubo RPC endpoint for the local provider. Blank uses this machine (127.0.0.1:5001); set it to publish through an always-on node (NAS, VPS).",
     "co_pin": "After each deploy, also pin the same content to the other backend when it's available \u2014 same address, one more copy."
   },
-  "min_moss_version": "0.7.21",
+  "min_moss_version": "0.7.23",
+  "preview": true,
   "requires": [
     "execute_binary"
   ],

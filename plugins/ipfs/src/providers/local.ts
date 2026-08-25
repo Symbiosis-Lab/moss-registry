@@ -3,11 +3,10 @@
  *
  * RPC-first: the daemon's HTTP RPC on 127.0.0.1:5001 (POST even for reads) does
  * the work, so we never need the on-disk site path or a bundled binary. The
- * `ipfs` CLI is only consulted (via executeBinary) to tailor the "not running"
- * guidance (installed-but-stopped vs not-installed).
+ * `ipfs` CLI is only consulted (kubo-bootstrap.ts) to detect an installed
+ * node and start it — never to download one.
  */
 
-import { executeBinary } from "@symbiosis-lab/moss-api";
 import type { IpfsProvider } from "./types";
 import type {
   IpfsPluginConfig,
@@ -28,7 +27,7 @@ import { updateConfig } from "../config";
 import { providerGatewayUrl, kuboRpcBase, isDefaultNodeRpc } from "../gateways";
 import { postRaw, postMultipart, parseJson, toMultipartFiles } from "../http";
 import { promptLocalDaemon } from "../setup-panel";
-import { bootstrapLocalNode } from "../kubo-bootstrap";
+import { bootstrapLocalNode, kuboInstalled } from "../kubo-bootstrap";
 import { reportProgress, sleep } from "../utils";
 
 interface KuboAddLine {
@@ -68,16 +67,6 @@ export class LocalProvider implements IpfsProvider {
     }
   }
 
-  /** Whether the `ipfs` CLI is on PATH (best-effort). */
-  private async binaryPresent(): Promise<boolean> {
-    try {
-      const res = await executeBinary({ binaryPath: "ipfs", args: ["--version"], timeoutMs: 5000 });
-      return !!res.success;
-    } catch {
-      return false;
-    }
-  }
-
   async checkReady(): Promise<ReadyState> {
     if (await this.daemonReachable()) return { ready: true };
     if (!isDefaultNodeRpc(this.config)) {
@@ -86,18 +75,19 @@ export class LocalProvider implements IpfsProvider {
         reason: `No IPFS node answered at ${kuboRpcBase(this.config)} — check that it's running and reachable.`,
       };
     }
-    const installed = await this.binaryPresent();
+    const installed = await kuboInstalled();
     return {
       ready: false,
       reason: installed
-        ? "IPFS is installed but not running. Start it with `ipfs daemon`."
-        : "No local IPFS node found on 127.0.0.1:5001.",
+        ? "Your IPFS node isn't running."
+        : "IPFS (Kubo) isn't installed on this computer yet.",
     };
   }
 
   async runSetup(): Promise<boolean> {
-    // Zero-click first: on the default same-machine endpoint, try to
-    // install/start a node automatically (writer flow, not developer flow).
+    // Zero-click first: on the default same-machine endpoint, start an
+    // ALREADY-INSTALLED node automatically (never a download — when Kubo is
+    // missing, the panel explains and links the installer instead).
     let bootstrapReason: string | undefined;
     if (isDefaultNodeRpc(this.config)) {
       bootstrapReason = await this.tryBootstrap();
@@ -109,7 +99,8 @@ export class LocalProvider implements IpfsProvider {
     for (;;) {
       const state = await this.checkReady();
       if (state.ready) return true;
-      const retry = await promptLocalDaemon({ reason: bootstrapReason ?? state.reason });
+      const installed = await kuboInstalled();
+      const retry = await promptLocalDaemon({ reason: bootstrapReason ?? state.reason, installed });
       if (!retry) return false;
       bootstrapReason = undefined; // after a manual retry, show fresh probe state
     }
@@ -117,8 +108,8 @@ export class LocalProvider implements IpfsProvider {
 
   /** Bootstrap + wait for readiness. Returns undefined on success, else a reason. */
   private async tryBootstrap(): Promise<string | undefined> {
-    // The binary download reports no byte progress (no event channels under
-    // QuickJS) — a heartbeat keeps the inactivity watchdog fed meanwhile.
+    // A heartbeat keeps the inactivity watchdog fed while the start attempt
+    // runs (no event channels under QuickJS for finer-grained progress).
     let statusMessage = "Setting up an IPFS node...";
     const heartbeat = setInterval(() => {
       void reportProgress("setup", 2, 10, statusMessage);

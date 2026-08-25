@@ -267,6 +267,14 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     await progress("complete", 10, "Published to IPFS!");
     stopHeartbeat();
 
+    // A site kept alive ONLY by this machine's node disappears when the node
+    // stops — say so (UX contract: never let a site vanish silently).
+    const localOnly = provider.id === "local" && coPinnedId !== "pinata";
+    const availabilityNote = localOnly
+      ? `\n\nHeads up: your site is served by the IPFS node on this computer — it stays ` +
+        `online only while that node is running. Turn on Co-Pin (with Pinata connected) ` +
+        `or use the Pinata provider to keep it up around the clock.`
+      : ``;
     const message =
       `Your site is on IPFS!\n\n` +
       `URL: ${displayUrl}\n` +
@@ -274,6 +282,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       `CID: ${cid}\n\n` +
       `Pinned via ${provider.label}.` +
       (coPinnedId ? ` Also pinned to ${coPinnedId === "local" ? "your local node" : "Pinata"}.` : ``) +
+      availabilityNote +
       ipnsNote;
 
     await showToast({
@@ -294,6 +303,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         links,
         domain,
         domainStable: !!ipnsName,
+        localOnly,
       };
       await showResultPanel(view);
     }

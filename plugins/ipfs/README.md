@@ -9,10 +9,12 @@ gateway URL. Two backends are supported behind one interface:
 
 - **Pinata** (hosted pinning service) — paste a Pinata JWT once; moss pins your site and
   keeps it available.
-- **Local Kubo node** — publish through your own node, no account required. If no
-  daemon is running, moss downloads a Kubo binary (via the host's binary resolver)
-  and starts one for you; `node_rpc` can point it at an always-on node (NAS,
-  Raspberry Pi, VPS) instead.
+- **Local Kubo node** — publish through your own node, no account required. If IPFS
+  is installed but not running, moss starts it for you; if it isn't installed, the
+  plugin explains in-app and links the installer (it never downloads binaries
+  silently). `node_rpc` can point it at an always-on node (NAS, Raspberry Pi, VPS)
+  instead. A locally-kept site stays online only while the node runs — the plugin
+  says so after every such deploy, and co-pinning to Pinata closes the gap.
 
 Optionally publishes a stable **IPNS** name (so the shared URL doesn't change on every
 deploy) and can wire up a custom domain via **DNSLink**. On moss builds with the keystore
@@ -49,11 +51,9 @@ Endpoints this plugin talks to, and why:
 - `http://127.0.0.1:8080` / `https://dweb.link` / `https://ipfs.io` /
   `https://ipfs.filebase.io` — read-only gateway checks (structure verification and the
   informational liveness probe) and the View-site links surfaced to the user.
-- `https://dist.ipfs.tech/kubo/…` — one-time Kubo binary download, only when the local
-  provider is selected, no daemon is running, and no `ipfs` binary is on PATH (via the
-  host binary resolver; `requires: ["execute_binary"]`).
-
-No other hosts are contacted. Site content is uploaded only to the provider(s) the user
+No other hosts are contacted. The `execute_binary` requirement covers detecting and
+starting an already-installed Kubo (`ipfs version` / `ipfs init` / a detached
+`ipfs daemon`) — the plugin never downloads binaries. Site content is uploaded only to the provider(s) the user
 configured.
 
 ## Architecture

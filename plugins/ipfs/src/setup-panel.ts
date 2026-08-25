@@ -81,22 +81,24 @@ export async function promptPinataJwt(): Promise<string | null> {
 // Local Kubo daemon panel
 // ---------------------------------------------------------------------------
 
-export function renderLocalSetupHtml(opts: { reason?: string } = {}): string {
+export function renderLocalSetupHtml(opts: { reason?: string; installed?: boolean } = {}): string {
   const reason = opts.reason
     ? `<div class="status error">${escapeHtml(opts.reason)}</div>`
     : `<div class="status"></div>`;
+  const guidance = opts.installed
+    ? `<p>IPFS is installed, but moss couldn't start it automatically. Open your
+       IPFS app (or start the daemon the way you usually do), then retry.</p>`
+    : `<p>Publishing through your own node needs IPFS installed on this computer.
+       The easiest way is <a href="https://docs.ipfs.tech/install/ipfs-desktop/">IPFS
+       Desktop</a> — install it, open it once, then come back and retry.</p>
+       <p>Prefer a hosted option instead? Switch the plugin's provider to Pinata in
+       settings — no install needed.</p>`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Start your IPFS node</title><style>${PANEL_STYLE}</style></head>
+<title>Set up IPFS</title><style>${PANEL_STYLE}</style></head>
 <body><div class="card">
-  <h1>Start your IPFS node</h1>
-  <p>moss couldn't reach an IPFS node (and automatic setup didn't complete).
-     To set one up manually:</p>
-  <ol>
-    <li>Install: <code>brew install ipfs</code> (or ipfs.tech/install)</li>
-    <li>Init (first time): <code>ipfs init</code></li>
-    <li>Start: <code>ipfs daemon</code></li>
-  </ol>
+  <h1>Set up IPFS</h1>
+  ${guidance}
   ${reason}
   <div class="row">
     <button class="ghost" id="cancel">Cancel</button>
@@ -119,7 +121,9 @@ export function renderLocalSetupHtml(opts: { reason?: string } = {}): string {
  * Show the local-daemon guidance panel.
  * Resolves true when the user asks to retry (re-probe), false if cancelled.
  */
-export async function promptLocalDaemon(opts: { reason?: string } = {}): Promise<boolean> {
+export async function promptLocalDaemon(
+  opts: { reason?: string; installed?: boolean } = {},
+): Promise<boolean> {
   const payload = await showPanel<LocalPayload>(
     renderLocalSetupHtml(opts),
     LOCAL_EVENT,
