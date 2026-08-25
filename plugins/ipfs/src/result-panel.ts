@@ -25,6 +25,8 @@ export interface ResultView {
   domain?: string;
   /** Whether the domain will auto-update (IPNS) or is pinned to a CID. */
   domainStable?: boolean;
+  /** True when the only keeper is this machine's node (availability warning). */
+  localOnly?: boolean;
 }
 
 function linkRow(link: GatewayLink): string {
@@ -48,6 +50,12 @@ export function renderResult(view: ResultView): string {
       }</p>`
     : `<p>Tip: enable IPNS or a custom domain for a URL that doesn't change every deploy.</p>`;
 
+  const availability = view.localOnly
+    ? `<p><strong>Heads up:</strong> this site is served by the IPFS node on this
+       computer — it stays online only while the node is running. Turn on Co-Pin
+       (with Pinata connected) or use the Pinata provider to keep it up around
+       the clock.</p>`
+    : "";
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Your site is on IPFS</title><style>${PANEL_STYLE}</style></head>
@@ -60,6 +68,7 @@ export function renderResult(view: ResultView): string {
     ${ipnsRow}
     ${view.links.map(linkRow).join("\n    ")}
   </ul>
+  ${availability}
   ${dnslink}
   <div class="row">
     <button class="primary" id="done">Done</button>

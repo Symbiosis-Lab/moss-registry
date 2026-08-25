@@ -17,8 +17,8 @@ Initial release.
   machinery.
 - Gateway-portable sites: root-absolute HTML links rewritten to depth-relative on upload
   (default on), so the same build renders on subdomain and path-form gateways alike.
-- Zero-click local node: auto-detects `ipfs` on PATH, can download a pinned Kubo build
-  via the host binary resolver, starts and waits for the daemon; `node_rpc` supports
-  always-on remote nodes.
+- Zero-click local node start: detects an installed `ipfs`, initializes and starts the
+  daemon, and waits for it (never downloads binaries — missing installs get an in-app
+  explanation with an install link); `node_rpc` supports always-on remote nodes.
 - Optional **co-pin**: after a successful deploy, best-effort pin of the same CID to the
   other backend (never fails the deploy; only counted on an exact CID match).

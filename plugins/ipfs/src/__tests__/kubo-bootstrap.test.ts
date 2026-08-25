@@ -1,4 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const h = vi.hoisted(() => ({
+  binaryOk: true,
+  os: "darwin" as string,
+  calls: [] as Array<{ binaryPath: string; args: string[] }>,
+}));
 
 vi.mock("@symbiosis-lab/moss-api", () => ({
   setMessageContext: vi.fn(),
@@ -7,39 +13,59 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   showToast: vi.fn(),
   dismissToast: vi.fn(),
   closeBrowser: vi.fn(),
-  executeBinary: vi.fn(),
-  getPlatformInfo: vi.fn(),
-  getTauriCore: vi.fn(),
+  executeBinary: vi.fn(async (cfg: { binaryPath: string; args: string[] }) => {
+    h.calls.push(cfg);
+    if (cfg.binaryPath === "ipfs" && cfg.args[0] === "version") {
+      return { success: h.binaryOk, stdout: "0.42.0", stderr: "" };
+    }
+    return { success: true, stdout: "", stderr: "" };
+  }),
+  getPlatformInfo: vi.fn(async () => ({ os: h.os, arch: "arm64", platformKey: `${h.os}-arm64` })),
 }));
 
-import { buildKuboBinaryConfig } from "../kubo-bootstrap";
-import type { PlatformInfo } from "@symbiosis-lab/moss-api";
+import { kuboInstalled, bootstrapLocalNode } from "../kubo-bootstrap";
 
-const platform = (platformKey: string): PlatformInfo =>
-  ({ os: "darwin", arch: "arm64", platformKey }) as PlatformInfo;
+beforeEach(() => {
+  h.binaryOk = true;
+  h.os = "darwin";
+  h.calls = [];
+  vi.clearAllMocks();
+});
 
-describe("buildKuboBinaryConfig", () => {
-  it("maps supported platforms to pinned official dist archives", () => {
-    const cfg = buildKuboBinaryConfig(platform("darwin-arm64"));
-    expect(cfg?.binary_name).toBe("ipfs");
-    const source = cfg?.sources["darwin-arm64"];
-    expect(source?.direct_url).toMatch(
-      /^https:\/\/dist\.ipfs\.tech\/kubo\/v[\d.]+\/kubo_v[\d.]+_darwin-arm64\.tar\.gz$/,
-    );
-    expect(source?.archive_format).toBe("tar_gz");
-    expect(cfg?.archive_layout?.binary_path).toBe("kubo/ipfs");
+describe("kuboInstalled", () => {
+  it("reflects the executeBinary probe", async () => {
+    expect(await kuboInstalled()).toBe(true);
+    h.binaryOk = false;
+    expect(await kuboInstalled()).toBe(false);
+  });
+});
+
+describe("bootstrapLocalNode", () => {
+  it("NEVER downloads: missing binary → install guidance, no further calls", async () => {
+    h.binaryOk = false;
+    const result = await bootstrapLocalNode(() => {});
+    expect(result.ok).toBe(false);
+    expect(result.installed).toBe(false);
+    expect(result.reason).toMatch(/isn't installed/);
+    // Only the detection probe ran — nothing resembling a fetch or install.
+    expect(h.calls).toHaveLength(1);
   });
 
-  it("covers darwin-x64 and linux-x64", () => {
-    expect(buildKuboBinaryConfig(platform("darwin-x64"))?.sources["darwin-x64"]?.direct_url).toContain(
-      "darwin-amd64",
-    );
-    expect(buildKuboBinaryConfig(platform("linux-x64"))?.sources["linux-x64"]?.direct_url).toContain(
-      "linux-amd64",
-    );
+  it("starts an installed node: init then a detached daemon spawn", async () => {
+    const statuses: string[] = [];
+    const result = await bootstrapLocalNode((m) => statuses.push(m));
+    expect(result.ok).toBe(true);
+    expect(h.calls.some((c) => c.binaryPath === "ipfs" && c.args[0] === "init")).toBe(true);
+    const spawn = h.calls.find((c) => c.binaryPath === "/bin/sh");
+    expect(spawn?.args[1]).toContain("ipfs daemon");
+    expect(statuses.length).toBeGreaterThan(0);
   });
 
-  it("returns null for unsupported platforms (guidance panel fallback)", () => {
-    expect(buildKuboBinaryConfig(platform("windows-x64"))).toBeNull();
+  it("is guidance-only on Windows", async () => {
+    h.os = "windows";
+    const result = await bootstrapLocalNode(() => {});
+    expect(result.ok).toBe(false);
+    expect(result.installed).toBe(true);
+    expect(result.reason).toMatch(/Windows/);
   });
 });

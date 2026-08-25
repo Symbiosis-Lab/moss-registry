@@ -24,11 +24,20 @@ describe("renderPinataSetupHtml", () => {
 });
 
 describe("renderLocalSetupHtml", () => {
-  it("includes the retry event and daemon guidance", () => {
-    const html = renderLocalSetupHtml({ reason: "not reachable" });
+  it("links the installer (no terminal commands) when Kubo is missing", () => {
+    const html = renderLocalSetupHtml({ reason: "not reachable", installed: false });
     expect(html).toContain("ipfs:local-setup");
-    expect(html).toContain("ipfs daemon");
+    expect(html).toContain("docs.ipfs.tech/install/ipfs-desktop");
     expect(html).toContain("not reachable");
+    // Writer-facing: no shell commands in the panel.
+    expect(html).not.toContain("brew install");
+    expect(html).not.toContain("ipfs daemon");
+  });
+
+  it("asks to start the app when Kubo is installed but stopped", () => {
+    const html = renderLocalSetupHtml({ installed: true });
+    expect(html).toMatch(/couldn't start it automatically/);
+    expect(html).not.toContain("docs.ipfs.tech/install");
   });
 
   it("escapes an injected reason", () => {
@@ -59,6 +68,11 @@ describe("renderResult", () => {
     expect(renderResult(base)).not.toContain(">IPNS<");
     const withIpns = renderResult({ ...base, ipnsName: "k51x" });
     expect(withIpns).toContain("k51x");
+  });
+
+  it("warns about availability only for local-only deploys", () => {
+    expect(renderResult({ ...base, localOnly: true })).toMatch(/only while the node is running/);
+    expect(renderResult(base)).not.toMatch(/only while the node is running/);
   });
 
   it("branches DNSLink copy on domain stability", () => {

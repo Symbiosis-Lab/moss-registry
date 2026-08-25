@@ -36,9 +36,6 @@ export const PINATA_DEFAULT_GATEWAY = "gateway.pinata.cloud";
 
 /** Default Kubo RPC endpoint; overridable via the node_rpc setting (e.g. a NAS/VPS node). */
 export const DEFAULT_KUBO_RPC = "http://127.0.0.1:5001";
-/** Kubo release pinned for the zero-click node bootstrap (official dist archives). */
-export const KUBO_VERSION = "v0.42.0";
-export const KUBO_DIST_BASE = "https://dist.ipfs.tech/kubo";
 /**
  * Local gateway host for user-facing links, in SUBDOMAIN form
  * (http://<cid>.ipfs.localhost:8080). moss sites use root-absolute asset/link
