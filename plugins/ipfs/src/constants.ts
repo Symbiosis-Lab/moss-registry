@@ -31,20 +31,14 @@ export const PINATA_TEST_AUTH_URL = "https://api.pinata.cloud/data/testAuthentic
 export const PINATA_DEFAULT_GATEWAY = "gateway.pinata.cloud";
 
 // ---------------------------------------------------------------------------
-// Local Kubo node (RPC on :5001, read-only gateway on :8080)
+// Local Kubo node
 // ---------------------------------------------------------------------------
 
 /** Default Kubo RPC endpoint; overridable via the node_rpc setting (e.g. a NAS/VPS node). */
 export const DEFAULT_KUBO_RPC = "http://127.0.0.1:5001";
-/**
- * Local gateway host for user-facing links, in SUBDOMAIN form
- * (http://<cid>.ipfs.localhost:8080). moss sites use root-absolute asset/link
- * paths, which only resolve when the site is mounted at the origin root — the
- * path form (127.0.0.1:8080/ipfs/<cid>/) serves unstyled pages with broken
- * navigation (verified live). Kubo serves subdomain requests on localhost out
- * of the box, and browsers resolve *.localhost to loopback.
- */
-export const KUBO_SUBDOMAIN_HOST = "localhost:8080";
+// The gateway address is NOT a constant here: it belongs to the node's own
+// config and is read from it (kubo-gateway.ts). Kubo's default of 8080 is a
+// port moss itself holds, so a constant would be wrong on every machine.
 
 // ---------------------------------------------------------------------------
 // Public gateways
@@ -58,14 +52,6 @@ export const PUBLIC_GATEWAY_W3S = "w3s.link";
 // ---------------------------------------------------------------------------
 // IPNS
 // ---------------------------------------------------------------------------
-
-/**
- * Prefix for the per-project Kubo keystore key backing the stable IPNS name.
- * The full name gets a random per-project suffix: the keystore is GLOBAL to
- * the node, so a shared fixed name would let a second project republish the
- * first project's stable URL to its own CID.
- */
-export const IPNS_KEY_PREFIX = "moss-site-";
 
 // ---------------------------------------------------------------------------
 // Timeouts (ms)

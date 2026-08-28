@@ -15,7 +15,6 @@ import {
   PUBLIC_GATEWAY_DWEB,
   PUBLIC_GATEWAY_W3S,
   PINATA_DEFAULT_GATEWAY,
-  KUBO_SUBDOMAIN_HOST,
   DEFAULT_KUBO_RPC,
 } from "./constants";
 import type { IpfsSettings, ProviderId } from "./types";
@@ -86,17 +85,8 @@ export function primaryGatewayUrl(cid: string, config: IpfsSettings): string {
   return bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
 }
 
-/** Provider-native gateway URL (Pinata gateway, or local Kubo gateway). */
-export function providerGatewayUrl(
-  provider: ProviderId,
-  cid: string,
-  customGateway?: string,
-): string {
-  if (provider === "local") {
-    // Subdomain form: origin-rooted, so moss's root-absolute asset/link paths
-    // resolve (the path form breaks styling and navigation).
-    return `http://${cid}.ipfs.${KUBO_SUBDOMAIN_HOST}`;
-  }
+/** Pinata's gateway URL for a CID (the user's dedicated host, or the shared one). */
+export function pinataGatewayUrl(cid: string, customGateway?: string): string {
   const host = customGateway && customGateway.trim().length > 0
     ? customGateway.trim()
     : PINATA_DEFAULT_GATEWAY;
@@ -104,23 +94,36 @@ export function providerGatewayUrl(
 }
 
 /**
+ * The local node's own gateway URL, in subdomain form: origin-rooted, so
+ * moss's root-absolute asset/link paths resolve (the path form serves unstyled
+ * pages with dead navigation — verified live). `host` is read from the node
+ * itself (kubo-gateway.ts); there is no default, because the port belongs to
+ * the node's config and guessing it lands on whatever else holds that port.
+ */
+export function localGatewayCidUrl(cid: string, host: string): string {
+  return `http://${cid}.ipfs.${host}`;
+}
+
+/**
  * The URL shown to the user (toast, result panel, deployment record).
  * - custom gateway host configured → path form on that host;
- * - local provider → the local subdomain gateway (instant and origin-rooted;
- *   a laptop node's content reaches public gateways only after propagation);
+ * - local provider whose gateway we could actually locate → that gateway
+ *   (instant and origin-rooted; a laptop node's content reaches public
+ *   gateways only after propagation);
  * - otherwise → the public dweb.link gateway.
  */
 export function siteDisplayUrl(
   cid: string,
   provider: ProviderId,
   config: IpfsSettings,
+  localHost?: string,
 ): string {
   const custom = config.gateway?.trim();
   if (custom) return pathCidUrl(custom, cid);
   // Localhost links only make sense for the same-machine daemon; a custom
   // node endpoint (NAS/VPS) gets the public gateway.
-  if (provider === "local" && isDefaultNodeRpc(config)) {
-    return providerGatewayUrl("local", cid);
+  if (provider === "local" && isDefaultNodeRpc(config) && localHost) {
+    return localGatewayCidUrl(cid, localHost);
   }
   return bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
 }
@@ -139,6 +142,7 @@ export function gatewayLinks(
   ipnsName: string | undefined,
   provider: ProviderId,
   config: IpfsSettings,
+  localHost?: string,
 ): GatewayLink[] {
   const links: GatewayLink[] = [
     { label: "dweb.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_DWEB) },
@@ -148,13 +152,11 @@ export function gatewayLinks(
     { label: "filebase.io (direct)", url: pathCidUrl("ipfs.filebase.io", cid) },
     { label: "w3s.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_W3S) },
   ];
+  const useLocalHost = provider === "local" && isDefaultNodeRpc(config) && localHost;
   if (provider === "pinata") {
-    links.push({
-      label: "Pinata gateway",
-      url: providerGatewayUrl("pinata", cid, config.gateway),
-    });
-  } else if (isDefaultNodeRpc(config)) {
-    links.push({ label: "Local gateway", url: providerGatewayUrl("local", cid) });
+    links.push({ label: "Pinata gateway", url: pinataGatewayUrl(cid, config.gateway) });
+  } else if (useLocalHost) {
+    links.push({ label: "Local gateway", url: localGatewayCidUrl(cid, localHost) });
   }
   if (ipnsName) {
     // IPNS names (k51…/base36 libp2p keys) are DNS-label-safe, so the
@@ -163,10 +165,9 @@ export function gatewayLinks(
     // reaches public gateways only after DHT propagation.
     links.push({
       label: "IPNS (stable)",
-      url:
-        provider === "local" && isDefaultNodeRpc(config)
-          ? `http://${ipnsName}.ipns.${KUBO_SUBDOMAIN_HOST}`
-          : subdomainIpnsUrl(ipnsName, PUBLIC_GATEWAY_DWEB),
+      url: useLocalHost
+        ? `http://${ipnsName}.ipns.${localHost}`
+        : subdomainIpnsUrl(ipnsName, PUBLIC_GATEWAY_DWEB),
     });
   }
   return links;

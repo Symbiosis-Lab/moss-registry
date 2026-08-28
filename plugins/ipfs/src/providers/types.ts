@@ -38,7 +38,4 @@ export interface IpfsProvider {
    * — transport errors and rate limits are NEVER "broken".
    */
   verifyDirectory(cid: string, nestedPath: string): Promise<StructureVerdict>;
-
-  /** The provider's own gateway URL for a CID. */
-  gatewayUrl(cid: string): string;
 }

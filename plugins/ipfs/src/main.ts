@@ -29,6 +29,7 @@ import { getProvider, makeProviderById } from "./providers";
 import { readSiteFiles } from "./site-files";
 import { makeSiteRelative } from "./relative-urls";
 import { siteDisplayUrl, gatewayLinks } from "./gateways";
+import { localGatewayHost } from "./kubo-gateway";
 import { generateDnsTarget } from "./dnslink";
 import { categorizeError } from "./errors";
 import {
@@ -190,7 +191,12 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     // concurrent with IPNS publish. (Pinata's shared gateway 403s HTML, and a
     // laptop node's content lags on public gateways — siteDisplayUrl picks the
     // URL that should genuinely work per provider.)
-    const displayUrl = siteDisplayUrl(cid, provider.id, config);
+    // Ask the node where its gateway is rather than assuming Kubo's default
+    // 8080, which moss's own preview server holds on every machine. Unknown
+    // means no local link is offered at all — better than one that 404s.
+    const localHost =
+      provider.id === "local" ? await localGatewayHost(config) : undefined;
+    const displayUrl = siteDisplayUrl(cid, provider.id, config, localHost);
     const isLivePromise = getUrl(`${displayUrl.replace(/\/$/, "")}/`, REACHABILITY_TIMEOUT_MS)
       .then((r) => r.ok)
       .catch(() => false);
@@ -254,7 +260,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         : {}),
     });
 
-    const links = gatewayLinks(cid, ipnsName, provider.id, config);
+    const links = gatewayLinks(cid, ipnsName, provider.id, config, localHost);
     const domain = context.domain;
     const dnsTarget = domain ? generateDnsTarget({ ipnsName, cid }) : undefined;
 

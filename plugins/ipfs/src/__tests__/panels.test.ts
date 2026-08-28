@@ -11,7 +11,11 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   onEvent: vi.fn(),
 }));
 
-import { renderPinataSetupHtml, renderLocalSetupHtml } from "../setup-panel";
+import {
+  renderPinataSetupHtml,
+  renderLocalSetupHtml,
+  renderDaemonConsentHtml,
+} from "../setup-panel";
 import { renderResult } from "../result-panel";
 
 describe("renderPinataSetupHtml", () => {
@@ -38,6 +42,19 @@ describe("renderLocalSetupHtml", () => {
     const html = renderLocalSetupHtml({ installed: true });
     expect(html).toMatch(/couldn't start it automatically/);
     expect(html).not.toContain("docs.ipfs.tech/install");
+  });
+
+  it("offers to move the gateway when the node's port is taken, and says it edits their config", () => {
+    const html = renderLocalSetupHtml({
+      reason: "port 8080 is in use",
+      installed: true,
+      portOffer: { taken: 8080, suggested: 8081 },
+    });
+    expect(html).toContain("8080");
+    expect(html).toContain("Use port 8081");
+    // Changing someone's node configuration is theirs to agree to.
+    expect(html).toMatch(/edits your IPFS node's own configuration/);
+    expect(html).toContain("changePort");
   });
 
   it("escapes an injected reason", () => {
@@ -80,5 +97,21 @@ describe("renderResult", () => {
     expect(stable).toMatch(/update automatically/);
     const pinned = renderResult({ ...base, domain: "example.com", domainStable: false });
     expect(pinned).toMatch(/re-deploy with IPNS/);
+  });
+});
+
+describe("renderDaemonConsentHtml", () => {
+  // The three facts a user cannot discover after the fact — moss starts a
+  // long-lived background process on their computer.
+  it("says the node outlives moss, does not survive a reboot, and how to stop it", () => {
+    const html = renderDaemonConsentHtml();
+    expect(html).toMatch(/keeps running after you quit moss/);
+    expect(html).toMatch(/does not start again by itself after you restart/);
+    expect(html).toMatch(/ipfs shutdown/);
+    expect(html).toContain("ipfs:daemon-consent");
+  });
+
+  it("offers a way out that needs no node at all", () => {
+    expect(renderDaemonConsentHtml()).toMatch(/Pinata/);
   });
 });

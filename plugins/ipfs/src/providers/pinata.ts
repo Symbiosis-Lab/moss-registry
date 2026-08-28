@@ -38,7 +38,6 @@ import {
 } from "../constants";
 import { getPinataJwt, storePinataJwt, clearPinataJwt } from "../credentials";
 import { promptPinataJwt } from "../setup-panel";
-import { providerGatewayUrl } from "../gateways";
 import {
   postMultipart,
   parseJson,
@@ -148,11 +147,8 @@ export class PinataProvider implements IpfsProvider {
   }
 
   // No publishIpns: Pinata has no IPNS API (verified live — all routes 404).
-  // The deploy flow surfaces this and points at the local provider / DNSLink.
-
-  gatewayUrl(cid: string): string {
-    return providerGatewayUrl("pinata", cid, this.config.gateway);
-  }
+  // IPNS has one owner anyway (ipns-identity.ts), which publishes through a
+  // Kubo RPC regardless of which backend holds the bytes.
 
   // --- helpers ---
 

@@ -1,12 +1,9 @@
 /**
  * Shared panel plumbing: HTML escaping, the dark-mode CSS, and the
- * openBrowserWithHtml + onEvent + heartbeat choreography (mirrors
- * github/src/repo-setup.ts:showBrowserWithProgress).
+ * openBrowserWithHtml + onEvent choreography.
  */
 
-import { openBrowserWithHtml, onEvent } from "@symbiosis-lab/moss-api";
-import { reportProgress } from "./utils";
-import { HEARTBEAT_MS } from "./constants";
+import { openBrowserWithHtml, onEvent, startTask } from "@symbiosis-lab/moss-api";
 
 /** Escape HTML-significant characters for safe interpolation. */
 export function escapeHtml(s: string): string {
@@ -54,26 +51,29 @@ export const PANEL_STYLE = `
 `;
 
 /**
- * Open an HTML panel and wait for a single custom event (or timeout).
- * Emits a progress heartbeat so the panel doesn't hit the stale timeout.
- * Returns the event payload, or null on timeout/error.
+ * Open an HTML panel and wait for the user to answer it.
  *
- * The listener is registered (and awaited) BEFORE the panel opens, so a
- * submit can never race listener registration, and `unlisten` is always
- * assigned by the time cleanup runs — no leaked listeners on the timeout path.
+ * The wait is declared to moss with `task.awaiting()` (ADR-015): the host then
+ * suspends its inactivity watchdog for as long as the hook sits there, because
+ * the thing being waited on is a person. That is why there is no timeout and
+ * no heartbeat here — the previous 10s fake progress pings existed only to
+ * convince the watchdog someone was working, and the 300s cap they came with
+ * closed panels out from under users who were still reading them.
+ *
+ * The listener is registered (and awaited) BEFORE the panel opens, so a submit
+ * can never race listener registration.
+ *
+ * @param directive what the user has to do ("Paste your Pinata JWT")
+ * @param venue     where they do it ("the Connect Pinata panel")
  */
 export async function showPanel<T>(
   html: string,
   eventName: string,
-  progressMessage: string,
-  timeoutMs = 300_000,
+  directive: string,
+  venue: string,
 ): Promise<T | null> {
-  const heartbeat = setInterval(() => {
-    void reportProgress("setup", 0, 10, progressMessage);
-  }, HEARTBEAT_MS);
-
+  const task = await startTask(directive, { hook: "deploy", trigger: "manual_one" });
   let unlisten: (() => void) | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     let resolveEvent: (payload: T) => void;
     const eventArrived = new Promise<T>((resolve) => {
@@ -85,18 +85,15 @@ export async function showPanel<T>(
     });
 
     await openBrowserWithHtml(html);
-    return await Promise.race([
-      eventArrived,
-      new Promise<T | null>((resolve) => {
-        timer = setTimeout(() => resolve(null), timeoutMs);
-      }),
-    ]);
+    await task.awaiting(directive, venue);
+    const payload = await eventArrived;
+    await task.succeeded();
+    return payload;
   } catch (error) {
     console.error(`[ipfs] panel error: ${error}`);
+    await task.failed(String(error), true);
     return null;
   } finally {
-    clearInterval(heartbeat);
-    if (timer !== null) clearTimeout(timer);
     if (unlisten !== null) unlisten();
   }
 }
