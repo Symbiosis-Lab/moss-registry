@@ -23,8 +23,6 @@ export interface ResultView {
   links: GatewayLink[];
   /** Set when a custom domain is configured. */
   domain?: string;
-  /** Whether the domain will auto-update (IPNS) or is pinned to a CID. */
-  domainStable?: boolean;
   /** True when the only keeper is this machine's node (availability warning). */
   localOnly?: boolean;
 }
@@ -43,12 +41,9 @@ export function renderResult(view: ResultView): string {
       `<button class="ghost copy" data-copy="${escapeHtml(view.ipnsName)}">Copy</button></li>`
     : "";
   const dnslink = view.domain
-    ? `<p>${escapeHtml(view.domain)} is set up via DNSLink — ${
-        view.domainStable
-          ? "future deploys update automatically (IPNS)."
-          : "it points at this CID; re-deploy with IPNS to avoid editing DNS each time."
-      }</p>`
-    : `<p>Tip: enable IPNS or a custom domain for a URL that doesn't change every deploy.</p>`;
+    ? `<p>${escapeHtml(view.domain)} is set up via DNSLink, pointing at this publish.
+       Publishing again gives you a new record to paste.</p>`
+    : `<p>Tip: turn on IPNS for a URL that stays the same every time you publish.</p>`;
 
   const availability = view.localOnly
     ? `<p><strong>Heads up:</strong> this site is served by the IPFS node on this

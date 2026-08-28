@@ -5,23 +5,27 @@
  * the returned DnsTarget (writing the records and re-invoking configure_domain),
  * exactly as it does for the GitHub deployer.
  *
- * We prefer an IPNS target so the domain survives re-deploys without a DNS edit;
- * we fall back to the raw CID when IPNS is unavailable.
+ * The target is the deploy's CID, not its IPNS name. An IPNS record published
+ * from this plugin lives 48 hours and is only ever republished by the next
+ * deploy, so a domain pointed at /ipns/ goes dark two days after a publish for
+ * anyone who publishes less often than that — silently, which is the worst way
+ * for a custom domain to fail. A CID target is always resolvable; the cost is
+ * that publishing again means updating the TXT record, which moss surfaces.
+ * When there is a republish story (a node that reannounces the record), this
+ * decision is worth revisiting.
  */
 
 import { PUBLIC_GATEWAY_DWEB } from "./constants";
 import type { DnsTarget, DnsRecord } from "./types";
 
 export interface DnsLinkInput {
-  /** Stable IPNS name (preferred). */
-  ipnsName?: string;
-  /** Fallback CID when IPNS is off/unavailable. */
+  /** The deploy's root CID. */
   cid: string;
 }
 
-/** Build the `dnslink=` TXT value, preferring IPNS. */
-export function dnslinkValue({ ipnsName, cid }: DnsLinkInput): string {
-  return ipnsName ? `dnslink=/ipns/${ipnsName}` : `dnslink=/ipfs/${cid}`;
+/** Build the `dnslink=` TXT value. */
+export function dnslinkValue({ cid }: DnsLinkInput): string {
+  return `dnslink=/ipfs/${cid}`;
 }
 
 /**

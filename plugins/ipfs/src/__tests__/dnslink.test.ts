@@ -2,29 +2,33 @@ import { describe, it, expect } from "vitest";
 import { dnslinkValue, generateDnsTarget } from "../dnslink";
 
 const CID = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
-const IPNS = "k51qzi5uqu5dgja8f9x0h1e0y9pjzqf2m8xg2k4c7bq2d5e6f7g8h9i0j1k2l3";
 
 describe("dnslinkValue", () => {
-  it("prefers IPNS when available", () => {
-    expect(dnslinkValue({ ipnsName: IPNS, cid: CID })).toBe(`dnslink=/ipns/${IPNS}`);
-  });
-  it("falls back to the CID when IPNS is absent", () => {
+  it("points at the deploy's CID", () => {
     expect(dnslinkValue({ cid: CID })).toBe(`dnslink=/ipfs/${CID}`);
   });
 });
 
 describe("generateDnsTarget", () => {
-  it("emits a _dnslink TXT (IPNS) plus a DNSLink-gateway CNAME", () => {
-    const target = generateDnsTarget({ ipnsName: IPNS, cid: CID });
-    const txt = target.records.find((r) => r.record_type === "TXT");
-    const cname = target.records.find((r) => r.record_type === "CNAME");
-    expect(txt).toEqual({ record_type: "TXT", name: "_dnslink", value: `dnslink=/ipns/${IPNS}` });
-    expect(cname).toEqual({ record_type: "CNAME", name: "@", value: "dweb.link" });
+  it("emits a _dnslink TXT plus a DNSLink-gateway CNAME", () => {
+    const target = generateDnsTarget({ cid: CID });
+    expect(target.records.find((r) => r.record_type === "TXT")).toEqual({
+      record_type: "TXT",
+      name: "_dnslink",
+      value: `dnslink=/ipfs/${CID}`,
+    });
+    expect(target.records.find((r) => r.record_type === "CNAME")).toEqual({
+      record_type: "CNAME",
+      name: "@",
+      value: "dweb.link",
+    });
   });
 
-  it("uses the CID in the TXT record when IPNS is off", () => {
-    const target = generateDnsTarget({ cid: CID });
-    const txt = target.records.find((r) => r.record_type === "TXT");
-    expect(txt?.value).toBe(`dnslink=/ipfs/${CID}`);
+  it("never targets /ipns/ — those records expire 48h after the publish", () => {
+    // The plugin publishes an IPNS record only during a deploy and nothing
+    // republishes it, so a domain pointed at /ipns/ goes dark two days later
+    // for anyone publishing less often than that.
+    const value = generateDnsTarget({ cid: CID }).records[0].value;
+    expect(value).not.toContain("/ipns/");
   });
 });

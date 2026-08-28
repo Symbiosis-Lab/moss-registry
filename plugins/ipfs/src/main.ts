@@ -262,7 +262,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 
     const links = gatewayLinks(cid, ipnsName, provider.id, config, localHost);
     const domain = context.domain;
-    const dnsTarget = domain ? generateDnsTarget({ ipnsName, cid }) : undefined;
+    const dnsTarget = domain ? generateDnsTarget({ cid }) : undefined;
 
     await progress("complete", 10, "Published to IPFS!");
     stopHeartbeat();
@@ -301,7 +301,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         primaryUrl: displayUrl,
         links,
         domain,
-        domainStable: !!ipnsName,
         localOnly,
       };
       await showResultPanel(view);
@@ -355,35 +354,24 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
   console.log(`IPFS Deployer: Configuring custom domain "${domain}"...`);
 
   const meta = context.deployment?.metadata;
+  const state = meta?.cid ? undefined : await getState();
+  const cid = meta?.cid || state?.lastCid;
+  const ipnsName = meta ? meta.ipns_name || undefined : state?.ipnsName;
 
-  let cid: string | undefined;
-  let ipnsName: string | undefined;
-  if (meta && (meta.cid || meta.ipns_name)) {
-    // Deployment metadata is the source of truth for what THIS deploy emitted.
-    // An empty ipns_name means the deploy used a CID target (IPNS off) — do NOT
-    // fall back to a persisted (possibly stale) IPNS name.
-    cid = meta.cid || undefined;
-    ipnsName = meta.ipns_name || undefined;
-  } else {
-    // No deployment metadata (e.g. a standalone call) — best-effort from
-    // persisted state. Only treat the domain as IPNS-backed if the last deploy
-    // actually published one.
-    const state = await getState();
-    cid = state.lastCid;
-    ipnsName = state.lastUsedIpns ? state.ipnsName : undefined;
-  }
-
-  if (!cid && !ipnsName) {
+  if (!cid) {
     return { success: false, message: "No IPFS deployment found. Deploy first." };
   }
 
-  const target = ipnsName ? `/ipns/${ipnsName}` : `/ipfs/${cid}`;
   const message =
     `Custom domain "${domain}" is set up for IPFS via DNSLink.\n\n` +
-    `A TXT record on _dnslink.${domain} points to ${target}.\n` +
+    `A TXT record on _dnslink.${domain} points to /ipfs/${cid}, this publish's content. ` +
+    `Publishing again gives you a new record to paste — moss shows it each time.\n` +
     (ipnsName
-      ? `Because it uses IPNS, future deploys update automatically — no DNS changes needed.\n`
-      : `This points at a fixed CID; re-run deploy with IPNS enabled to avoid editing DNS each publish.\n`) +
+      ? `Your site also has a stable IPNS address (${ipnsName}) that always follows the ` +
+        `latest publish. It isn't the domain's target because an IPNS record expires ` +
+        `48 hours after the publish that made it, which would take the domain down ` +
+        `between publishes.\n`
+      : ``) +
     `Your site resolves at https://${domain} through DNSLink-aware gateways (dweb.link, ipfs.io).`;
 
   return { success: true, message };

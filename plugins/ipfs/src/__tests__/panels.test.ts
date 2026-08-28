@@ -100,11 +100,12 @@ describe("renderResult", () => {
     expect(renderResult(base)).not.toMatch(/only while the node is running/);
   });
 
-  it("branches DNSLink copy on domain stability", () => {
-    const stable = renderResult({ ...base, domain: "example.com", domainStable: true });
-    expect(stable).toMatch(/update automatically/);
-    const pinned = renderResult({ ...base, domain: "example.com", domainStable: false });
-    expect(pinned).toMatch(/re-deploy with IPNS/);
+  it("says a configured domain points at this publish, and what that costs", () => {
+    const html = renderResult({ ...base, domain: "example.com" });
+    expect(html).toContain("example.com");
+    expect(html).toMatch(/new record to paste/);
+    // Never the old promise: an IPNS-targeted domain expires after 48h.
+    expect(html).not.toMatch(/update automatically/);
   });
 });
 

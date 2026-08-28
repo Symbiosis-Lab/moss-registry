@@ -33,57 +33,39 @@ beforeEach(() => {
 });
 
 describe("configure_domain", () => {
-  it("uses IPNS from deployment metadata and reports auto-update", async () => {
-    const ctx = {
+  it("reports the CID target from this deployment's metadata", async () => {
+    const result = await configure_domain({
       domain: "example.com",
       deployment: { metadata: { cid: "bafyCID", ipns_name: "k51x" } },
-    } as never;
-    const result = await configure_domain(ctx);
+    } as never);
     expect(result.success).toBe(true);
-    expect(result.message).toContain("/ipns/k51x");
-    expect(result.message).toMatch(/update automatically/);
+    expect(result.message).toContain("/ipfs/bafyCID");
+    expect(result.message).not.toContain("/ipns/k51x");
   });
 
-  it("falls back to the CID (and hints at IPNS) when no IPNS name is present", async () => {
-    const ctx = {
+  it("explains why the stable IPNS name is not the domain's target", async () => {
+    const result = await configure_domain({
+      domain: "example.com",
+      deployment: { metadata: { cid: "bafyCID", ipns_name: "k51x" } },
+    } as never);
+    expect(result.message).toContain("k51x");
+    expect(result.message).toMatch(/expires\s+48 hours/);
+  });
+
+  it("says nothing about IPNS when the deploy published none", async () => {
+    const result = await configure_domain({
       domain: "example.com",
       deployment: { metadata: { cid: "bafyCID", ipns_name: "" } },
-    } as never;
-    const result = await configure_domain(ctx);
+    } as never);
     expect(result.message).toContain("/ipfs/bafyCID");
-    expect(result.message).toMatch(/re-run deploy with IPNS/);
+    expect(result.message).not.toMatch(/IPNS/);
   });
 
-  it("reads persisted state when metadata is missing (IPNS-backed last deploy)", async () => {
-    api.state = JSON.stringify({
-      lastCid: "bafyPERSISTED",
-      ipnsName: "k51persisted",
-      lastUsedIpns: true,
-    });
+  it("falls back to persisted state when there is no deployment metadata", async () => {
+    api.state = JSON.stringify({ lastCid: "bafyPERSISTED", ipnsName: "k51persisted" });
     const result = await configure_domain({ domain: "example.com" } as never);
     expect(result.success).toBe(true);
-    expect(result.message).toContain("/ipns/k51persisted");
-  });
-
-  it("does NOT report a stale IPNS name when the deploy had IPNS off", async () => {
-    // Persisted state still carries a stable name from an earlier IPNS deploy…
-    api.state = JSON.stringify({ lastCid: "bafyOLD", ipnsName: "k51stale", lastUsedIpns: true });
-    // …but this deployment's metadata says IPNS was off (empty ipns_name).
-    const ctx = {
-      domain: "example.com",
-      deployment: { metadata: { cid: "bafyNEW", ipns_name: "" } },
-    } as never;
-    const result = await configure_domain(ctx);
-    expect(result.message).toContain("/ipfs/bafyNEW");
-    expect(result.message).not.toContain("k51stale");
-    expect(result.message).toMatch(/re-run deploy with IPNS/);
-  });
-
-  it("ignores a stale persisted IPNS name when the last deploy did not use IPNS", async () => {
-    api.state = JSON.stringify({ lastCid: "bafyCID", ipnsName: "k51stale", lastUsedIpns: false });
-    const result = await configure_domain({ domain: "example.com" } as never);
-    expect(result.message).toContain("/ipfs/bafyCID");
-    expect(result.message).not.toContain("k51stale");
+    expect(result.message).toContain("/ipfs/bafyPERSISTED");
   });
 
   it("fails when there is no deployment at all", async () => {
