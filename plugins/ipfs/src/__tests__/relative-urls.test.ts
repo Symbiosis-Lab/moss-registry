@@ -90,3 +90,37 @@ describe("makeSiteRelative", () => {
     expect(files[0]).toBe(input[0]);
   });
 });
+
+describe("rewriteHtmlAbsoluteUrls — script and style bodies are not ours to edit", () => {
+  it("leaves markup built inside an inline script alone", () => {
+    // The regex matched `src="/…"` anywhere in the document, including inside
+    // JS. A script's strings are not ours to rewrite: the path may be resolved
+    // at runtime against something other than this page's depth, or not be a
+    // URL at all.
+    const html = `<script>el.innerHTML = '<img src="/logo.png">';</script>`;
+    expect(rewriteHtmlAbsoluteUrls(html, "../")).toBe(html);
+  });
+
+  it("leaves a srcset string inside an inline script alone", () => {
+    const html = `<script>var s = 'srcset="/a.png 1x, /b.png 2x"';</script>`;
+    expect(rewriteHtmlAbsoluteUrls(html, "../")).toBe(html);
+  });
+
+  it("leaves inline style bodies alone", () => {
+    const html = `<style>.hero { background: url("/bg.png"); }</style>`;
+    expect(rewriteHtmlAbsoluteUrls(html, "../")).toBe(html);
+  });
+
+  it("still rewrites the script's OWN src attribute", () => {
+    expect(rewriteHtmlAbsoluteUrls(`<script src="/app.js"></script>`, "../")).toBe(
+      `<script src="../app.js"></script>`,
+    );
+  });
+
+  it("resumes rewriting after the script closes", () => {
+    const html = `<script>var a = '<a href="/x">';</script><a href="/about/">About</a>`;
+    expect(rewriteHtmlAbsoluteUrls(html, "../")).toBe(
+      `<script>var a = '<a href="/x">';</script><a href="../about/">About</a>`,
+    );
+  });
+});

@@ -9,11 +9,16 @@
  * build render correctly on ANY gateway form.
  *
  * Scope is deliberately narrow and rendering-critical only:
- * - href/src/srcset attributes with a leading "/" (not "//") are rewritten;
+ * - href/src/srcset ATTRIBUTES with a leading "/" (not "//") are rewritten;
  * - content= meta values (og:url, og:image) are left alone — social scrapers
  *   need fully-qualified URLs, which relative paths wouldn't fix;
- * - scripts/CSS bodies are not touched (the built site has no absolute CSS
- *   url() refs; one JS previews fetch degrades gracefully).
+ * - script and style bodies are left alone; only their own attributes are
+ *   rewritten.
+ *
+ * This whole module is a stopgap, and belongs in moss rather than here: a
+ * deploy hook reads the site, it does not rewrite it. The permanent home is a
+ * moss build option for relative URLs; until that exists, a site published to
+ * a path-form gateway is unstyled with dead navigation, which is worse.
  *
  * Base64/UTF-8 codecs are pure JS: the plugin runs under QuickJS in CLI mode,
  * where atob/TextDecoder are not guaranteed.
@@ -134,18 +139,42 @@ function rewriteSrcset(value: string, prefix: string): string {
     .join(",");
 }
 
+/** Rewrite the attribute values in one span of markup. */
+function rewriteAttributes(markup: string, prefix: string): string {
+  const out = markup.replace(/(\b(?:href|src)=")\/(?!\/)/g, `$1${prefix}`);
+  return out.replace(
+    /(\bsrcset=")([^"]*)(")/g,
+    (_m, open: string, value: string, close: string) => open + rewriteSrcset(value, prefix) + close,
+  );
+}
+
+/**
+ * A `<script>` or `<style>` element, split into its opening tag, its body and
+ * its closing tag. The body is code, not markup.
+ */
+const CODE_ELEMENT = /(<(script|style)\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi;
+
 /**
  * Rewrite root-absolute href/src/srcset URLs in one HTML document to be
  * relative to `prefix`. Protocol-relative ("//…"), absolute ("https://…"),
  * fragment, and mailto URLs are untouched, as are content= meta values.
+ *
+ * Only attribute contexts are rewritten. Script and style BODIES are left
+ * exactly as the author wrote them — a path in a string may be resolved at
+ * runtime against something other than this page's depth, or not be a URL at
+ * all, and either way rewriting someone's code is not this hook's business.
+ * The elements' own attributes (`<script src="/app.js">`) still are.
  */
 export function rewriteHtmlAbsoluteUrls(html: string, prefix: string): string {
-  let out = html.replace(/(\b(?:href|src)=")\/(?!\/)/g, `$1${prefix}`);
-  out = out.replace(
-    /(\bsrcset=")([^"]*)(")/g,
-    (_m, open: string, value: string, close: string) => open + rewriteSrcset(value, prefix) + close,
-  );
-  return out;
+  let out = "";
+  let cursor = 0;
+  for (const match of html.matchAll(CODE_ELEMENT)) {
+    const [whole, openTag, , body, closeTag] = match;
+    out += rewriteAttributes(html.slice(cursor, match.index), prefix);
+    out += rewriteAttributes(openTag, prefix) + body + closeTag;
+    cursor = match.index + whole.length;
+  }
+  return out + rewriteAttributes(html.slice(cursor), prefix);
 }
 
 /**
