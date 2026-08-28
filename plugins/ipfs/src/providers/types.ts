@@ -39,9 +39,6 @@ export interface IpfsProvider {
    */
   verifyDirectory(cid: string, nestedPath: string): Promise<StructureVerdict>;
 
-  /** Publish/republish a stable IPNS name at the CID. Optional; degrades. */
-  publishIpns?(cid: string): Promise<string | undefined>;
-
   /** The provider's own gateway URL for a CID. */
   gatewayUrl(cid: string): string;
 }

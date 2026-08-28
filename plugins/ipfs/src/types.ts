@@ -23,27 +23,26 @@ export type {
 export type ProviderId = "pinata" | "local";
 
 // ============================================================================
-// Plugin configuration (persisted in .moss/plugins/ipfs/config.json)
+// Settings (user-owned; read-only for the plugin — see settings.ts)
 //
-// The Pinata JWT is a SECRET and is NOT stored here — it lives in a plugin
+// The Pinata JWT is a SECRET and is NOT a setting — it lives in a plugin
 // cookie (see credentials.ts).
 // ============================================================================
 
-export interface IpfsPluginConfig {
+export interface IpfsSettings {
   /** Which backend to pin through. */
-  provider?: ProviderId;
+  provider: ProviderId;
   /** Optional gateway host for View-site links (e.g. "gateway.pinata.cloud"). */
   gateway?: string;
   /** Pin label in the provider dashboard. Defaults to the project's site/folder name, else "moss-site". */
   pinName?: string;
   /** Publish a stable IPNS name pointing at each new CID. */
-  useIpns?: boolean;
+  useIpns: boolean;
   /**
    * Rewrite root-absolute href/src URLs in HTML to depth-relative ones before
    * upload, so the site renders on path-form gateways too (host/ipfs/<cid>/…).
-   * Default true.
    */
-  relativeUrls?: boolean;
+  relativeUrls: boolean;
   /**
    * Kubo RPC endpoint for the local provider. Empty/absent = the default
    * daemon on this machine (127.0.0.1:5001); set it to publish through an
@@ -56,25 +55,25 @@ export interface IpfsPluginConfig {
    * byte-identical CIDs, so this is pure redundancy under one address.
    */
   coPin?: boolean;
+}
 
-  // --- Derived state, persisted across deploys ---
+// ============================================================================
+// Runtime state (plugin-owned, persisted in .moss/plugins/ipfs/state.json)
+// ============================================================================
 
+export interface IpfsState {
   /**
    * Whether multipart directory structure has been positively verified against
    * a provider (per provider — the property belongs to the encoder × backend
    * pair). Once true, the per-deploy probe is skipped.
    */
   structureVerified?: Partial<Record<ProviderId, boolean>>;
-  /** Stable IPNS name (k51…/peer id) reused across deploys. */
-  ipnsName?: string;
-  /** Kubo keystore key name backing the IPNS record (local provider). */
-  ipnsKey?: string;
   /**
-   * Identity-backed IPNS name derived from the moss-held plugin key
-   * (provider-independent; survives provider and machine-of-record switches).
+   * The site's stable IPNS name, derived from the moss-held plugin key
+   * (provider-independent; the same name across providers).
    */
-  identityIpnsName?: string;
-  /** Strictly-increasing sequence for identity IPNS records. */
+  ipnsName?: string;
+  /** Strictly-increasing sequence for IPNS records. Never allowed to go backwards. */
   ipnsSeq?: number;
   /**
    * Whether the LAST deploy actually published an IPNS name (i.e. its DNSLink
@@ -85,11 +84,13 @@ export interface IpfsPluginConfig {
   lastUsedIpns?: boolean;
   /** CID of the last successful deploy. */
   lastCid?: string;
-  /**
-   * Reason the last deploy failed — a debugging breadcrumb in config.json
-   * (cleared on the next success); a future settings surface can display it.
-   */
+  /** Reason the last deploy failed (cleared on the next success). */
   lastDeployError?: string;
+  /**
+   * When the user agreed to moss starting an IPFS daemon on this computer.
+   * ISO timestamp; absent means the consent panel has never been accepted.
+   */
+  daemonConsentAt?: string;
 }
 
 // ============================================================================

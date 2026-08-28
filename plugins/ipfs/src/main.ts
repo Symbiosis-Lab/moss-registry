@@ -23,7 +23,8 @@ import type {
   SiteFile,
   StructureVerdict,
 } from "./types";
-import { getConfig, applyUserSettings, recordSuccess, recordError } from "./config";
+import { readSettings } from "./settings";
+import { getState, recordSuccess, recordError } from "./state";
 import { getProvider, makeProviderById } from "./providers";
 import { readSiteFiles } from "./site-files";
 import { makeSiteRelative } from "./relative-urls";
@@ -38,7 +39,7 @@ import {
   closeBrowser,
 } from "./utils";
 import { getUrl } from "./http";
-import { publishIdentityIpns } from "./ipns-identity";
+import { publishIdentityIpns, isPublished } from "./ipns-identity";
 import { showResultPanel, type ResultView } from "./result-panel";
 import { REACHABILITY_TIMEOUT_MS, HEARTBEAT_MS } from "./constants";
 
@@ -69,15 +70,16 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     return { success: false, message: msg };
   }
 
-  // Single config read: persisted state + user settings overlay.
-  const persisted = await getConfig();
-  const firstDeploy = !persisted.lastCid;
-  const config = applyUserSettings(persisted, context.config);
+  // Settings come from moss (host-merged manifest defaults + the user's
+  // config.json); state is the plugin's own, in state.json.
+  const config = readSettings(context.config);
   if (!config.pinName) {
     // Default the pin label to the project's name (BaseContext.project_info);
     // providers fall back to "moss-site" when neither is available.
     config.pinName = context.project_info?.site_name || context.project_info?.folder_name;
   }
+  const state = await getState();
+  const firstDeploy = !state.lastCid;
   const provider = getProvider(config);
 
   // Progress state. The helper keeps the heartbeat's closure vars in sync with
@@ -145,7 +147,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     const onUpload = (pct: number, msg: string): void => {
       void progress("uploading", Math.min(4 + Math.floor((pct / 100) * 3), 7), msg);
     };
-    const alreadyVerified = config.structureVerified?.[provider.id] === true;
+    const alreadyVerified = state.structureVerified?.[provider.id] === true;
     const upload = await provider.uploadDir(files, onUpload);
     const { cid, sizeBytes } = upload;
     console.log(`   Pinned CID: ${cid}`);
@@ -193,32 +195,25 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       .then((r) => r.ok)
       .catch(() => false);
 
-    // --- Publish a stable IPNS name (best-effort, but degradation is loud). ---
-    // Preferred: identity IPNS — the name derives from a moss-held key, so it
-    // is identical across providers and machines. Fallback: the provider's own
-    // IPNS (local Kubo keystore). Both absent → honest note.
+    // --- Publish the site's stable IPNS name. ---
+    // One owner: the name derives from moss's own key (ipns-identity.ts). A
+    // failure here is fatal for the deploy rather than routed around — the
+    // only other key available would publish the site at a DIFFERENT
+    // permanent address, which is worse than not publishing.
     let ipnsName: string | undefined;
-    let ipnsNote = "";
     if (config.useIpns) {
       await progress("publishing", 9, "Publishing IPNS name...");
-      const identity = await publishIdentityIpns(cid, config);
-      if (identity) {
-        ipnsName = identity.name;
-        console.log(`   IPNS (identity): ${ipnsName} seq=${identity.sequence}`);
-      } else if (provider.publishIpns) {
-        ipnsName = await provider.publishIpns(cid);
-        if (ipnsName) {
-          console.log(`   IPNS: ${ipnsName}`);
-        } else {
-          ipnsNote = `\n\nNote: IPNS publish failed on ${provider.label} this deploy — the URL above points at this deploy's CID.`;
-          console.warn("   IPNS publish failed — continuing with CID-only URLs.");
-        }
-      } else {
-        ipnsNote =
-          `\n\nNote: ${provider.label} does not support IPNS — the URL points at this deploy's CID. ` +
-          `Use the local IPFS node provider for a stable IPNS name, or set up a custom domain (DNSLink).`;
+      const outcome = await publishIdentityIpns(cid, config);
+      if (!isPublished(outcome)) {
+        throw new Error(
+          `Your site was pinned (CID ${cid}), but its stable IPNS address could not be ` +
+            `updated, so the address still points at your previous deploy: ${outcome.reason}`,
+        );
       }
+      ipnsName = outcome.name;
+      console.log(`   IPNS: ${ipnsName} seq=${outcome.sequence}`);
     }
+
     // --- Co-pin: same CID, one more keeper (best-effort, never fatal). ---
     // Both backends produce byte-identical CIDs, so this is pure redundancy:
     // the address doesn't change, one more party keeps the bytes alive.
@@ -254,9 +249,8 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     // --- Persist derived state in one write. ---
     await recordSuccess(cid, {
       lastUsedIpns: !!ipnsName,
-      ...(ipnsName ? { ipnsName } : {}),
       ...(verifiedNow && !alreadyVerified
-        ? { structureVerified: { ...persisted.structureVerified, [provider.id]: true } }
+        ? { structureVerified: { ...state.structureVerified, [provider.id]: true } }
         : {}),
     });
 
@@ -282,8 +276,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       `CID: ${cid}\n\n` +
       `Pinned via ${provider.label}.` +
       (coPinnedId ? ` Also pinned to ${coPinnedId === "local" ? "your local node" : "Pinata"}.` : ``) +
-      availabilityNote +
-      ipnsNote;
+      availabilityNote;
 
     await showToast({
       message: "Published to IPFS!",
@@ -369,9 +362,9 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
     // No deployment metadata (e.g. a standalone call) — best-effort from
     // persisted state. Only treat the domain as IPNS-backed if the last deploy
     // actually published one.
-    const persisted = await getConfig();
-    cid = persisted.lastCid;
-    ipnsName = persisted.lastUsedIpns ? persisted.ipnsName : undefined;
+    const state = await getState();
+    cid = state.lastCid;
+    ipnsName = state.lastUsedIpns ? state.ipnsName : undefined;
   }
 
   if (!cid && !ipnsName) {

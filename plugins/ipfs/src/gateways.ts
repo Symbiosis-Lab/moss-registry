@@ -18,14 +18,14 @@ import {
   KUBO_SUBDOMAIN_HOST,
   DEFAULT_KUBO_RPC,
 } from "./constants";
-import type { IpfsPluginConfig, ProviderId } from "./types";
+import type { IpfsSettings, ProviderId } from "./types";
 
 // ---------------------------------------------------------------------------
 // Node endpoint helpers
 // ---------------------------------------------------------------------------
 
 /** The Kubo RPC base URL for the local provider (trailing slash stripped). */
-export function kuboRpcBase(config: IpfsPluginConfig): string {
+export function kuboRpcBase(config: IpfsSettings): string {
   const custom = config.nodeRpc?.trim().replace(/\/+$/, "");
   return custom && custom.length > 0 ? custom : DEFAULT_KUBO_RPC;
 }
@@ -35,7 +35,7 @@ export function kuboRpcBase(config: IpfsPluginConfig): string {
  * the only case where localhost gateway links make sense (a remote node's
  * gateway port/binding is unknowable from here).
  */
-export function isDefaultNodeRpc(config: IpfsPluginConfig): boolean {
+export function isDefaultNodeRpc(config: IpfsSettings): boolean {
   const base = kuboRpcBase(config);
   return base === DEFAULT_KUBO_RPC || base === "http://localhost:5001";
 }
@@ -80,7 +80,7 @@ export function bestCidUrl(cid: string, host: string): string {
  * an NXDOMAIN. Only the known subdomain-capable default (dweb.link) uses the
  * origin-isolated subdomain form.
  */
-export function primaryGatewayUrl(cid: string, config: IpfsPluginConfig): string {
+export function primaryGatewayUrl(cid: string, config: IpfsSettings): string {
   const custom = config.gateway?.trim();
   if (custom) return pathCidUrl(custom, cid);
   return bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
@@ -113,7 +113,7 @@ export function providerGatewayUrl(
 export function siteDisplayUrl(
   cid: string,
   provider: ProviderId,
-  config: IpfsPluginConfig,
+  config: IpfsSettings,
 ): string {
   const custom = config.gateway?.trim();
   if (custom) return pathCidUrl(custom, cid);
@@ -138,7 +138,7 @@ export function gatewayLinks(
   cid: string,
   ipnsName: string | undefined,
   provider: ProviderId,
-  config: IpfsPluginConfig,
+  config: IpfsSettings,
 ): GatewayLink[] {
   const links: GatewayLink[] = [
     { label: "dweb.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_DWEB) },

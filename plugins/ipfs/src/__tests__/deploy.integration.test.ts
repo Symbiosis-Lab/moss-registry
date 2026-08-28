@@ -3,8 +3,7 @@ import type { IpfsProvider } from "../providers/types";
 
 // --- moss-api stub -----------------------------------------------------------
 const api = vi.hoisted(() => ({
-  configFile: "",
-  writes: [] as string[],
+  files: {} as Record<string, string>,
   toasts: [] as Array<Record<string, unknown>>,
   progress: [] as Array<{ phase: string; step: number; msg?: string }>,
 }));
@@ -28,15 +27,31 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   getPluginCookie: vi.fn(),
   setPluginCookie: vi.fn(),
   getPluginEnvVar: vi.fn(),
-  pluginFileExists: vi.fn(async () => api.configFile !== ""),
-  readPluginFile: vi.fn(async () => api.configFile),
-  writePluginFile: vi.fn(async (_name: string, content: string) => {
-    api.writes.push(content);
-    api.configFile = content;
+  pluginFileExists: vi.fn(async (name: string) => api.files[name] !== undefined),
+  readPluginFile: vi.fn(async (name: string) => api.files[name] ?? ""),
+  writePluginFile: vi.fn(async (name: string, content: string) => {
+    api.files[name] = content;
   }),
   readSiteFile: vi.fn(async () => "aGVsbG8="),
   fetchUrl: vi.fn(async () => ({ ok: true, status: 200 })),
 }));
+
+// --- identity IPNS stub ------------------------------------------------------
+// The site's only IPNS owner; main.ts must fail the deploy when it fails.
+const ipns = vi.hoisted(() => ({
+  outcome: { name: "k51identity", sequence: 2n } as Record<string, unknown>,
+  calls: 0,
+}));
+vi.mock("../ipns-identity", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../ipns-identity")>();
+  return {
+    ...actual,
+    publishIdentityIpns: vi.fn(async () => {
+      ipns.calls++;
+      return ipns.outcome;
+    }),
+  };
+});
 
 // --- provider stub -----------------------------------------------------------
 const providerRef = vi.hoisted(() => ({
@@ -61,35 +76,40 @@ function makeProvider(overrides: Partial<IpfsProvider> = {}): IpfsProvider {
       return { cid: "bafyNEW", sizeBytes: 123 };
     }),
     verifyDirectory: vi.fn(async () => "ok" as const),
-    publishIpns: vi.fn(async () => undefined),
     gatewayUrl: (cid: string) => `https://gateway.pinata.cloud/ipfs/${cid}`,
     ...overrides,
   };
 }
 
-/** Persisted config with structure already verified (skips probing). */
-const CACHED_CONFIG = JSON.stringify({
-  provider: "pinata",
-  useIpns: false,
+/** Plugin state with structure already verified (skips probing). */
+const CACHED_STATE = JSON.stringify({
   structureVerified: { pinata: true },
   lastCid: "bafyOLD", // not first deploy → no result panel
 });
 
-/** Persisted config with nothing verified yet (verification path runs). */
-const FRESH_CONFIG = JSON.stringify({
-  provider: "pinata",
-  useIpns: false,
-  lastCid: "bafyOLD",
-});
+/** Plugin state with nothing verified yet (verification path runs). */
+const FRESH_STATE = JSON.stringify({ lastCid: "bafyOLD" });
 
-const flatContext = { site_files: ["index.html"], config: {} } as never;
-const nestedContext = { site_files: ["index.html", "assets/app.css"], config: {} } as never;
+/** Settings as the host hands them over: manifest keys, already merged. */
+const SETTINGS = { provider: "pinata", use_ipns: false };
+
+const flatContext = { site_files: ["index.html"], config: SETTINGS } as never;
+const nestedContext = {
+  site_files: ["index.html", "assets/app.css"],
+  config: SETTINGS,
+} as never;
+
+/** The state the plugin persisted during a deploy. */
+function state(): Record<string, unknown> {
+  return JSON.parse(api.files["state.json"] ?? "{}") as Record<string, unknown>;
+}
 
 beforeEach(() => {
-  api.configFile = CACHED_CONFIG;
-  api.writes = [];
+  api.files = { "state.json": CACHED_STATE };
   api.toasts = [];
   api.progress = [];
+  ipns.outcome = { name: "k51identity", sequence: 2n };
+  ipns.calls = 0;
   providerRef.current = makeProvider();
   providerRef.secondary = null;
   vi.clearAllMocks();
@@ -116,7 +136,11 @@ describe("deploy — happy path (already verified)", () => {
   });
 
   it("emits a DNSLink dns_target when a custom domain is set", async () => {
-    const result = await deploy({ site_files: ["index.html"], config: {}, domain: "example.com" } as never);
+    const result = await deploy({
+      site_files: ["index.html"],
+      config: SETTINGS,
+      domain: "example.com",
+    } as never);
     const txt = result.deployment?.dns_target?.records.find((r) => r.record_type === "TXT");
     expect(txt?.name).toBe("_dnslink");
     expect(txt?.value).toContain("/ipfs/bafyNEW");
@@ -125,24 +149,23 @@ describe("deploy — happy path (already verified)", () => {
 
 describe("deploy — structure verification", () => {
   it("verifies once, persists the result per provider, and marks structure_verified", async () => {
-    api.configFile = FRESH_CONFIG;
+    api.files["state.json"] = FRESH_STATE;
     const result = await deploy(nestedContext);
     expect(result.success).toBe(true);
     expect(providerRef.current?.verifyDirectory).toHaveBeenCalledWith("bafyNEW", "assets/app.css");
     expect(result.deployment?.metadata?.structure_verified).toBe("true");
-    const finalConfig = JSON.parse(api.configFile);
-    expect(finalConfig.structureVerified).toEqual({ pinata: true });
+    expect(state().structureVerified).toEqual({ pinata: true });
   });
 
   it("skips verification for a flat site (nothing can lose structure)", async () => {
-    api.configFile = FRESH_CONFIG;
+    api.files["state.json"] = FRESH_STATE;
     const result = await deploy(flatContext);
     expect(providerRef.current?.verifyDirectory).not.toHaveBeenCalled();
     expect(result.deployment?.metadata?.structure_verified).toBe("true");
   });
 
   it("fails loudly on a CONFIRMED broken structure (never a silent broken site)", async () => {
-    api.configFile = FRESH_CONFIG;
+    api.files["state.json"] = FRESH_STATE;
     providerRef.current = makeProvider({
       verifyDirectory: vi.fn(async () => "broken" as const),
     });
@@ -152,11 +175,11 @@ describe("deploy — structure verification", () => {
     expect(api.toasts.at(-1)?.variant).toBe("error");
     // Only one upload — there is deliberately no retry path.
     expect(providerRef.current?.uploadDir).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(api.configFile).structureVerified).toBeUndefined();
+    expect(state().structureVerified).toBeUndefined();
   });
 
   it("skips the probe entirely when the upload response proved the structure", async () => {
-    api.configFile = FRESH_CONFIG;
+    api.files["state.json"] = FRESH_STATE;
     providerRef.current = makeProvider({
       uploadDir: vi.fn(async () => ({ cid: "bafyNEW", sizeBytes: 9, verified: true })),
     });
@@ -164,11 +187,11 @@ describe("deploy — structure verification", () => {
     expect(result.success).toBe(true);
     expect(providerRef.current?.verifyDirectory).not.toHaveBeenCalled();
     expect(result.deployment?.metadata?.structure_verified).toBe("true");
-    expect(JSON.parse(api.configFile).structureVerified).toEqual({ pinata: true });
+    expect(state().structureVerified).toEqual({ pinata: true });
   });
 
   it("treats a response-disproven structure as broken without probing first", async () => {
-    api.configFile = FRESH_CONFIG;
+    api.files["state.json"] = FRESH_STATE;
     providerRef.current = makeProvider({
       uploadDir: vi.fn(async () => ({ cid: "bafyMULTI", sizeBytes: 1, verified: false })),
     });
@@ -179,36 +202,32 @@ describe("deploy — structure verification", () => {
   });
 
   it("persists nothing on an inconclusive probe (re-verifies next deploy)", async () => {
-    api.configFile = FRESH_CONFIG;
+    api.files["state.json"] = FRESH_STATE;
     providerRef.current = makeProvider({
       verifyDirectory: vi.fn(async () => "inconclusive" as const),
     });
     const result = await deploy(nestedContext);
     expect(result.success).toBe(true); // multipart result stands
     expect(result.deployment?.metadata?.structure_verified).toBe("false");
-    expect(JSON.parse(api.configFile).structureVerified).toBeUndefined();
+    expect(state().structureVerified).toBeUndefined();
     // No CAR retry on a transient failure.
     expect(providerRef.current?.uploadDir).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("deploy — co-pinning", () => {
-  const COPIN_CONFIG = JSON.stringify({
-    provider: "pinata",
-    useIpns: false,
-    coPin: true,
-    structureVerified: { pinata: true },
-    lastCid: "bafyOLD",
-  });
+  const copinContext = {
+    site_files: ["index.html"],
+    config: { ...SETTINGS, co_pin: true },
+  } as never;
 
   it("pins to the ready secondary and notes it, without changing the address", async () => {
-    api.configFile = COPIN_CONFIG;
     providerRef.secondary = makeProvider({
       id: "local",
       label: "Local Kubo node",
       uploadDir: vi.fn(async () => ({ cid: "bafyNEW", sizeBytes: 123 })),
     });
-    const result = await deploy(flatContext);
+    const result = await deploy(copinContext);
     expect(result.success).toBe(true);
     expect(providerRef.secondary?.uploadDir).toHaveBeenCalledTimes(1);
     expect(result.message).toMatch(/Also pinned to your local node/);
@@ -217,39 +236,36 @@ describe("deploy — co-pinning", () => {
   });
 
   it("skips silently when the secondary isn't ready", async () => {
-    api.configFile = COPIN_CONFIG;
     providerRef.secondary = makeProvider({
       id: "local",
       checkReady: vi.fn(async () => ({ ready: false as const, reason: "daemon down" })),
     });
-    const result = await deploy(flatContext);
+    const result = await deploy(copinContext);
     expect(result.success).toBe(true);
     expect(providerRef.secondary?.uploadDir).not.toHaveBeenCalled();
     expect(result.deployment?.metadata?.co_pinned).toBe("");
   });
 
   it("does NOT claim a keeper when the secondary returns a different CID", async () => {
-    api.configFile = COPIN_CONFIG;
     providerRef.secondary = makeProvider({
       id: "local",
       label: "Local Kubo node",
       uploadDir: vi.fn(async () => ({ cid: "bafyDIFFERENT", sizeBytes: 123 })),
     });
-    const result = await deploy(flatContext);
+    const result = await deploy(copinContext);
     expect(result.success).toBe(true);
     expect(result.deployment?.metadata?.co_pinned).toBe("");
     expect(result.message).not.toMatch(/Also pinned/);
   });
 
   it("never fails the deploy when the secondary throws", async () => {
-    api.configFile = COPIN_CONFIG;
     providerRef.secondary = makeProvider({
       id: "local",
       uploadDir: vi.fn(async () => {
         throw new Error("secondary exploded");
       }),
     });
-    const result = await deploy(flatContext);
+    const result = await deploy(copinContext);
     expect(result.success).toBe(true);
     expect(result.deployment?.metadata?.co_pinned).toBe("");
     expect(api.toasts.at(-1)?.variant).toBe("success");
@@ -282,46 +298,38 @@ describe("deploy — setup gate", () => {
   });
 });
 
-describe("deploy — IPNS degradation is loud", () => {
-  it("notes a failed IPNS publish in the result message", async () => {
-    api.configFile = JSON.stringify({
-      provider: "pinata",
-      useIpns: true,
-      structureVerified: { pinata: true },
-      lastCid: "bafyOLD",
-    });
-    providerRef.current = makeProvider({ publishIpns: vi.fn(async () => undefined) });
+describe("deploy — one IPNS owner", () => {
+  const ipnsContext = {
+    site_files: ["index.html"],
+    config: { provider: "pinata", use_ipns: true },
+  } as never;
+
+  it("publishes the identity name and records that the deploy used it", async () => {
+    const result = await deploy(ipnsContext);
+    expect(result.success).toBe(true);
+    expect(result.deployment?.metadata?.ipns_name).toBe("k51identity");
+    expect(state().lastUsedIpns).toBe(true);
+  });
+
+  it("FAILS the deploy when the IPNS publish fails, naming the reason", async () => {
+    // The only other key available is the node's own keystore, which would put
+    // the site at a different permanent address. Reporting success while the
+    // stable URL still served the previous deploy is the failure to avoid.
+    ipns.outcome = { reason: "the IPFS node rejected the IPNS record (HTTP 500)" };
+    const result = await deploy(ipnsContext);
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/rejected the IPNS record/);
+    expect(result.deployment).toBeUndefined();
+    expect(api.toasts.at(-1)?.variant).toBe("error");
+    expect(state().lastCid).toBe("bafyOLD"); // no success recorded
+  });
+
+  it("does not touch IPNS at all when the setting is off", async () => {
     const result = await deploy(flatContext);
     expect(result.success).toBe(true);
-    expect(result.message).toMatch(/IPNS publish failed/);
+    expect(ipns.calls).toBe(0);
     expect(result.deployment?.metadata?.ipns_name).toBe("");
-  });
-
-  it("notes when the provider has no IPNS support at all", async () => {
-    api.configFile = JSON.stringify({
-      provider: "pinata",
-      useIpns: true,
-      structureVerified: { pinata: true },
-      lastCid: "bafyOLD",
-    });
-    providerRef.current = makeProvider({ publishIpns: undefined });
-    const result = await deploy(flatContext);
-    expect(result.success).toBe(true);
-    expect(result.message).toMatch(/does not support IPNS/);
-  });
-
-  it("includes the IPNS name when publishing succeeds", async () => {
-    api.configFile = JSON.stringify({
-      provider: "pinata",
-      useIpns: true,
-      structureVerified: { pinata: true },
-      lastCid: "bafyOLD",
-    });
-    providerRef.current = makeProvider({ publishIpns: vi.fn(async () => "k51new") });
-    const result = await deploy(flatContext);
-    expect(result.deployment?.metadata?.ipns_name).toBe("k51new");
-    expect(result.message).not.toMatch(/IPNS publish failed/);
-    expect(JSON.parse(api.configFile).lastUsedIpns).toBe(true);
+    expect(state().lastUsedIpns).toBe(false);
   });
 });
 

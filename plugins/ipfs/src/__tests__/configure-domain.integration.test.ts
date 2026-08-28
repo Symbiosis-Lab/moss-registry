@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const api = vi.hoisted(() => ({ configFile: "{}" }));
+const api = vi.hoisted(() => ({ state: "" }));
 
 vi.mock("@symbiosis-lab/moss-api", () => ({
   setMessageContext: vi.fn(),
@@ -20,15 +20,15 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   getPluginEnvVar: vi.fn(),
   listSiteFilesWithSizes: vi.fn(),
   readSiteFile: vi.fn(),
-  pluginFileExists: vi.fn(async () => api.configFile !== "{}"),
-  readPluginFile: vi.fn(async () => api.configFile),
+  pluginFileExists: vi.fn(async (name: string) => name === "state.json" && api.state !== ""),
+  readPluginFile: vi.fn(async () => api.state),
   writePluginFile: vi.fn(),
 }));
 
 import { configure_domain } from "../main";
 
 beforeEach(() => {
-  api.configFile = "{}";
+  api.state = "";
   vi.clearAllMocks();
 });
 
@@ -54,8 +54,8 @@ describe("configure_domain", () => {
     expect(result.message).toMatch(/re-run deploy with IPNS/);
   });
 
-  it("reads persisted config when metadata is missing (IPNS-backed last deploy)", async () => {
-    api.configFile = JSON.stringify({
+  it("reads persisted state when metadata is missing (IPNS-backed last deploy)", async () => {
+    api.state = JSON.stringify({
       lastCid: "bafyPERSISTED",
       ipnsName: "k51persisted",
       lastUsedIpns: true,
@@ -67,7 +67,7 @@ describe("configure_domain", () => {
 
   it("does NOT report a stale IPNS name when the deploy had IPNS off", async () => {
     // Persisted state still carries a stable name from an earlier IPNS deploy…
-    api.configFile = JSON.stringify({ lastCid: "bafyOLD", ipnsName: "k51stale", lastUsedIpns: true });
+    api.state = JSON.stringify({ lastCid: "bafyOLD", ipnsName: "k51stale", lastUsedIpns: true });
     // …but this deployment's metadata says IPNS was off (empty ipns_name).
     const ctx = {
       domain: "example.com",
@@ -80,7 +80,7 @@ describe("configure_domain", () => {
   });
 
   it("ignores a stale persisted IPNS name when the last deploy did not use IPNS", async () => {
-    api.configFile = JSON.stringify({ lastCid: "bafyCID", ipnsName: "k51stale", lastUsedIpns: false });
+    api.state = JSON.stringify({ lastCid: "bafyCID", ipnsName: "k51stale", lastUsedIpns: false });
     const result = await configure_domain({ domain: "example.com" } as never);
     expect(result.message).toContain("/ipfs/bafyCID");
     expect(result.message).not.toContain("k51stale");

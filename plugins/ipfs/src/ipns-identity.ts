@@ -1,21 +1,22 @@
 /**
  * Identity-backed IPNS: the stable name derives from a key MOSS holds, not
- * from any provider's keystore.
+ * from any provider's keystore. This is the site's ONLY IPNS owner.
  *
- * Provider-independent by construction: the plugin derives the name from
- * getKey("ipns").publicKey, builds the record (ipns-record.ts), has moss sign
- * it (signWithKey), and publishes the signed bytes through any reachable Kubo
- * RPC (/api/v0/routing/put). Switching Pinata ↔ local — or laptops — keeps the
- * SAME name, because the key travels with the user's moss, not the backend.
+ * The plugin derives the name from getKey("ipns").publicKey, builds the record
+ * (ipns-record.ts), has moss sign it (signWithKey), and publishes the signed
+ * bytes through the configured Kubo RPC (/api/v0/routing/put). Switching
+ * Pinata ↔ local keeps the SAME name, because the key belongs to the user's
+ * moss, not to a backend.
  *
- * Availability degrades cleanly: older moss builds without the keystore
- * commands (v0.7.21 ships without them) simply report unavailable and callers
- * fall back to the per-provider IPNS path.
+ * Failures are reported, never worked around: publishing under some other key
+ * would change the site's permanent address. The keystore commands this needs
+ * ship in moss v0.7.23, which is the manifest's `min_moss_version`, so their
+ * absence is a broken host rather than a supported configuration.
  */
 
 import { getKey, signWithKey } from "@symbiosis-lab/moss-api";
-import type { IpfsPluginConfig } from "./types";
-import { updateConfig } from "./config";
+import type { IpfsSettings } from "./types";
+import { getState, updateState } from "./state";
 import { kuboRpcBase } from "./gateways";
 import { postMultipart } from "./http";
 import { bytesToBase64Js } from "./relative-urls";
@@ -39,35 +40,42 @@ export interface IdentityPublishResult {
   sequence: bigint;
 }
 
-/**
- * The identity IPNS name, or undefined when this moss build has no keystore
- * API. First call creates the key (moss-side, never exported).
- */
-export async function identityIpnsName(): Promise<string | undefined> {
-  try {
-    const key = await getKey(KEY_NAME, "ed25519");
-    return ipnsNameFromPublicKey(key.publicKey);
-  } catch (e) {
-    console.log(`   Identity IPNS unavailable (keystore API missing?): ${e instanceof Error ? e.message : e}`);
-    return undefined;
-  }
+/** Why a publish attempt did not happen. Callers surface this verbatim. */
+export interface IdentityPublishFailure {
+  reason: string;
+}
+
+export type IdentityPublishOutcome = IdentityPublishResult | IdentityPublishFailure;
+
+export function isPublished(o: IdentityPublishOutcome): o is IdentityPublishResult {
+  return "name" in o;
 }
 
 /**
- * Build, sign, and publish an identity IPNS record pointing at `cid` through
- * the configured Kubo RPC. Returns undefined (never throws) when the keystore
- * API or the node is unavailable — callers fall back to provider IPNS.
+ * Build, sign, and publish the site's IPNS record pointing at `cid` through
+ * the configured Kubo RPC. Never throws: returns either the published name and
+ * sequence, or the reason it failed.
  */
 export async function publishIdentityIpns(
   cid: string,
-  config: IpfsPluginConfig,
-): Promise<IdentityPublishResult | undefined> {
-  const name = await identityIpnsName();
-  if (!name) return undefined;
+  settings: IpfsSettings,
+): Promise<IdentityPublishOutcome> {
+  let name: string;
+  try {
+    const key = await getKey(KEY_NAME, "ed25519");
+    name = ipnsNameFromPublicKey(key.publicKey);
+  } catch (e) {
+    return {
+      reason: `moss could not provide the IPNS signing key: ${errText(e)}`,
+    };
+  }
 
   try {
-    // Strictly-increasing sequence, persisted per project.
-    const sequence = BigInt(config.ipnsSeq ?? 0) + 1n;
+    // Strictly increasing, and never restarted from zero: a record whose
+    // sequence does not exceed the last published one is ignored by every
+    // node, which would freeze the site at its previous CID.
+    const state = await getState();
+    const sequence = BigInt(state.ipnsSeq ?? 0) + 1n;
 
     const input = {
       value: `/ipfs/${cid}`,
@@ -80,7 +88,7 @@ export async function publishIdentityIpns(
     const record = ipnsRecordProtobuf(input, data, signatureV2);
 
     const res = await postMultipart(
-      `${kuboRpcBase(config)}/api/v0/routing/put?arg=${encodeURIComponent(`/ipns/${name}`)}`,
+      `${kuboRpcBase(settings)}/api/v0/routing/put?arg=${encodeURIComponent(`/ipns/${name}`)}`,
       {
         files: [
           {
@@ -95,16 +103,18 @@ export async function publishIdentityIpns(
       { timeoutMs: IPNS_PUBLISH_TIMEOUT_MS },
     );
     if (!res.ok) {
-      console.warn(`   Identity IPNS publish failed (HTTP ${res.status}): ${res.text().slice(0, 200)}`);
-      return undefined;
+      return {
+        reason: `the IPFS node rejected the IPNS record (HTTP ${res.status}): ${res.text().slice(0, 200)}`,
+      };
     }
 
-    await updateConfig({ ipnsSeq: Number(sequence), identityIpnsName: name });
-    config.ipnsSeq = Number(sequence);
-    config.identityIpnsName = name;
+    await updateState({ ipnsSeq: Number(sequence), ipnsName: name });
     return { name, sequence };
   } catch (e) {
-    console.warn(`   Identity IPNS publish failed: ${e instanceof Error ? e.message : e}`);
-    return undefined;
+    return { reason: `publishing the IPNS record failed: ${errText(e)}` };
   }
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

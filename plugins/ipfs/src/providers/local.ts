@@ -5,11 +5,17 @@
  * the work, so we never need the on-disk site path or a bundled binary. The
  * `ipfs` CLI is only consulted (kubo-bootstrap.ts) to detect an installed
  * node and start it — never to download one.
+ *
+ * This provider deliberately does NOT publish IPNS. The site's stable name is
+ * owned by one layer only (ipns-identity.ts, keyed on moss's own keystore):
+ * the node's keystore holds a DIFFERENT key, so a fallback publish through it
+ * would move the site to a permanently different address on any transient
+ * failure of the identity path.
  */
 
 import type { IpfsProvider } from "./types";
 import type {
-  IpfsPluginConfig,
+  IpfsSettings,
   SiteFile,
   DeployOutput,
   ReadyState,
@@ -17,15 +23,12 @@ import type {
   UploadProgress,
 } from "../types";
 import {
-  IPNS_KEY_PREFIX,
   UPLOAD_TIMEOUT_MS,
   API_TIMEOUT_MS,
-  IPNS_PUBLISH_TIMEOUT_MS,
   DAEMON_PROBE_TIMEOUT_MS,
 } from "../constants";
-import { updateConfig } from "../config";
 import { providerGatewayUrl, kuboRpcBase, isDefaultNodeRpc } from "../gateways";
-import { postRaw, postMultipart, parseJson, toMultipartFiles } from "../http";
+import { postRaw, postMultipart, toMultipartFiles } from "../http";
 import { promptLocalDaemon } from "../setup-panel";
 import { bootstrapLocalNode, kuboInstalled } from "../kubo-bootstrap";
 import { reportProgress, sleep } from "../utils";
@@ -35,23 +38,12 @@ interface KuboAddLine {
   Hash: string;
   Size?: string;
 }
-interface KuboKeyList {
-  Keys?: Array<{ Name: string; Id: string }>;
-}
-interface KuboKeyGen {
-  Name: string;
-  Id: string;
-}
-interface KuboNamePublish {
-  Name: string;
-  Value: string;
-}
 
 export class LocalProvider implements IpfsProvider {
   readonly id = "local" as const;
   readonly label = "Local Kubo node";
 
-  constructor(private config: IpfsPluginConfig) {}
+  constructor(private config: IpfsSettings) {}
 
   private url(path: string): string {
     return `${kuboRpcBase(this.config)}/api/v0${path}`;
@@ -173,89 +165,9 @@ export class LocalProvider implements IpfsProvider {
     }
   }
 
-  /**
-   * The project's keystore key name. Persisted on first use with a unique
-   * random suffix — the Kubo keystore is node-global, so a shared name would
-   * let another project republish THIS project's stable IPNS name.
-   */
-  private async ensureKeyName(): Promise<string> {
-    if (this.config.ipnsKey) return this.config.ipnsKey;
-    const keyName = newProjectKeyName();
-    // Persist immediately so a failed key-gen retries with the SAME name.
-    await updateConfig({ ipnsKey: keyName });
-    this.config.ipnsKey = keyName;
-    return keyName;
-  }
-
-  async publishIpns(cid: string): Promise<string | undefined> {
-    try {
-      const keyName = await this.ensureKeyName();
-      await this.ensureKey(keyName);
-      const res = await postRaw(
-        this.url(`/name/publish?arg=/ipfs/${cid}&key=${encodeURIComponent(keyName)}&lifetime=48h&allow-offline=true`),
-        {},
-        { timeoutMs: IPNS_PUBLISH_TIMEOUT_MS },
-      );
-      if (!res.ok) return undefined;
-      const published = parseJson<KuboNamePublish>(res);
-      const name = stripIpnsPrefix(published.Name);
-      if (name && name !== this.config.ipnsName) {
-        await updateConfig({ ipnsName: name, ipnsKey: keyName });
-        this.config.ipnsName = name;
-        this.config.ipnsKey = keyName;
-      }
-      return name || this.config.ipnsName;
-    } catch (e) {
-      console.warn(`[ipfs] Kubo IPNS publish failed: ${e instanceof Error ? e.message : e}`);
-      return undefined; // best-effort
-    }
-  }
-
   gatewayUrl(cid: string): string {
     return providerGatewayUrl("local", cid);
   }
-
-  /** Create the IPNS keystore key if it doesn't exist yet; persist its id. */
-  private async ensureKey(keyName: string): Promise<void> {
-    const listRes = await postRaw(this.url("/key/list?l=false"), {}, { timeoutMs: API_TIMEOUT_MS });
-    if (listRes.ok) {
-      const list = parseJson<KuboKeyList>(listRes);
-      const existing = list.Keys?.find((k) => k.Name === keyName);
-      if (existing) {
-        if (existing.Id !== this.config.ipnsName) {
-          await updateConfig({ ipnsName: existing.Id, ipnsKey: keyName });
-          this.config.ipnsName = existing.Id;
-          this.config.ipnsKey = keyName;
-        }
-        return;
-      }
-    }
-    const genRes = await postRaw(
-      this.url(`/key/gen?arg=${encodeURIComponent(keyName)}&type=ed25519`),
-      {},
-      { timeoutMs: API_TIMEOUT_MS },
-    );
-    if (genRes.ok) {
-      const gen = parseJson<KuboKeyGen>(genRes);
-      await updateConfig({ ipnsName: gen.Id, ipnsKey: keyName });
-      this.config.ipnsName = gen.Id;
-      this.config.ipnsKey = keyName;
-    }
-  }
-}
-
-/** Drop a leading "/ipns/" if present. */
-function stripIpnsPrefix(name: string): string {
-  return name.replace(/^\/ipns\//, "");
-}
-
-/** Fresh unique keystore name for a project (e.g. "moss-site-3f9a12cd"). */
-export function newProjectKeyName(): string {
-  let suffix = "";
-  while (suffix.length < 8) {
-    suffix += Math.floor(Math.random() * 16).toString(16);
-  }
-  return `${IPNS_KEY_PREFIX}${suffix}`;
 }
 
 /**

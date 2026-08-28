@@ -23,7 +23,7 @@
 
 import type { IpfsProvider } from "./types";
 import type {
-  IpfsPluginConfig,
+  IpfsSettings,
   SiteFile,
   DeployOutput,
   ReadyState,
@@ -69,7 +69,7 @@ export class PinataProvider implements IpfsProvider {
   /** Structure evidence from the last upload response (per verifyDirectory). */
   private lastUploadVerified: boolean | undefined;
 
-  constructor(private config: IpfsPluginConfig) {}
+  constructor(private config: IpfsSettings) {}
 
   private authHeaders(jwt: string): Record<string, string> {
     return { Authorization: `Bearer ${jwt}` };
