@@ -19,11 +19,19 @@ import {
 import { renderResult } from "../result-panel";
 
 describe("renderPinataSetupHtml", () => {
-  it("includes the credential field, emit event, and env-var hint", () => {
+  it("includes the credential field and emit event", () => {
     const html = renderPinataSetupHtml();
     expect(html).toContain('id="jwt"');
     expect(html).toContain("ipfs:pinata-credentials");
-    expect(html).toContain("MOSS_IPFS_PINATA_JWT");
+  });
+
+  it("does not claim the token is per-project, or offer an env var that cannot work", () => {
+    // The cookie jar is app-wide, and the host's env allow-list refuses
+    // MOSS_IPFS_PINATA_JWT outright.
+    const html = renderPinataSetupHtml();
+    expect(html).not.toMatch(/this project only/);
+    expect(html).toMatch(/shared by every project/);
+    expect(html).not.toContain("MOSS_IPFS_PINATA_JWT");
   });
 });
 

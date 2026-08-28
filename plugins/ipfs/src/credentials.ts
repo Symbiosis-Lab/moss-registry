@@ -2,41 +2,29 @@
  * Pinata credential storage.
  *
  * The Pinata JWT is a secret, so it is stored via plugin cookies (like the
- * GitHub token in github/src/token.ts), never in config.json. Resolution order:
- *   1. MOSS_IPFS_PINATA_JWT env var (power-user / CI override, never persisted)
- *   2. In-memory cache (current session)
- *   3. Plugin cookie
+ * GitHub token in github/src/token.ts), never in config.json. Resolution
+ * order: the in-memory cache for this session, then the stored cookie.
+ *
+ * There is deliberately no environment-variable override: the host's
+ * `get_plugin_env_var` allow-list refuses any name outside MOSS_MATTERS_*, so
+ * the documented MOSS_IPFS_PINATA_JWT escape hatch could never have worked.
  */
 
 import {
   getPluginCookie,
   setPluginCookie,
-  getPluginEnvVar,
+  clearPluginCookies,
 } from "@symbiosis-lab/moss-api";
 
 const JWT_COOKIE_NAME = "__pinata_jwt";
 const PINATA_HOST = "pinata.cloud";
-const ENV_OVERRIDE = "MOSS_IPFS_PINATA_JWT";
 
 let cachedJwt: string | null = null;
 
-/**
- * Retrieve the Pinata JWT, or null if unset.
- * The env override wins so CI/power users can skip the setup panel.
- */
+/** Retrieve the Pinata JWT, or null if unset. */
 export async function getPinataJwt(): Promise<string | null> {
-  // 1. Env override (never cached or persisted).
-  try {
-    const env = await getPluginEnvVar(ENV_OVERRIDE);
-    if (env && env.length > 0) return env;
-  } catch {
-    // getPluginEnvVar unavailable — fall through.
-  }
-
-  // 2. In-memory cache.
   if (cachedJwt) return cachedJwt;
 
-  // 3. Plugin cookie.
   try {
     const cookies = await getPluginCookie();
     const cookie = cookies?.find((c) => c.name === JWT_COOKIE_NAME);
@@ -67,12 +55,19 @@ export function clearJwtCache(): void {
   cachedJwt = null;
 }
 
-/** Remove the stored Pinata JWT. */
+/**
+ * Remove the stored Pinata JWT.
+ *
+ * `setPluginCookie([])` does NOT do this: the host returns early on an empty
+ * list (`write_plugin_cookies`), so the rejected token survived and came back
+ * on the next deploy, every session. `clearPluginCookies()` is the call that
+ * actually clears the plugin's domain.
+ */
 export async function clearPinataJwt(): Promise<void> {
   try {
-    await setPluginCookie([]);
+    await clearPluginCookies();
   } catch {
-    // Ignore.
+    // Ignore — the in-memory cache is cleared either way.
   }
   cachedJwt = null;
 }

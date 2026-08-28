@@ -51,14 +51,15 @@ export function renderPinataSetupHtml(): string {
   <h1>Connect Pinata</h1>
   <p>Paste a Pinata JWT so moss can pin your site to IPFS. Create one at
      <code>app.pinata.cloud → API Keys → New Key</code> (needs Files write
-     access — the default for new keys). It's stored locally, in this project only.</p>
+     access — the default for new keys). moss keeps it on this computer, in the
+     same place as your other plugin sign-ins — it is shared by every project
+     you publish from, and is sent only to Pinata.</p>
   <textarea id="jwt" placeholder="eyJhbGci..." spellcheck="false"></textarea>
   <div class="status"></div>
   <div class="row">
     <button class="ghost" id="cancel">Cancel</button>
     <button class="primary" id="save" disabled>Save &amp; Deploy</button>
   </div>
-  <div class="footer">Power users: set <code>MOSS_IPFS_PINATA_JWT</code> to skip this screen.</div>
 </div>
 <script>
   var jwt = document.getElementById('jwt');
