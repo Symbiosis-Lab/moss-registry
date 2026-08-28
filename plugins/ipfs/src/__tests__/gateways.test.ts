@@ -4,7 +4,6 @@ import {
   subdomainCidUrl,
   pathCidUrl,
   bestCidUrl,
-  primaryGatewayUrl,
   pinataGatewayUrl,
   localGatewayCidUrl,
   siteDisplayUrl,
@@ -36,19 +35,6 @@ describe("URL builders", () => {
   it("bestCidUrl uses subdomain for CIDv1 and path for CIDv0", () => {
     expect(bestCidUrl(CIDV1, "dweb.link")).toBe(`https://${CIDV1}.ipfs.dweb.link`);
     expect(bestCidUrl(CIDV0, "dweb.link")).toBe(`https://dweb.link/ipfs/${CIDV0}`);
-  });
-});
-
-describe("primaryGatewayUrl", () => {
-  it("defaults to dweb.link subdomain for CIDv1", () => {
-    expect(primaryGatewayUrl(CIDV1, {})).toBe(`https://${CIDV1}.ipfs.dweb.link`);
-  });
-  it("uses the PATH form for a custom gateway host (most are path-style only)", () => {
-    const config: IpfsSettings = { gateway: "gateway.pinata.cloud" };
-    expect(primaryGatewayUrl(CIDV1, config)).toBe(`https://gateway.pinata.cloud/ipfs/${CIDV1}`);
-  });
-  it("falls back to path form for CIDv0", () => {
-    expect(primaryGatewayUrl(CIDV0, {})).toBe(`https://dweb.link/ipfs/${CIDV0}`);
   });
 });
 

@@ -50,11 +50,6 @@ export async function storePinataJwt(jwt: string): Promise<boolean> {
   return true;
 }
 
-/** Clear the in-memory JWT cache (does not touch stored cookies). */
-export function clearJwtCache(): void {
-  cachedJwt = null;
-}
-
 /**
  * Remove the stored Pinata JWT.
  *

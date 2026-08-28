@@ -68,15 +68,6 @@ export const REACHABILITY_TIMEOUT_MS = 15_000;
 export const IPNS_PUBLISH_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
-// Structure verification (multipart directory reconstruction)
-// ---------------------------------------------------------------------------
-
-/** Gateway attempts before calling a structure probe inconclusive. */
-export const STRUCTURE_VERIFY_ATTEMPTS = 3;
-/** Delay between structure-probe attempts (gateway propagation). */
-export const STRUCTURE_VERIFY_DELAY_MS = 3_000;
-
-// ---------------------------------------------------------------------------
 // Size guards (bytes)
 // ---------------------------------------------------------------------------
 

@@ -53,16 +53,6 @@ export function parseJson<T>(res: HttpResponse): T {
   }
 }
 
-/** POST a JSON object body and parse the JSON response. */
-export async function postJson<T>(
-  url: string,
-  body: Record<string, unknown>,
-  opts: RequestOptions = {},
-): Promise<T> {
-  const res = (await httpPost(url, body, opts)) as unknown as HttpResponse;
-  return parseJson<T>(res);
-}
-
 /**
  * POST a JSON object body and return the raw response (caller parses).
  * For body-less RPC calls (Kubo), pass {} — the SDK JSON-encodes the body and

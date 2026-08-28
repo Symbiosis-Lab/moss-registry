@@ -72,25 +72,6 @@ function bytesToBase36(bytes: Uint8Array): string {
   return out;
 }
 
-function base36ToBytes(s: string): Uint8Array {
-  let n = 0n;
-  for (const ch of s) {
-    const v = BigInt(BASE36.indexOf(ch));
-    if (v < 0n) throw new Error(`invalid base36 char: ${ch}`);
-    n = n * 36n + v;
-  }
-  const out: number[] = [];
-  while (n > 0n) {
-    out.unshift(Number(n & 0xffn));
-    n >>= 8n;
-  }
-  for (const ch of s) {
-    if (ch !== "0") break;
-    out.unshift(0);
-  }
-  return Uint8Array.from(out);
-}
-
 /** The libp2p PublicKey protobuf for an ed25519 key: 08 01 12 20 <32 bytes>. */
 export function libp2pPublicKeyProtobuf(publicKey: Uint8Array): Uint8Array {
   if (publicKey.length !== 32) {
@@ -107,20 +88,6 @@ export function ipnsNameFromPublicKey(publicKey: Uint8Array): string {
   // CIDv1: version 1, codec libp2p-key (0x72)
   const cid = concat([Uint8Array.from([0x01, 0x72]), multihash]);
   return "k" + bytesToBase36(cid);
-}
-
-/** Extract the 32-byte ed25519 public key from a "k51…" name (test round-trips). */
-export function publicKeyFromIpnsName(name: string): Uint8Array {
-  if (!name.startsWith("k")) throw new Error("expected a base36 multibase name (k…)");
-  const cid = base36ToBytes(name.slice(1));
-  // 01 72 | 00 24 | 08 01 12 20 | key
-  const prefix = [0x01, 0x72, 0x00, 0x24, 0x08, 0x01, 0x12, 0x20];
-  for (let i = 0; i < prefix.length; i++) {
-    if (cid[i] !== prefix[i]) throw new Error("not an ed25519 libp2p-key CID");
-  }
-  const key = cid.subarray(prefix.length);
-  if (key.length !== 32) throw new Error(`unexpected key length ${key.length}`);
-  return Uint8Array.from(key);
 }
 
 // ---------------------------------------------------------------------------

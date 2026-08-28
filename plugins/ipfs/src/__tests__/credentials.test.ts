@@ -18,11 +18,11 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   }),
 }));
 
-import { getPinataJwt, storePinataJwt, clearJwtCache, clearPinataJwt } from "../credentials";
+import { getPinataJwt, storePinataJwt, clearPinataJwt } from "../credentials";
 
-beforeEach(() => {
+beforeEach(async () => {
+  await clearPinataJwt();
   h.cookies = [];
-  clearJwtCache();
   vi.clearAllMocks();
 });
 
@@ -36,22 +36,20 @@ describe("getPinataJwt", () => {
     expect(await getPinataJwt()).toBe("COOKIE_JWT");
   });
 
-  it("caches within a session, and clearJwtCache drops it", async () => {
+  it("caches within a session, and clearPinataJwt drops the cache too", async () => {
     h.cookies = [{ name: "__pinata_jwt", value: "COOKIE_JWT" }];
     expect(await getPinataJwt()).toBe("COOKIE_JWT");
     h.cookies = [];
     expect(await getPinataJwt()).toBe("COOKIE_JWT"); // cached
-    clearJwtCache();
+    await clearPinataJwt();
     expect(await getPinataJwt()).toBeNull();
   });
 });
 
 describe("storePinataJwt / clearPinataJwt", () => {
-  it("persists to a cookie and reads back", async () => {
+  it("persists the JWT to a cookie", async () => {
     await storePinataJwt("STORED");
     expect(h.cookies.find((c) => c.name === "__pinata_jwt")?.value).toBe("STORED");
-    clearJwtCache();
-    expect(await getPinataJwt()).toBe("STORED");
   });
 
   it("clears the stored JWT for real, so a rejected token cannot come back", async () => {
@@ -62,7 +60,6 @@ describe("storePinataJwt / clearPinataJwt", () => {
     // mechanism here.
     expect(vi.mocked(setPluginCookie)).not.toHaveBeenCalledWith([]);
     expect(h.cookies).toHaveLength(0);
-    clearJwtCache();
     expect(await getPinataJwt()).toBeNull();
   });
 });

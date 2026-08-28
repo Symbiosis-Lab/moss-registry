@@ -70,21 +70,6 @@ export function bestCidUrl(cid: string, host: string): string {
   return isCidV1(cid) ? subdomainCidUrl(cid, host) : pathCidUrl(host, cid);
 }
 
-/**
- * The primary, shareable "View site" URL.
- *
- * A user-configured gateway host gets the PATH form: most custom gateways
- * (Pinata public + dedicated included) are path-style only, and the manifest's
- * documented example is gateway.pinata.cloud — subdomain form there would be
- * an NXDOMAIN. Only the known subdomain-capable default (dweb.link) uses the
- * origin-isolated subdomain form.
- */
-export function primaryGatewayUrl(cid: string, config: IpfsSettings): string {
-  const custom = config.gateway?.trim();
-  if (custom) return pathCidUrl(custom, cid);
-  return bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
-}
-
 /** Pinata's gateway URL for a CID (the user's dedicated host, or the shared one). */
 export function pinataGatewayUrl(cid: string, customGateway?: string): string {
   const host = customGateway && customGateway.trim().length > 0

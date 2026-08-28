@@ -3,14 +3,21 @@ import {
   varint,
   libp2pPublicKeyProtobuf,
   ipnsNameFromPublicKey,
-  publicKeyFromIpnsName,
   ipnsRecordData,
   ipnsSignablePayload,
   ipnsRecordProtobuf,
 } from "../ipns-record";
 
-/** A REAL IPNS name minted by Kubo during the live deploys of this plugin. */
+/** A REAL IPNS name minted by Kubo during the live deploys of this plugin, */
 const LIVE_NAME = "k51qzi5uqu5dkewuynblpxeul5hbuw11s4153bnr795fsunhvmfd02wyww4t7l";
+/** and the ed25519 public key it encodes. */
+const LIVE_PUBLIC_KEY = hexBytes(
+  "a9c3ced94c27198d99a85955a8ee8295d1a12e4408eaaaecb3367cd601c62ce1",
+);
+
+function hexBytes(hex: string): Uint8Array {
+  return Uint8Array.from(hex.match(/../g)!.map((b) => parseInt(b, 16)));
+}
 
 describe("varint", () => {
   it.each([
@@ -25,22 +32,18 @@ describe("varint", () => {
 });
 
 describe("IPNS name derivation", () => {
-  it("round-trips a REAL Kubo-minted name exactly", () => {
-    const pub = publicKeyFromIpnsName(LIVE_NAME);
-    expect(pub.length).toBe(32);
-    expect(ipnsNameFromPublicKey(pub)).toBe(LIVE_NAME);
+  it("derives a REAL Kubo-minted name from its public key", () => {
+    expect(ipnsNameFromPublicKey(LIVE_PUBLIC_KEY)).toBe(LIVE_NAME);
   });
 
   it("wraps the key in the libp2p protobuf framing", () => {
-    const pub = publicKeyFromIpnsName(LIVE_NAME);
-    const proto = libp2pPublicKeyProtobuf(pub);
+    const proto = libp2pPublicKeyProtobuf(LIVE_PUBLIC_KEY);
     expect(Array.from(proto.subarray(0, 4))).toEqual([0x08, 0x01, 0x12, 0x20]);
     expect(proto.length).toBe(36);
   });
 
-  it("rejects wrong key sizes and malformed names", () => {
+  it("rejects wrong key sizes", () => {
     expect(() => ipnsNameFromPublicKey(new Uint8Array(31))).toThrow(/32 bytes/);
-    expect(() => publicKeyFromIpnsName("bafynotbase36k")).toThrow();
   });
 });
 
