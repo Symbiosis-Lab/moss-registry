@@ -177,6 +177,29 @@ if (manifest?.entry) {
     if (requires.includes("execute_binary") && !usesExecuteBinary) {
       note(`${id}: declares execute_binary but the bundle does not appear to use it — drop the declaration if it is not needed`);
     }
+    // ---- the surfaces moss draws (ADR-072) ----------------------------
+    // Warnings, not failures: each pattern still runs, and each one is a
+    // plugin doing moss's job because moss used to have no way to do it.
+    const declaresCheck = Boolean(manifest.contributes?.deploy_target?.setup?.check);
+
+    if (/type\s*=\s*.?password/i.test(bundle)) {
+      note(
+        `${id}: the bundle draws a password field. moss collects credentials in its own modal — declare them under contributes.deploy_target.setup.credentials and read the value with moss.getSecret(). A plugin asking for a token itself teaches users to type credentials into whatever asks.`,
+      );
+    }
+
+    if (declaresCheck && !bundle.includes("check_setup")) {
+      fail(
+        `${id}: manifest declares setup.check but the bundle exports no check_setup hook — moss would ask a question nothing answers`,
+      );
+    }
+
+    if (!declaresCheck && bundle.includes("check_setup")) {
+      note(
+        `${id}: the bundle has a check_setup hook but the manifest does not declare contributes.deploy_target.setup.check — moss resolves the hook from the declaration, so this code never runs.`,
+      );
+    }
+
     for (const cap of requires) {
       if (cap !== "execute_binary") {
         fail(`${id}: unknown entry in requires: "${cap}" (recognized: execute_binary)`);

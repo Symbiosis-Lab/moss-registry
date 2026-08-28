@@ -164,6 +164,19 @@ author's machine, so they are not negotiable.
   native processes. Declare it in `requires` and explain in the PR why nothing
   weaker works. Reviewers may decline it.
 - **Committed lockfile.** Dependency diffs are part of review.
+- **Never ask for a credential yourself.** moss collects tokens in its own
+  modal, from the `contributes.deploy_target.setup.credentials` block in your
+  manifest, and you read the value with `moss.getSecret(key)` and report a dead
+  one with `moss.rejectSecret(key)`. A plugin drawing its own password field is
+  teaching users to type credentials into whatever asks, which is the habit
+  phishing runs on. CI warns on a password input in your bundle.
+- **Say what you need before publishing, don't discover it during.** If your
+  deploy target needs something arranged first — an account connected, a daemon
+  running — declare it: `setup.credentials` for anything moss can collect, and
+  `setup.check: true` plus a `check_setup` hook for what only your code can
+  see. moss asks on the Publish click and draws the buttons your hook names. A
+  plugin that opens its own panel to ask mid-publish leaves the user watching a
+  progress bar that says "working" while something waits for them.
 
 ## Stewardship
 
