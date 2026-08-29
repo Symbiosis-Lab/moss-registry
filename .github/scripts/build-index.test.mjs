@@ -269,7 +269,8 @@ test("cmpSemver orders by numeric core, ignoring pre-release", () => {
 const FOLD_CASES = [
   ["a deploy target implies deploy", {}, { deploy_target: { display_name: "GitHub Pages" } }, ["deploy"]],
   ["a channel implies syndicate on its own", {}, { channel: {} }, ["syndicate"]],
-  ["a channel that needs an account also implies login", {}, { channel: { requires_login: true } }, ["syndicate", "login"]],
+  ["a channel that needs an account also implies login", {}, { channel: { login: true } }, ["syndicate", "login"]],
+  ["the retired `requires_login` spelling still folds, as moss's serde alias does", {}, { channel: { requires_login: true } }, ["syndicate", "login"]],
   ["a channel that reads back also implies import", {}, { channel: { imports: true } }, ["syndicate", "import"]],
   ["both contributions fold together", {}, { channel: { requires_login: true, imports: true }, deploy_target: {} }, ["syndicate", "login", "import", "deploy"]],
   ["a declared capability is kept and never doubled", { capabilities: ["deploy"] }, { deploy_target: {} }, ["deploy"]],

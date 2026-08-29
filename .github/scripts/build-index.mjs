@@ -97,7 +97,10 @@ export function capabilitiesOf(manifest) {
   const contributes = manifest.contributes ?? {};
   if (contributes.channel) {
     implied.push("syndicate");
-    if (contributes.channel.requires_login) implied.push("login");
+    // `login` is the current spelling; `requires_login` is the one moss keeps
+    // as a serde alias so installed manifests still parse. Reading only the old
+    // one would list a plugin written today as having no account to connect.
+    if (contributes.channel.login ?? contributes.channel.requires_login) implied.push("login");
     if (contributes.channel.imports) implied.push("import");
   }
   if (contributes.deploy_target) implied.push("deploy");
