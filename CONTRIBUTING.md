@@ -176,7 +176,16 @@ author's machine, so they are not negotiable.
   `setup.check: true` plus a `check_setup` hook for what only your code can
   see. moss asks on the Publish click and draws the buttons your hook names. A
   plugin that opens its own panel to ask mid-publish leaves the user watching a
-  progress bar that says "working" while something waits for them.
+  progress bar that says "working" while something waits for them. Every action
+  id you name comes back to your own hook — moss reserves none and handles none
+  itself — so offer a button only for something your hook can actually do, and
+  carry any value the label promises inside the id (`change_port:8081`) rather
+  than recomputing it on the click. A need with no actions is a fine answer: the
+  message plus Cancel says what the user has to go and do. CI schema-checks the
+  whole `contributes` block, at every level, because the host ignores a key it
+  does not recognize: each credential needs a `key` and a `label`, a `when`
+  clause compares against your settings as strings (`"true"`, not `true`), and a
+  credential may not carry a `default` — a shipped secret is not a secret.
 
 ## Stewardship
 

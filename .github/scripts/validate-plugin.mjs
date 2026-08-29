@@ -124,6 +124,123 @@ if (manifest) {
   }
 }
 
+// -------------------------------------------------------- contributes --
+// `contributes` is a CONTRACT the host reads with no plugin code running
+// (ADR-055, ADR-072), and it is parsed by serde, which IGNORES a key it does
+// not recognize. So a typo anywhere in it is silent: moss finds no credential
+// where the author meant one and publishes straight into the failure the
+// block existed to prevent, and a misspelled `deploy_target` also drops the
+// capability, listing the plugin in the registry index as doing nothing.
+// Hence a schema check at every level rather than a warning at the leaves.
+const CONTRIBUTES_KEYS = new Set([
+  "frontmatter",
+  "embed_renderers",
+  "channel",
+  "deploy_target",
+  "jobs",
+]);
+const CHANNEL_KEYS = new Set(["display_name", "requires_login", "imports"]);
+const DEPLOY_TARGET_KEYS = new Set(["display_name", "setup"]);
+const SETUP_KEYS = new Set(["credentials", "check"]);
+const CREDENTIAL_KEYS = new Set(["key", "label", "help_url", "when"]);
+
+/** True for a plain JSON object; anything else fails with `path` named. */
+function isObjectAt(value, path) {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) return true;
+  fail(`${id}: ${path} must be an object`);
+  return false;
+}
+
+/** Fail on every key the host would silently ignore. */
+function checkKeys(obj, allowed, path, why = () => "") {
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) {
+      fail(
+        `${id}: unknown key in ${path}: "${key}"${why(key)} (recognized: ${[...allowed].join(", ")})`,
+      );
+    }
+  }
+}
+
+/** Mirrors the host's `validate_entry_name` — a key it refuses can never be read back. */
+function badSecretKey(key) {
+  if (typeof key !== "string" || key.length === 0) return "must be a non-empty string";
+  if (/[/\\\0]/.test(key) || key.includes("..")) return "may not contain / \\ NUL or ..";
+  if (key.length > 128) return "may not exceed 128 characters";
+  return null;
+}
+
+function checkSetupBlock(setup) {
+  if (!isObjectAt(setup, "contributes.deploy_target.setup")) return;
+  checkKeys(setup, SETUP_KEYS, "contributes.deploy_target.setup");
+  if (setup.check !== undefined && typeof setup.check !== "boolean") {
+    fail(`${id}: setup.check must be true or false — it says whether you export a check_setup hook`);
+  }
+  if (setup.credentials === undefined) return;
+  if (!Array.isArray(setup.credentials)) {
+    fail(`${id}: setup.credentials must be a list of { key, label } objects`);
+    return;
+  }
+
+  const seen = new Set();
+  setup.credentials.forEach((cred, i) => {
+    const at = `setup.credentials[${i}]`;
+    if (typeof cred !== "object" || cred === null || Array.isArray(cred)) {
+      fail(`${id}: ${at} must be an object with a key and a label`);
+      return;
+    }
+    // `default` is the one worth naming: a credential with a default is a
+    // shipped secret, and moss would offer it to the user as theirs.
+    checkKeys(cred, CREDENTIAL_KEYS, at, (key) =>
+      key === "default"
+        ? " — a credential is collected from the user, never shipped with a value"
+        : "",
+    );
+    const keyProblem = badSecretKey(cred.key);
+    if (keyProblem) {
+      fail(`${id}: ${at}.key ${keyProblem} — it is what moss.getSecret() reads and what moss stores it under`);
+    } else if (seen.has(cred.key)) {
+      fail(`${id}: ${at}.key "${cred.key}" is declared twice`);
+    } else {
+      seen.add(cred.key);
+    }
+    if (typeof cred.label !== "string" || cred.label.length === 0) {
+      fail(`${id}: ${at}.label is required — it is what moss's own modal calls the field, e.g. "Pinata API token" rather than "${cred.key ?? "key"}"`);
+    }
+    if (cred.help_url !== undefined && !/^https:\/\//.test(String(cred.help_url))) {
+      fail(`${id}: ${at}.help_url must be an https URL — it is the link beside the field to where the user gets one`);
+    }
+    if (cred.when !== undefined) {
+      if (typeof cred.when !== "object" || cred.when === null || Array.isArray(cred.when)) {
+        fail(`${id}: ${at}.when must be an object of setting/value pairs, e.g. { "provider": "pinata" }`);
+      } else {
+        for (const [k, v] of Object.entries(cred.when)) {
+          if (typeof v !== "string") {
+            fail(`${id}: ${at}.when.${k} must be a STRING — moss compares it against the rendered setting value, so write "true" or "2", not true or 2`);
+          }
+        }
+      }
+    }
+  });
+}
+
+function checkContributes(contributes) {
+  if (!isObjectAt(contributes, "contributes")) return;
+  checkKeys(contributes, CONTRIBUTES_KEYS, "contributes");
+
+  if (contributes.channel !== undefined && isObjectAt(contributes.channel, "contributes.channel")) {
+    checkKeys(contributes.channel, CHANNEL_KEYS, "contributes.channel");
+  }
+
+  const target = contributes.deploy_target;
+  if (target === undefined) return;
+  if (!isObjectAt(target, "contributes.deploy_target")) return;
+  checkKeys(target, DEPLOY_TARGET_KEYS, "contributes.deploy_target");
+  if (target.setup !== undefined) checkSetupBlock(target.setup);
+}
+
+if (manifest?.contributes !== undefined) checkContributes(manifest.contributes);
+
 // ------------------------------------------------------------------ README --
 const readmePath = join(dir, "README.md");
 if (!existsSync(readmePath)) {
@@ -176,6 +293,20 @@ if (manifest?.entry) {
     if (/type\s*=\s*.?password/i.test(bundle)) {
       note(
         `${id}: the bundle draws a password field. moss collects credentials in its own modal — declare them under contributes.deploy_target.setup.credentials and read the value with moss.getSecret(). A plugin asking for a token itself teaches users to type credentials into whatever asks.`,
+      );
+    }
+
+    // Both of the following are heuristics over the bundle, so they warn
+    // rather than fail. Each names a job the host has taken over.
+    if (/setInterval\s*\(/.test(bundle) && bundle.includes("reportProgress")) {
+      note(
+        `${id}: the bundle reports progress on a timer. moss counts a host call in flight as activity, so a hook that is genuinely working (or genuinely waiting on a person) is no longer killed for going quiet — delete the heartbeat and report progress when something actually happens.`,
+      );
+    }
+
+    if (bundle.includes("openBrowserWithHtml") && bundle.includes("onEvent")) {
+      note(
+        `${id}: the bundle opens its own HTML panel and waits for an event back — the shape of asking the user a question mid-deploy. Credentials, readiness prompts, settings and address lists all have moss-drawn homes now (ADR-072); a panel is for your own content.`,
       );
     }
 

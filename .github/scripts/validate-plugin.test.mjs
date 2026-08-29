@@ -77,3 +77,93 @@ test("declaring setup.check with the hook passes", () => {
   });
   assert.doesNotMatch(out, /::error::/);
 });
+
+// --- the setup block's own schema -------------------------------------------
+// A typo here is silent at runtime: moss reads the block with no plugin code
+// running, finds nothing where the author meant a credential, and publishes
+// into the failure the block existed to prevent.
+
+const withHook = `ExamplePlugin.check_setup = async () => ({ success: true });`;
+const cred = (over = {}) => ({ key: "api_token", label: "API token", ...over });
+
+test("a well-formed setup block passes", () => {
+  const out = validate({
+    manifest: deployTarget({
+      check: true,
+      credentials: [cred({ help_url: "https://example.com/keys", when: { provider: "hosted" } })],
+    }),
+    bundle: withHook,
+  });
+  assert.doesNotMatch(out, /::error::/);
+});
+
+test("a misspelled setup key fails instead of being ignored", () => {
+  const out = validate({ manifest: deployTarget({ credential: [cred()] }) });
+  assert.match(out, /::error::.*unknown key in contributes\.deploy_target\.setup: "credential"/);
+});
+
+test("a misspelled deploy_target fails — the block below it would never be read", () => {
+  const out = validate({
+    manifest: { contributes: { "deploy-target": { setup: { credentials: [cred()] } } } },
+  });
+  assert.match(out, /::error::.*unknown key in contributes: "deploy-target"/);
+});
+
+test("a misspelled key inside deploy_target fails", () => {
+  const out = validate({ manifest: { contributes: { deploy_target: { setups: {} } } } });
+  assert.match(out, /::error::.*unknown key in contributes\.deploy_target: "setups"/);
+});
+
+test("a misspelled channel flag fails, since serde would ignore it", () => {
+  const out = validate({ manifest: { contributes: { channel: { requires_auth: true } } } });
+  assert.match(out, /::error::.*unknown key in contributes\.channel: "requires_auth"/);
+});
+
+test("a credential with no label fails, because moss's modal has nothing to call it", () => {
+  const out = validate({ manifest: deployTarget({ credentials: [{ key: "api_token" }] }) });
+  assert.match(out, /::error::.*label is required/);
+});
+
+test("a credential key the host's store would refuse fails", () => {
+  const out = validate({ manifest: deployTarget({ credentials: [cred({ key: "../escape" })] }) });
+  assert.match(out, /::error::.*may not contain/);
+});
+
+test("a credential carrying a default value fails — a shipped secret is not a secret", () => {
+  const out = validate({ manifest: deployTarget({ credentials: [cred({ default: "sk-live-…" })] }) });
+  assert.match(out, /::error::.*"default"/);
+});
+
+test("a non-string when value fails, since moss compares rendered values", () => {
+  const out = validate({ manifest: deployTarget({ credentials: [cred({ when: { paid: true } })] }) });
+  assert.match(out, /::error::.*when\.paid must be a STRING/);
+});
+
+test("one key declared twice fails", () => {
+  const out = validate({ manifest: deployTarget({ credentials: [cred(), cred()] }) });
+  assert.match(out, /::error::.*declared twice/);
+});
+
+test("check must be a boolean, not the string \"true\"", () => {
+  const out = validate({ manifest: deployTarget({ check: "true" }), bundle: withHook });
+  assert.match(out, /::error::.*setup\.check must be true or false/);
+});
+
+test("credentials must be a list, not one object", () => {
+  const out = validate({ manifest: deployTarget({ credentials: cred() }) });
+  assert.match(out, /::error::.*must be a list/);
+});
+
+test("a progress heartbeat on a timer is flagged", () => {
+  const out = validate({
+    bundle: `setInterval(function () { reportProgress("upload", 1, 10, "working"); }, 10000);`,
+  });
+  assert.match(out, /::warning::.*progress on a timer/);
+});
+
+test("a panel that waits for an answer is flagged", () => {
+  const out = validate({
+    bundle: `await openBrowserWithHtml(html); await onEvent("plugin:answer", cb);`,
+  });
+  assert.match(out, /::warning::.*asking the user a question/);
+});
