@@ -260,3 +260,29 @@ test("cmpSemver orders by numeric core, ignoring pre-release", () => {
   assert.equal(cmpSemver("1.10.0", "1.9.0"), 1, "numeric, not lexicographic");
   assert.equal(cmpSemver("1.0.0", "1.0.0-beta.1"), 0, "pre-release ignored");
 });
+
+// The host's own fold is `PluginManifest::fold_contributions_into_capabilities`
+// (moss: crates/moss-build/src/plugins/contributions.rs). This table is the
+// registry's copy of it: every contribution kind moss turns into a capability,
+// so a kind added to ADR-055 and not added here fails loudly instead of
+// publishing a plugin the index says does nothing.
+const FOLD_CASES = [
+  ["a deploy target implies deploy", {}, { deploy_target: { display_name: "GitHub Pages" } }, ["deploy"]],
+  ["a channel implies syndicate on its own", {}, { channel: {} }, ["syndicate"]],
+  ["a channel that needs an account also implies login", {}, { channel: { requires_login: true } }, ["syndicate", "login"]],
+  ["a channel that reads back also implies import", {}, { channel: { imports: true } }, ["syndicate", "import"]],
+  ["both contributions fold together", {}, { channel: { requires_login: true, imports: true }, deploy_target: {} }, ["syndicate", "login", "import", "deploy"]],
+  ["a declared capability is kept and never doubled", { capabilities: ["deploy"] }, { deploy_target: {} }, ["deploy"]],
+  ["no contributes leaves the declared list alone", { capabilities: ["preview"] }, undefined, ["preview"]],
+];
+
+for (const [name, declared, contributes, expected] of FOLD_CASES) {
+  test(`capabilities: ${name}`, () => {
+    const entry = toEntry(
+      candidate,
+      { ...manifest, capabilities: undefined, ...declared, contributes },
+      { sha256: "abc123", sizeBytes: 1 },
+    );
+    assert.deepEqual(entry.capabilities, expected);
+  });
+}

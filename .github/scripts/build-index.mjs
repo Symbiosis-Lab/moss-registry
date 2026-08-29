@@ -82,6 +82,29 @@ export function selectReleases(releases) {
 }
 
 /**
+ * What the plugin does, in moss's own currency.
+ *
+ * ADR-055 moved the manifest from "which hooks do you export" to "what does
+ * the user gain", so a plugin may declare only `contributes` — and the host
+ * folds that back into capabilities when it parses a manifest
+ * (`PluginManifest::parse`). The index has to fold the same way, or a plugin
+ * written in the new vocabulary is listed as doing nothing at all and never
+ * appears under a category.
+ */
+export function capabilitiesOf(manifest) {
+  const declared = manifest.capabilities ?? [];
+  const implied = [];
+  const contributes = manifest.contributes ?? {};
+  if (contributes.channel) {
+    implied.push("syndicate");
+    if (contributes.channel.requires_login) implied.push("login");
+    if (contributes.channel.imports) implied.push("import");
+  }
+  if (contributes.deploy_target) implied.push("deploy");
+  return [...declared, ...implied.filter((c) => !declared.includes(c))];
+}
+
+/**
  * Turn one selected release into an index entry.
  *
  * The manifest is read from inside the published zip, so the entry describes the
@@ -117,7 +140,7 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
     version,
     description: manifest.description ?? "",
     author: manifest.author ?? "",
-    capabilities: manifest.capabilities ?? [],
+    capabilities: capabilitiesOf(manifest),
     download_url: zip.browser_download_url,
     sha256,
     size_bytes: sizeBytes,
