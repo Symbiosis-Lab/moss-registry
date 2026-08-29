@@ -59,11 +59,4 @@ describe("readSiteFiles", () => {
     expect(h.maxInFlight).toBeGreaterThan(1); // actually concurrent
     expect(h.maxInFlight).toBeLessThanOrEqual(8); // bounded
   });
-
-  it("reports monotonically increasing progress up to 100", async () => {
-    const pcts: number[] = [];
-    await readSiteFiles(["a.txt", "b.txt", "c.txt"], (pct) => pcts.push(pct));
-    expect(pcts.at(-1)).toBe(100);
-    expect(pcts.length).toBe(3);
-  });
 });

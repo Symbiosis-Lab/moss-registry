@@ -70,7 +70,6 @@ function makeProvider(overrides: Partial<IpfsProvider> = {}): IpfsProvider {
     id: "pinata",
     label: "Pinata",
     checkReady: vi.fn(async () => ({ ready: true as const })),
-    runSetup: vi.fn(async () => true),
     uploadDir: vi.fn(async (_files, onProgress) => {
       onProgress(50, "Uploading...");
       return { cid: "bafyNEW", sizeBytes: 123 };
@@ -273,28 +272,35 @@ describe("deploy — co-pinning", () => {
 });
 
 describe("deploy — setup gate", () => {
-  it("runs setup when not ready, then resumes", async () => {
-    let ready = false;
-    providerRef.current = makeProvider({
-      checkReady: vi.fn(async () => (ready ? { ready: true as const } : { ready: false as const, reason: "Connect Pinata." })),
-      runSetup: vi.fn(async () => {
-        ready = true;
-        return true;
-      }),
-    });
-    const result = await deploy(flatContext);
-    expect(providerRef.current.runSetup).toHaveBeenCalled();
-    expect(result.success).toBe(true);
-  });
-
-  it("fails cleanly when the user cancels setup", async () => {
+  // Getting ready is check_setup's conversation, drawn by moss before the
+  // build. A deploy that arrives un-ready (a headless publish) says why and
+  // stops; it must never open a panel of its own.
+  it("fails with the provider's own reason instead of asking anything", async () => {
     providerRef.current = makeProvider({
       checkReady: vi.fn(async () => ({ ready: false as const, reason: "Connect Pinata." })),
-      runSetup: vi.fn(async () => false),
     });
     const result = await deploy(flatContext);
     expect(result.success).toBe(false);
+    expect(result.message).toBe("Connect Pinata.");
     expect(result.deployment).toBeUndefined();
+    expect(providerRef.current.uploadDir).not.toHaveBeenCalled();
+  });
+});
+
+describe("deploy — addresses", () => {
+  it("returns the CID, the IPNS name and the gateways as structured addresses", async () => {
+    const result = await deploy({
+      site_files: ["index.html"],
+      config: { provider: "pinata", use_ipns: true },
+      domain: "example.com",
+    } as never);
+    const addresses = result.deployment?.addresses ?? [];
+    const byKind = (kind: string) => addresses.filter((a) => a.kind === kind);
+    expect(byKind("cid")[0]?.value).toBe("bafyNEW");
+    expect(byKind("cid")[0]?.url).toBeUndefined();
+    expect(byKind("ipns")[0]?.value).toBe("k51identity");
+    expect(byKind("gateway").length).toBeGreaterThan(0);
+    expect(byKind("domain")[0]?.url).toBe("https://example.com");
   });
 });
 

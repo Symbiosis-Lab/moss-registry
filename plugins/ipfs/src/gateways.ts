@@ -17,6 +17,7 @@ import {
   PINATA_DEFAULT_GATEWAY,
   DEFAULT_KUBO_RPC,
 } from "./constants";
+import type { DeployAddress } from "@symbiosis-lab/moss-api";
 import type { IpfsSettings, ProviderId } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -113,47 +114,94 @@ export function siteDisplayUrl(
   return bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
 }
 
-export interface GatewayLink {
-  label: string;
-  url: string;
+/** What to hand moss as the published site's addresses (ADR-072). */
+export interface AddressInput {
+  cid: string;
+  ipnsName?: string;
+  provider: ProviderId;
+  config: IpfsSettings;
+  /** The local node's gateway host, when we could read it off the node. */
+  localHost?: string;
+  /** The custom domain, when one is configured (DNSLink). */
+  domain?: string;
 }
 
 /**
- * All gateway/IPNS links to surface in the result panel, most-shareable first.
- * Provider-specific and local links are appended where relevant.
+ * Every way to reach this publish, as moss's own address rows.
+ *
+ * The plugin supplies the facts and the words; moss decides where they appear
+ * — the first publish's window, the toast after it, the deploy tab always. A
+ * CID and an IPNS name are strings to COPY (no `url`), so moss offers a copy
+ * button; a gateway is a door to open.
  */
-export function gatewayLinks(
-  cid: string,
-  ipnsName: string | undefined,
-  provider: ProviderId,
-  config: IpfsSettings,
-  localHost?: string,
-): GatewayLink[] {
-  const links: GatewayLink[] = [
-    { label: "dweb.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_DWEB) },
+export function deployAddresses(input: AddressInput): DeployAddress[] {
+  const { cid, ipnsName, provider, config, localHost, domain } = input;
+  const useLocalHost = provider === "local" && isDefaultNodeRpc(config) && localHost;
+
+  const addresses: DeployAddress[] = [
+    {
+      kind: "cid",
+      label: "IPFS CID",
+      value: cid,
+      note: "Names these exact bytes. Every publish produces a new one.",
+    },
+  ];
+
+  if (ipnsName) {
+    addresses.push({
+      kind: "ipns",
+      label: "IPNS name",
+      value: ipnsName,
+      note: "Stays the same across publishes, and follows the newest one.",
+    });
+  }
+
+  addresses.push(
+    { kind: "gateway", label: "dweb.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_DWEB) },
     // Serves HTML directly to browsers (no service-worker hop — dweb.link and
     // ipfs.io 302 navigations to inbrowser.link, whose worker can fail to
     // install). Path form works because uploads are relative-URL rewritten.
-    { label: "filebase.io (direct)", url: pathCidUrl("ipfs.filebase.io", cid) },
-    { label: "w3s.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_W3S) },
-  ];
-  const useLocalHost = provider === "local" && isDefaultNodeRpc(config) && localHost;
+    { kind: "gateway", label: "filebase.io (direct)", url: pathCidUrl("ipfs.filebase.io", cid) },
+    { kind: "gateway", label: "w3s.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_W3S) },
+  );
+
   if (provider === "pinata") {
-    links.push({ label: "Pinata gateway", url: pinataGatewayUrl(cid, config.gateway) });
+    addresses.push({
+      kind: "gateway",
+      label: "Pinata gateway",
+      url: pinataGatewayUrl(cid, config.gateway),
+    });
   } else if (useLocalHost) {
-    links.push({ label: "Local gateway", url: localGatewayCidUrl(cid, localHost) });
+    addresses.push({
+      kind: "gateway",
+      label: "Local gateway",
+      url: localGatewayCidUrl(cid, localHost),
+      note: "Served by the IPFS node on this computer.",
+    });
   }
+
   if (ipnsName) {
     // IPNS names (k51…/base36 libp2p keys) are DNS-label-safe, so the
     // subdomain form works. For the local provider the LOCAL gateway is the
     // one that resolves the name immediately; a laptop-published IPNS record
     // reaches public gateways only after DHT propagation.
-    links.push({
+    addresses.push({
+      kind: "gateway",
       label: "IPNS (stable)",
       url: useLocalHost
         ? `http://${ipnsName}.ipns.${localHost}`
         : subdomainIpnsUrl(ipnsName, PUBLIC_GATEWAY_DWEB),
     });
   }
-  return links;
+
+  if (domain) {
+    addresses.push({
+      kind: "domain",
+      label: "Custom domain",
+      url: `https://${domain}`,
+      note: "Resolves through DNSLink-aware gateways once the TXT record is live.",
+    });
+  }
+
+  return addresses;
 }

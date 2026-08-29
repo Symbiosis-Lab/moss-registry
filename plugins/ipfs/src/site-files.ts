@@ -8,7 +8,7 @@
  */
 
 import { readSiteFile } from "@symbiosis-lab/moss-api";
-import type { SiteFile, UploadProgress } from "./types";
+import type { SiteFile } from "./types";
 import { PER_FILE_WARN_BYTES, TOTAL_WARN_BYTES } from "./constants";
 import { formatBytes } from "./utils";
 
@@ -41,19 +41,14 @@ export function sizeFromBase64(base64: string): number {
  * Read every built-site file as base64, preserving input order.
  *
  * @param sitePaths paths from context.site_files (the authoritative list).
- * @param onProgress optional 0–100 progress callback for the read phase.
  * @throws if the list is empty (caller should have validated site_files).
  */
-export async function readSiteFiles(
-  sitePaths: string[],
-  onProgress?: UploadProgress,
-): Promise<SiteReadResult> {
+export async function readSiteFiles(sitePaths: string[]): Promise<SiteReadResult> {
   if (sitePaths.length === 0) {
     throw new Error("Site directory is empty. Please build your site first.");
   }
 
   const files: SiteFile[] = new Array(sitePaths.length);
-  let done = 0;
 
   for (let start = 0; start < sitePaths.length; start += READ_CONCURRENCY) {
     const batch = sitePaths.slice(start, start + READ_CONCURRENCY);
@@ -65,13 +60,6 @@ export async function readSiteFiles(
           base64,
           size: sizeFromBase64(base64),
         };
-        done++;
-        if (onProgress) {
-          onProgress(
-            Math.round((done / sitePaths.length) * 100),
-            `Reading ${normalizePath(rawPath)}`,
-          );
-        }
       }),
     );
   }

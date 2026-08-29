@@ -28,21 +28,15 @@ import { getState, recordSuccess, recordError } from "./state";
 import { getProvider, makeProviderById } from "./providers";
 import { readSiteFiles } from "./site-files";
 import { makeSiteRelative } from "./relative-urls";
-import { siteDisplayUrl, gatewayLinks } from "./gateways";
+import { siteDisplayUrl, deployAddresses } from "./gateways";
 import { localGatewayHost } from "./kubo-gateway";
 import { generateDnsTarget } from "./dnslink";
 import { categorizeError } from "./errors";
-import {
-  setCurrentHookName,
-  reportProgress,
-  reportError,
-  showToast,
-  closeBrowser,
-} from "./utils";
+import { setCurrentHookName, reportProgress, reportError, showToast } from "./utils";
 import { getUrl } from "./http";
 import { publishIdentityIpns, isPublished } from "./ipns-identity";
-import { showResultPanel, type ResultView } from "./result-panel";
-import { REACHABILITY_TIMEOUT_MS, HEARTBEAT_MS } from "./constants";
+import { check_setup } from "./setup";
+import { REACHABILITY_TIMEOUT_MS, TOTAL_STEPS } from "./constants";
 
 /**
  * The path whose resolution proves the directory tree reconstructed: any
@@ -80,57 +74,26 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     config.pinName = context.project_info?.site_name || context.project_info?.folder_name;
   }
   const state = await getState();
-  const firstDeploy = !state.lastCid;
   const provider = getProvider(config);
 
-  // Progress state. The helper keeps the heartbeat's closure vars in sync with
-  // every direct report, so the heartbeat can never replay a stale phase.
-  let currentStage = "configuring";
-  let currentStep = 1;
-  let currentMessage = "Preparing...";
-  const progress = async (stage: string, step: number, message: string): Promise<void> => {
-    currentStage = stage;
-    currentStep = step;
-    currentMessage = message;
-    await reportProgress(stage, step, 10, message);
-  };
-  let heartbeat: ReturnType<typeof setInterval> | null = null;
-  const stopHeartbeat = (): void => {
-    if (heartbeat !== null) {
-      clearInterval(heartbeat);
-      heartbeat = null;
-    }
-  };
+  // No heartbeat. moss counts a host call in flight as activity, so the long
+  // phases below keep themselves alive; the pings that used to exist only to
+  // convince the watchdog someone was working are gone (ADR-072). What is
+  // left is one report per phase — every one of them is a host round trip.
 
   try {
-    // --- Setup gate: ensure the provider is ready (creds / daemon). ---
-    // No deploy heartbeat yet: the setup panels run their own heartbeat
-    // (showPanel), so only one progress source is active at a time.
-    await progress("configuring", 1, `Checking ${provider.label}...`);
-    let ready = await provider.checkReady();
+    // The readiness CONVERSATION happens before this hook, in check_setup
+    // (setup.ts), which moss runs on the Publish click and draws itself. This
+    // is only the guard for a publish that never passed through it.
+    await reportProgress("configuring", 1, TOTAL_STEPS, `Checking ${provider.label}...`);
+    const ready = await provider.checkReady();
     if (!ready.ready) {
-      await progress("configuring", 2, ready.reason);
-      const ok = await provider.runSetup();
-      await closeBrowser();
-      if (!ok) {
-        return { success: false, message: `${provider.label} not configured.` };
-      }
-      ready = await provider.checkReady();
-      if (!ready.ready) {
-        return { success: false, message: ready.reason };
-      }
+      return { success: false, message: ready.reason };
     }
 
-    // --- Heartbeat covers the long phases (read/upload/verify/publish). ---
-    heartbeat = setInterval(() => {
-      void reportProgress(currentStage, currentStep, 10, currentMessage);
-    }, HEARTBEAT_MS);
-
     // --- Read the built site into memory (base64, bounded concurrency). ---
-    await progress("reading", 3, "Reading site files...");
-    const read = await readSiteFiles(sitePaths, (_pct, msg) => {
-      currentMessage = msg;
-    });
+    await reportProgress("reading", 3, TOTAL_STEPS, "Reading site files...");
+    const read = await readSiteFiles(sitePaths);
     let files = read.files;
     console.log(`   ${files.length} files, ${read.totalBytes} bytes`);
     for (const w of read.warnings) console.warn(`   ${w}`);
@@ -146,7 +109,8 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 
     // --- Upload / pin the directory. ---
     const onUpload = (pct: number, msg: string): void => {
-      void progress("uploading", Math.min(4 + Math.floor((pct / 100) * 3), 7), msg);
+      const step = Math.min(4 + Math.floor((pct / 100) * 3), 7);
+      void reportProgress("uploading", step, TOTAL_STEPS, msg);
     };
     const alreadyVerified = state.structureVerified?.[provider.id] === true;
     const upload = await provider.uploadDir(files, onUpload);
@@ -169,7 +133,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         if (upload.verified === false) {
           verdict = "broken"; // the backend response disproved the tree
         } else {
-          await progress("verifying", 8, "Verifying site directory...");
+          await reportProgress("verifying", 8, TOTAL_STEPS, "Verifying site directory...");
           verdict = await provider.verifyDirectory(cid, nested);
         }
         if (verdict === "ok") {
@@ -208,7 +172,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     // permanent address, which is worse than not publishing.
     let ipnsName: string | undefined;
     if (config.useIpns) {
-      await progress("publishing", 9, "Publishing IPNS name...");
+      await reportProgress("publishing", 9, TOTAL_STEPS, "Publishing IPNS name...");
       const outcome = await publishIdentityIpns(cid, config);
       if (!isPublished(outcome)) {
         throw new Error(
@@ -230,7 +194,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         const secondary = makeProviderById(otherId, config);
         const secondaryReady = await secondary.checkReady();
         if (secondaryReady.ready) {
-          await progress("pinning", 9, `Co-pinning to ${secondary.label}...`);
+          await reportProgress("pinning", 9, TOTAL_STEPS, `Co-pinning to ${secondary.label}...`);
           const sec = await secondary.uploadDir(files, () => {});
           if (sec.cid === cid) {
             coPinnedId = otherId;
@@ -260,12 +224,21 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         : {}),
     });
 
-    const links = gatewayLinks(cid, ipnsName, provider.id, config, localHost);
     const domain = context.domain;
     const dnsTarget = domain ? generateDnsTarget({ cid }) : undefined;
+    // The addresses are moss's to present: it opens the full list on the first
+    // publish to a target, offers it quietly from the toast afterwards, and
+    // keeps it in the deploy tab for as long as the site is live.
+    const addresses = deployAddresses({
+      cid,
+      ipnsName,
+      provider: provider.id,
+      config,
+      localHost,
+      domain,
+    });
 
-    await progress("complete", 10, "Published to IPFS!");
-    stopHeartbeat();
+    await reportProgress("complete", 10, TOTAL_STEPS, "Published to IPFS!");
 
     // A site kept alive ONLY by this machine's node disappears when the node
     // stops — say so (UX contract: never let a site vanish silently).
@@ -291,21 +264,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       duration: 8000,
     });
 
-    // First successful deploy: open the details panel. Resolves on open — it
-    // does not block the hook on user dismissal.
-    if (firstDeploy) {
-      const view: ResultView = {
-        cid,
-        ipnsName,
-        providerLabel: provider.label,
-        primaryUrl: displayUrl,
-        links,
-        domain,
-        localOnly,
-      };
-      await showResultPanel(view);
-    }
-
     return {
       success: true,
       message,
@@ -324,6 +282,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
           co_pinned: coPinnedId,
           is_live: String(isLive),
         },
+        addresses,
         ...(dnsTarget ? { dns_target: dnsTarget } : {}),
       },
     };
@@ -334,8 +293,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     await reportError(errorMessage, "deploy", true);
     await showToast({ message: categorizeError(errorMessage), variant: "error", duration: 5000 });
     return { success: false, message: errorMessage };
-  } finally {
-    stopHeartbeat();
   }
 }
 
@@ -381,8 +338,14 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
 // Plugin registration
 // ============================================================================
 
-const IpfsPlugin = { deploy, configure_domain };
+const IpfsPlugin = { deploy, configure_domain, check_setup };
 (window as unknown as { IpfsPlugin: typeof IpfsPlugin }).IpfsPlugin = IpfsPlugin;
 
-export { deploy, deploy as on_deploy, configure_domain, configure_domain as on_configure_domain };
+export {
+  deploy,
+  deploy as on_deploy,
+  configure_domain,
+  configure_domain as on_configure_domain,
+  check_setup,
+};
 export default IpfsPlugin;

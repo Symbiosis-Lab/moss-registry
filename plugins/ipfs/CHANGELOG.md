@@ -1,5 +1,22 @@
 # Changelog — moss-plugin-ipfs
 
+## 0.2.0
+
+- moss now asks for your Pinata token, in its own window, before a publish starts —
+  the plugin no longer draws a field for it, and no longer keeps it in a cookie. The
+  token lives in moss's secret store, shared across the projects you publish from. A
+  token Pinata has stopped accepting is reported back to moss, so the next publish asks
+  you for a new one instead of failing the same way every time.
+- Anything that has to be arranged before publishing is now asked before the publish,
+  not halfway through it: whether your IPFS node is running, whether its gateway port is
+  free, whether the stored token still works. moss draws the questions and the buttons,
+  including the line about what running a node on your computer costs you, before the
+  click rather than after it.
+- Your site's addresses — the CID, the IPNS name, each gateway, a custom domain — are
+  handed to moss as data. moss lists them when you publish and keeps them in the deploy
+  tab afterwards, instead of the plugin popping its own summary window once.
+- Requires moss 0.11.7 or newer.
+
 ## 0.1.0
 
 Initial release.

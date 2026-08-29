@@ -7,8 +7,9 @@
 A moss publishing plugin that pins your built site to IPFS and hands back a shareable
 gateway URL. Two backends are supported behind one interface:
 
-- **Pinata** (hosted pinning service) — paste a Pinata JWT once; moss pins your site and
-  keeps it available.
+- **Pinata** (hosted pinning service) — moss asks for a Pinata API token the first time
+  you publish, in its own credential window, and keeps it for you; the plugin only reads
+  it.
 - **Local Kubo node** — publish through your own node, no account required. If IPFS is
   installed but not running, moss offers to start it, after telling you what that means:
   the node keeps running once moss quits, and it does not come back by itself after a
@@ -51,9 +52,18 @@ Settings render in moss from the plugin manifest:
 | Node RPC Endpoint (`node_rpc`) | _blank_ | Kubo RPC for the local provider. Blank = this machine; set for a NAS/Pi/VPS node. |
 | Co-Pin (`co_pin`) | `false` | Also pin each deploy to the other backend when available — same CID, one more keeper. |
 
-The Pinata JWT is a secret and is stored in a plugin cookie (`src/credentials.ts`), never
-in `config.json`. That cookie jar belongs to moss rather than to one project, so the token
-is shared by every project you publish from — and is sent only to Pinata.
+The Pinata token is not a setting. It is declared in the manifest
+(`contributes.deploy_target.setup.credentials`) and held by moss in its own secret store,
+so moss's window is the only thing that ever asks for it and the plugin only reads it back
+(`src/credentials.ts`). The store is app-global — a Pinata account is an account, not a
+project — and the token is sent only to Pinata. When Pinata refuses it, the plugin tells
+moss so, and the next publish asks you for a new one instead of failing the same way
+forever.
+
+Readiness is checked before a publish starts rather than in the middle of one: the manifest
+says which credential this provider needs, and `check_setup` (`src/setup.ts`) answers what
+a manifest cannot — is your node running, is its gateway port free, does the token still
+work. moss draws every question and button that comes back.
 
 Settings are read-only to the plugin: moss owns `config.json`, and the plugin's own
 bookkeeping (the IPNS sequence, the last CID) lives beside it in `state.json`.
@@ -63,7 +73,7 @@ bookkeeping (the IPNS sequence, the last CID) lives beside it in `state.json`.
 Endpoints this plugin talks to, and why:
 
 - `https://uploads.pinata.cloud/v3/files` — site upload (Pinata provider; JWT auth).
-- `https://api.pinata.cloud/data/testAuthentication` — JWT pre-flight check (Pinata).
+- `https://api.pinata.cloud/data/testAuthentication` — token check in the setup gate (Pinata).
 - `<node_rpc>/api/v0/*` (default `http://127.0.0.1:5001`) — local provider: add,
   verification (`ls`), keys, IPNS `name/publish`, and identity-IPNS `routing/put`.
 - your node's own gateway (its port is read from `Addresses.Gateway`, never assumed) /
@@ -101,8 +111,8 @@ a local Kubo daemon and resolves it; it skips automatically when no daemon is re
 
 This plugin is 0.x. Verified live (full deploy cycles through the real binary on both
 providers, wire-level multipart capture, IPNS publish/resolve on a real Kubo node, public
-gateway serving of Pinata-pinned deploys). It needs moss 0.7.23 or newer, the release that
-added the keystore the IPNS name is derived from. See
+gateway serving of Pinata-pinned deploys). It needs moss 0.11.7 or newer, the release that
+draws plugin setup and holds plugin credentials. See
 [CHANGELOG.md](./CHANGELOG.md).
 
 ## License

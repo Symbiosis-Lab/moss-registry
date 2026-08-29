@@ -1,7 +1,7 @@
 {
   "name": "ipfs",
   "display_name": "IPFS",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Publish your site to IPFS (Pinata or a local Kubo node)",
   "author": "moss team",
   "entry": "main.bundle.js",
@@ -45,12 +45,30 @@
     "use_ipns": "Publish a stable IPNS name so your URL and DNSLink domain don't change every deploy.",
     "relative_urls": "Rewrite absolute links in HTML to relative ones so the site renders on any IPFS gateway.",
     "node_rpc": "Kubo RPC endpoint for the local provider. Blank uses this machine (127.0.0.1:5001); set it to publish through an always-on node (NAS, VPS).",
-    "co_pin": "After each deploy, also pin the same content to the other backend when it's available \u2014 same address, one more copy."
+    "co_pin": "After each deploy, also pin the same content to the other backend when it's available — same address, one more copy."
   },
-  "min_moss_version": "0.7.23",
+  "min_moss_version": "0.11.7",
   "preview": true,
   "requires": [
     "execute_binary"
   ],
-  "repository": "https://github.com/Symbiosis-Lab/moss-registry"
+  "repository": "https://github.com/Symbiosis-Lab/moss-registry",
+  "contributes": {
+    "deploy_target": {
+      "display_name": "IPFS",
+      "setup": {
+        "credentials": [
+          {
+            "key": "pinata_jwt",
+            "label": "Pinata API token",
+            "help_url": "https://app.pinata.cloud/developers/api-keys",
+            "when": {
+              "provider": "pinata"
+            }
+          }
+        ],
+        "check": true
+      }
+    }
+  }
 }

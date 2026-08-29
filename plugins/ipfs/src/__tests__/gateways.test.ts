@@ -7,7 +7,7 @@ import {
   pinataGatewayUrl,
   localGatewayCidUrl,
   siteDisplayUrl,
-  gatewayLinks,
+  deployAddresses,
   kuboRpcBase,
   isDefaultNodeRpc,
 } from "../gateways";
@@ -94,41 +94,73 @@ describe("node endpoint helpers", () => {
   });
 });
 
-describe("gatewayLinks", () => {
-  it("lists public + provider links, and IPNS only when present", () => {
-    const links = gatewayLinks(CIDV1, undefined, "pinata", {});
-    const labels = links.map((l) => l.label);
-    expect(labels).toContain("dweb.link");
-    expect(labels).toContain("w3s.link");
-    expect(labels).toContain("Pinata gateway");
-    expect(labels).not.toContain("IPNS (stable)");
+describe("deployAddresses", () => {
+  const kinds = (list: ReturnType<typeof deployAddresses>) => list.map((a) => a.kind);
+  const labels = (list: ReturnType<typeof deployAddresses>) => list.map((a) => a.label);
+
+  it("gives the CID as a value to copy, never a link", () => {
+    const [first] = deployAddresses({ cid: CIDV1, provider: "pinata", config: {} as IpfsSettings });
+    expect(first.kind).toBe("cid");
+    expect(first.value).toBe(CIDV1);
+    expect(first.url).toBeUndefined();
   });
 
-  it("uses the LOCAL IPNS subdomain link, on the port the node reported", () => {
+  it("lists public + provider gateways, and IPNS only when there is a name", () => {
+    const list = deployAddresses({ cid: CIDV1, provider: "pinata", config: {} as IpfsSettings });
+    expect(labels(list)).toContain("dweb.link");
+    expect(labels(list)).toContain("w3s.link");
+    expect(labels(list)).toContain("Pinata gateway");
+    expect(kinds(list)).not.toContain("ipns");
+  });
+
+  it("gives the IPNS name as a copyable ipns address beside its gateway link", () => {
     const ipns = "k51qzi5uqu5dgja8f9x0h1e0y9pjzqf2m8xg2k4c7bq2d5e6f7g8h9i0j1k2l3";
-    const links = gatewayLinks(CIDV1, ipns, "local", {}, "localhost:8081");
-    const ipnsLink = links.find((l) => l.label === "IPNS (stable)");
-    expect(ipnsLink?.url).toBe(`http://${ipns}.ipns.localhost:8081`);
-    expect(links.map((l) => l.label)).toContain("Local gateway");
+    const list = deployAddresses({
+      cid: CIDV1,
+      ipnsName: ipns,
+      provider: "local",
+      config: {} as IpfsSettings,
+      localHost: "localhost:8081",
+    });
+    const name = list.find((a) => a.kind === "ipns");
+    expect(name?.value).toBe(ipns);
+    expect(name?.url).toBeUndefined();
+    expect(list.find((a) => a.label === "IPNS (stable)")?.url).toBe(
+      `http://${ipns}.ipns.localhost:8081`,
+    );
+    expect(labels(list)).toContain("Local gateway");
   });
 
-  it("offers no local link at all when the node's gateway port is unknown", () => {
-    const links = gatewayLinks(CIDV1, "k51x", "local", {}, undefined);
-    expect(links.map((l) => l.label)).not.toContain("Local gateway");
-    expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe("https://k51x.ipns.dweb.link");
+  it("offers no local gateway at all when the node's gateway port is unknown", () => {
+    const list = deployAddresses({
+      cid: CIDV1,
+      ipnsName: "k51x",
+      provider: "local",
+      config: {} as IpfsSettings,
+    });
+    expect(labels(list)).not.toContain("Local gateway");
+    expect(list.find((a) => a.label === "IPNS (stable)")?.url).toBe("https://k51x.ipns.dweb.link");
   });
 
   it("omits the Local-gateway link and localizes nothing for a remote node", () => {
-    const links = gatewayLinks(CIDV1, "k51x", "local", { nodeRpc: "http://my-pi:5001" });
-    expect(links.map((l) => l.label)).not.toContain("Local gateway");
-    expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe("https://k51x.ipns.dweb.link");
+    const list = deployAddresses({
+      cid: CIDV1,
+      ipnsName: "k51x",
+      provider: "local",
+      config: { nodeRpc: "http://my-pi:5001" } as IpfsSettings,
+    });
+    expect(labels(list)).not.toContain("Local gateway");
+    expect(list.find((a) => a.label === "IPNS (stable)")?.url).toBe("https://k51x.ipns.dweb.link");
   });
 
-  it("uses the public IPNS subdomain link for non-local providers", () => {
-    const ipns = "k51qzi5uqu5dgja8f9x0h1e0y9pjzqf2m8xg2k4c7bq2d5e6f7g8h9i0j1k2l3";
-    const links = gatewayLinks(CIDV1, ipns, "pinata", {});
-    expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe(
-      `https://${ipns}.ipns.dweb.link`,
-    );
+  it("emits a configured custom domain as its own domain address", () => {
+    const list = deployAddresses({
+      cid: CIDV1,
+      provider: "pinata",
+      config: {} as IpfsSettings,
+      domain: "example.com",
+    });
+    const domain = list.find((a) => a.kind === "domain");
+    expect(domain?.url).toBe("https://example.com");
   });
 });

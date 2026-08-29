@@ -25,8 +25,8 @@ export type ProviderId = "pinata" | "local";
 // ============================================================================
 // Settings (user-owned; read-only for the plugin — see settings.ts)
 //
-// The Pinata JWT is a SECRET and is NOT a setting — it lives in a plugin
-// cookie (see credentials.ts).
+// The Pinata JWT is a SECRET and is NOT a setting — moss holds it and the
+// plugin only reads it (credentials.ts).
 // ============================================================================
 
 export interface IpfsSettings {
@@ -86,11 +86,6 @@ export interface IpfsState {
   lastCid?: string;
   /** Reason the last deploy failed (cleared on the next success). */
   lastDeployError?: string;
-  /**
-   * When the user agreed to moss starting an IPFS daemon on this computer.
-   * ISO timestamp; absent means the consent panel has never been accepted.
-   */
-  daemonConsentAt?: string;
 }
 
 // ============================================================================

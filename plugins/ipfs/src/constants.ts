@@ -3,16 +3,6 @@
  */
 
 // ---------------------------------------------------------------------------
-// Progress heartbeat
-// ---------------------------------------------------------------------------
-
-/**
- * Heartbeat interval (ms) used to keep the progress panel alive during long
- * uploads. Must be shorter than the panel's STALE_TIMEOUT_MS (15s).
- */
-export const HEARTBEAT_MS = 10_000;
-
-// ---------------------------------------------------------------------------
 // Pinata
 // ---------------------------------------------------------------------------
 
@@ -75,3 +65,10 @@ export const IPNS_PUBLISH_TIMEOUT_MS = 120_000;
 export const PER_FILE_WARN_BYTES = 100 * 1024 * 1024; // 100 MB
 /** Warn above this total site size. */
 export const TOTAL_WARN_BYTES = 500 * 1024 * 1024; // 500 MB
+
+// ---------------------------------------------------------------------------
+// Progress
+// ---------------------------------------------------------------------------
+
+/** Denominator of every deploy progress report — the last step is "complete". */
+export const TOTAL_STEPS = 10;

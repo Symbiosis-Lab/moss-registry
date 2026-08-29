@@ -8,9 +8,9 @@
  *
  * It deliberately does NOT download anything: plugins cannot reach the host's
  * binary resolver (not a plugin-facing command), and a silent binary download
- * would be wrong for moss's users anyway. When Kubo isn't installed, the
- * caller shows an in-app explanation with an install link (setup-panel.ts) —
- * the user decides.
+ * would be wrong for moss's users anyway. When Kubo isn't installed, the setup
+ * gate says so with an install link and moss draws it (setup.ts) — the user
+ * decides.
  *
  * The spawn is OBSERVED. A backgrounded `nohup … &` exits successfully the
  * instant the fork succeeds, so the shell's exit code says nothing about the
