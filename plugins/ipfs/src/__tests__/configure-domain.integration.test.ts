@@ -15,8 +15,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   httpPostMultipart: vi.fn(),
   fetchUrl: vi.fn(),
   executeBinary: vi.fn(),
-  getPluginCookie: vi.fn(),
-  setPluginCookie: vi.fn(),
   getPluginEnvVar: vi.fn(),
   listSiteFilesWithSizes: vi.fn(),
   readSiteFile: vi.fn(),

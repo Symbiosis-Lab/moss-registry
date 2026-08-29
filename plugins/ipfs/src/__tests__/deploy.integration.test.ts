@@ -24,8 +24,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   httpPost: vi.fn(),
   httpPostMultipart: vi.fn(),
   executeBinary: vi.fn(),
-  getPluginCookie: vi.fn(),
-  setPluginCookie: vi.fn(),
   getPluginEnvVar: vi.fn(),
   pluginFileExists: vi.fn(async (name: string) => api.files[name] !== undefined),
   readPluginFile: vi.fn(async (name: string) => api.files[name] ?? ""),
