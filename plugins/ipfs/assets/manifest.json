@@ -29,6 +29,9 @@
     "node_rpc": "string",
     "co_pin": "boolean"
   },
+  "config_options": {
+    "provider": ["pinata", "local"]
+  },
   "config_labels": {
     "provider": "IPFS Provider",
     "gateway": "Custom Gateway Host",
