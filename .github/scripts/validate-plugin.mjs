@@ -156,21 +156,27 @@ if (manifest?.entry) {
     }
 
     // Host capabilities must be declared. This is the static half of the
-    // execute_binary gate: undeclared use is rejected here.
+    // execute_binary gate: undeclared use is rejected here. A named grant
+    // ("execute_binary:ipfs", moss ≥ 0.11.7) scopes the declaration to one
+    // binary; the bare form remains the anything-goes grant.
     const requires = Array.isArray(manifest.requires) ? manifest.requires : [];
+    const binaryGrants = requires.filter((cap) => /^execute_binary(:[\w.-]+)?$/.test(cap));
     const usesExecuteBinary = bundle.includes("execute_binary");
-    if (usesExecuteBinary && !requires.includes("execute_binary")) {
-      fail(`${id}: bundle calls execute_binary but the manifest does not declare requires: ["execute_binary"]`);
+    if (usesExecuteBinary && binaryGrants.length === 0) {
+      fail(`${id}: bundle calls execute_binary but the manifest declares no execute_binary grant in requires`);
     }
     if (usesExecuteBinary) {
-      note(`${id}: uses execute_binary (arbitrary native processes) — REVIEWER: confirm the PR justifies it`);
+      const scope = requires.includes("execute_binary")
+        ? "arbitrary native processes"
+        : binaryGrants.map((cap) => cap.slice("execute_binary:".length)).join(", ");
+      note(`${id}: uses execute_binary (${scope}) — REVIEWER: confirm the PR justifies it`);
     }
-    if (requires.includes("execute_binary") && !usesExecuteBinary) {
+    if (binaryGrants.length > 0 && !usesExecuteBinary) {
       note(`${id}: declares execute_binary but the bundle does not appear to use it — drop the declaration if it is not needed`);
     }
     for (const cap of requires) {
-      if (cap !== "execute_binary") {
-        fail(`${id}: unknown entry in requires: "${cap}" (recognized: execute_binary)`);
+      if (!/^execute_binary(:[\w.-]+)?$/.test(cap)) {
+        fail(`${id}: unknown entry in requires: "${cap}" (recognized: execute_binary, execute_binary:<name>)`);
       }
     }
   }
