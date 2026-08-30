@@ -12,7 +12,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   reportProgress: vi.fn(),
   reportError: vi.fn(),
   showToast: vi.fn(),
-  closeBrowser: vi.fn(),
   readSiteFile: vi.fn(async (path: string) => {
     h.inFlight++;
     h.maxInFlight = Math.max(h.maxInFlight, h.inFlight);

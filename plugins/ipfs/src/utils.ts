@@ -10,7 +10,6 @@ import {
   reportProgress as sdkReportProgress,
   reportError as sdkReportError,
   showToast as sdkShowToast,
-  closeBrowser as sdkCloseBrowser,
   type ToastOptions,
 } from "@symbiosis-lab/moss-api";
 
@@ -50,10 +49,6 @@ export async function showToast(options: ToastOptions | string): Promise<void> {
   await sdkShowToast(options);
 }
 
-/** Close the action panel. */
-export async function closeBrowser(): Promise<void> {
-  await sdkCloseBrowser();
-}
 
 /** Sleep for the given number of milliseconds. */
 export function sleep(ms: number): Promise<void> {

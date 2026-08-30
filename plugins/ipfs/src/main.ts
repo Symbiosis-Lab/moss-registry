@@ -37,10 +37,11 @@ import {
   reportProgress,
   reportError,
   showToast,
-  closeBrowser,
 } from "./utils";
 import { getUrl } from "./http";
 import { publishIdentityIpns, isPublished } from "./ipns-identity";
+import { checkSetup } from "./setup";
+import type { SetupContext, SetupVerdict } from "./types";
 import { showResultPanel, type ResultView } from "./result-panel";
 import { REACHABILITY_TIMEOUT_MS, HEARTBEAT_MS } from "./constants";
 
@@ -103,22 +104,14 @@ async function deploy(context: DeployContext): Promise<HookResult> {
   };
 
   try {
-    // --- Setup gate: ensure the provider is ready (creds / daemon). ---
-    // No deploy heartbeat yet: the setup panels run their own heartbeat
-    // (showPanel), so only one progress source is active at a time.
+    // --- Readiness gate. Interactive setup already ran: moss drives the
+    // check_setup conversation (setup.ts) before the publish reaches this
+    // hook. This is the headless backstop — a not-ready provider fails with
+    // its reason, never with UI.
     await progress("configuring", 1, `Checking ${provider.label}...`);
-    let ready = await provider.checkReady();
+    const ready = await provider.checkReady();
     if (!ready.ready) {
-      await progress("configuring", 2, ready.reason);
-      const ok = await provider.runSetup();
-      await closeBrowser();
-      if (!ok) {
-        return { success: false, message: `${provider.label} not configured.` };
-      }
-      ready = await provider.checkReady();
-      if (!ready.ready) {
-        return { success: false, message: ready.reason };
-      }
+      return { success: false, message: ready.reason };
     }
 
     // --- Heartbeat covers the long phases (read/upload/verify/publish). ---
@@ -378,11 +371,28 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
 }
 
 // ============================================================================
+// check_setup hook — the verdict travels back inside a HookResult
+// ============================================================================
+
+async function check_setup(
+  ctx: SetupContext,
+): Promise<{ success: boolean; setup: SetupVerdict }> {
+  setCurrentHookName("check_setup");
+  return { success: true, setup: await checkSetup(ctx) };
+}
+
+// ============================================================================
 // Plugin registration
 // ============================================================================
 
-const IpfsPlugin = { deploy, configure_domain };
+const IpfsPlugin = { deploy, configure_domain, check_setup };
 (window as unknown as { IpfsPlugin: typeof IpfsPlugin }).IpfsPlugin = IpfsPlugin;
 
-export { deploy, deploy as on_deploy, configure_domain, configure_domain as on_configure_domain };
+export {
+  deploy,
+  deploy as on_deploy,
+  configure_domain,
+  configure_domain as on_configure_domain,
+  check_setup,
+};
 export default IpfsPlugin;

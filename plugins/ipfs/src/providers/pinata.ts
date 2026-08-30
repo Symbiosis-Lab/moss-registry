@@ -15,10 +15,11 @@
  *   the deploy surfaces that honestly. Stable names need the local node or the
  *   planned identity-derived IPNS keys.
  *
- * Auth: checkReady() pre-validates the JWT via GET /data/testAuthentication
- * (works for v3-scoped keys). A rejected token is cleared so setup re-prompts;
- * transport failures don't block — the authenticated upload is the final
- * arbiter.
+ * Auth: the JWT is a declared `secret` setting moss collects and stores;
+ * check_setup (setup.ts) pre-validates it via GET /data/testAuthentication and
+ * rejects a stale one so moss re-asks. checkReady here is the headless gate —
+ * it reports, never prompts. Transport failures don't block; the authenticated
+ * upload is the final arbiter.
  */
 
 import type { IpfsProvider } from "./types";
@@ -36,8 +37,7 @@ import {
   UPLOAD_TIMEOUT_MS,
   API_TIMEOUT_MS,
 } from "../constants";
-import { getPinataJwt, storePinataJwt, clearPinataJwt } from "../credentials";
-import { promptPinataJwt } from "../setup-panel";
+import { getPinataJwt } from "../credentials";
 import {
   postMultipart,
   parseJson,
@@ -79,21 +79,13 @@ export class PinataProvider implements IpfsProvider {
     if (!jwt) {
       return { ready: false, reason: "Connect a Pinata account to publish to IPFS." };
     }
-    // Pre-flight: validate the token so a stale JWT re-prompts BEFORE a long
-    // upload. Transport failures (status 0 / 5xx) don't block.
+    // Pre-flight: catch a stale JWT BEFORE a long upload. Transport failures
+    // (status 0 / 5xx) don't block.
     const res = await getWithHeaders(PINATA_TEST_AUTH_URL, this.authHeaders(jwt), API_TIMEOUT_MS);
     if (isAuthStatus(res.status)) {
-      await clearPinataJwt();
-      return { ready: false, reason: "Your Pinata token was rejected — reconnect Pinata." };
+      return { ready: false, reason: "Your Pinata token was rejected — publish again to enter a new one." };
     }
     return { ready: true };
-  }
-
-  async runSetup(): Promise<boolean> {
-    const jwt = await promptPinataJwt();
-    if (!jwt) return false;
-    await storePinataJwt(jwt);
-    return true;
   }
 
   async uploadDir(files: SiteFile[], onProgress: UploadProgress): Promise<DeployOutput> {
@@ -160,15 +152,17 @@ export class PinataProvider implements IpfsProvider {
 
   private async requireJwt(): Promise<string> {
     const jwt = await getPinataJwt();
-    if (!jwt) throw new Error("Pinata JWT not available. Please connect Pinata.");
+    if (!jwt) throw new Error("Pinata API token not available — set it in the plugin's settings.");
     return jwt;
   }
 
   private throwIfAuthFailed(res: HttpResponse): void {
     if (isAuthStatus(res.status)) {
-      // A rejected JWT is useless — clear it so the next deploy re-prompts.
-      void clearPinataJwt();
-      throw new Error(`Pinata authentication failed (HTTP ${res.status}).`);
+      // The next publish's check_setup re-tests the stored token, rejects it,
+      // and moss re-asks — no cleanup to do mid-deploy.
+      throw new Error(
+        `Pinata authentication failed (HTTP ${res.status}). Publish again to enter a new token.`,
+      );
     }
   }
 }

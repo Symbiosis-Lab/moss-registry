@@ -1,68 +1,39 @@
 /**
- * Pinata credential storage.
+ * Pinata credential access.
  *
- * The Pinata JWT is a secret, so it is stored via plugin cookies (like the
- * GitHub token in github/src/token.ts), never in config.json. Resolution
- * order: the in-memory cache for this session, then the stored cookie.
+ * The JWT is a declared `secret` setting (`pinata_jwt` in manifest.json), so
+ * moss collects it in its own credential modal and holds it in the OS
+ * keystore. The plugin only reads it back, and marks it bad when Pinata
+ * rejects it — `rejectSecret` forgets the stored value and re-asks the user
+ * with the reason, resolving with the replacement (or null on cancel).
  *
- * There is deliberately no environment-variable override: the host's
- * `get_plugin_env_var` allow-list refuses any name outside MOSS_MATTERS_*, so
- * the documented MOSS_IPFS_PINATA_JWT escape hatch could never have worked.
+ * Host calls are invoked directly here because the published moss-api (0.12.0)
+ * predates `getSecret`/`rejectSecret`; when a release that exports them ships,
+ * this module becomes two one-line re-exports.
  */
 
-import {
-  getPluginCookie,
-  setPluginCookie,
-  clearPluginCookies,
-} from "@symbiosis-lab/moss-api";
+const PINATA_JWT_KEY = "pinata_jwt";
 
-const JWT_COOKIE_NAME = "__pinata_jwt";
-const PINATA_HOST = "pinata.cloud";
-
-let cachedJwt: string | null = null;
-
-/** Retrieve the Pinata JWT, or null if unset. */
-export async function getPinataJwt(): Promise<string | null> {
-  if (cachedJwt) return cachedJwt;
-
-  try {
-    const cookies = await getPluginCookie();
-    const cookie = cookies?.find((c) => c.name === JWT_COOKIE_NAME);
-    if (cookie) {
-      cachedJwt = cookie.value;
-      return cachedJwt;
-    }
-  } catch {
-    // Cookie retrieval failed — treat as unset.
-  }
-
-  return null;
+interface TauriWindow {
+  __TAURI__?: { core?: { invoke<T>(cmd: string, args: Record<string, unknown>): Promise<T> } };
 }
 
-/** Persist the Pinata JWT (cookie + in-memory cache). */
-export async function storePinataJwt(jwt: string): Promise<boolean> {
-  try {
-    await setPluginCookie([{ name: JWT_COOKIE_NAME, value: jwt, domain: PINATA_HOST }]);
-  } catch {
-    // Cookie write failed — still cache in memory for this session.
-  }
-  cachedJwt = jwt;
-  return true;
+function invoke<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+  const core = (globalThis as TauriWindow).__TAURI__?.core;
+  if (!core) throw new Error("moss host not available");
+  return core.invoke<T>(cmd, args);
+}
+
+/** The stored Pinata JWT, or null when there is none (or nobody can be asked). */
+export async function getPinataJwt(): Promise<string | null> {
+  return invoke<string | null>("get_plugin_secret", { key: PINATA_JWT_KEY });
 }
 
 /**
- * Remove the stored Pinata JWT.
- *
- * `setPluginCookie([])` does NOT do this: the host returns early on an empty
- * list (`write_plugin_cookies`), so the rejected token survived and came back
- * on the next deploy, every session. `clearPluginCookies()` is the call that
- * actually clears the plugin's domain.
+ * Tell moss the stored JWT no longer works. moss forgets it and re-asks with
+ * `detail` as the reason; resolves with the fresh token, or null if the user
+ * declined (or there is no window to ask in — headless builds).
  */
-export async function clearPinataJwt(): Promise<void> {
-  try {
-    await clearPluginCookies();
-  } catch {
-    // Ignore — the in-memory cache is cleared either way.
-  }
-  cachedJwt = null;
+export async function rejectPinataJwt(detail: string): Promise<string | null> {
+  return invoke<string | null>("reject_plugin_secret", { key: PINATA_JWT_KEY, detail });
 }

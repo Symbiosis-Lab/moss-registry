@@ -1,65 +1,46 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const h = vi.hoisted(() => ({
-  cookies: [] as Array<{ name: string; value: string; domain?: string }>,
-}));
+import { getPinataJwt, rejectPinataJwt } from "../credentials";
 
-// Mirrors the host (plugins/cookie_store.rs): an EMPTY cookie list returns
-// early and writes nothing. The previous mock cleared on `[]`, which is why a
-// clear that never cleared passed its unit test for months.
-vi.mock("@symbiosis-lab/moss-api", () => ({
-  getPluginCookie: vi.fn(async () => h.cookies),
-  setPluginCookie: vi.fn(async (cookies: typeof h.cookies) => {
-    if (cookies.length === 0) return;
-    h.cookies = cookies;
-  }),
-  clearPluginCookies: vi.fn(async () => {
-    h.cookies = [];
-  }),
-}));
+const invoke = vi.fn();
+type G = { __TAURI__?: unknown };
 
-import { getPinataJwt, storePinataJwt, clearPinataJwt } from "../credentials";
+beforeEach(() => {
+  invoke.mockReset();
+  (globalThis as G).__TAURI__ = { core: { invoke } };
+});
 
-beforeEach(async () => {
-  await clearPinataJwt();
-  h.cookies = [];
-  vi.clearAllMocks();
+afterEach(() => {
+  delete (globalThis as G).__TAURI__;
 });
 
 describe("getPinataJwt", () => {
-  it("returns null when nothing is set", async () => {
-    expect(await getPinataJwt()).toBeNull();
+  it("asks the host for the declared secret by key", async () => {
+    invoke.mockResolvedValueOnce("JWT");
+    expect(await getPinataJwt()).toBe("JWT");
+    expect(invoke).toHaveBeenCalledWith("get_plugin_secret", { key: "pinata_jwt" });
   });
 
-  it("reads from the plugin cookie", async () => {
-    h.cookies = [{ name: "__pinata_jwt", value: "COOKIE_JWT" }];
-    expect(await getPinataJwt()).toBe("COOKIE_JWT");
-  });
-
-  it("caches within a session, and clearPinataJwt drops the cache too", async () => {
-    h.cookies = [{ name: "__pinata_jwt", value: "COOKIE_JWT" }];
-    expect(await getPinataJwt()).toBe("COOKIE_JWT");
-    h.cookies = [];
-    expect(await getPinataJwt()).toBe("COOKIE_JWT"); // cached
-    await clearPinataJwt();
+  it("passes null through — no token and nobody to ask", async () => {
+    invoke.mockResolvedValueOnce(null);
     expect(await getPinataJwt()).toBeNull();
   });
 });
 
-describe("storePinataJwt / clearPinataJwt", () => {
-  it("persists the JWT to a cookie", async () => {
-    await storePinataJwt("STORED");
-    expect(h.cookies.find((c) => c.name === "__pinata_jwt")?.value).toBe("STORED");
+describe("rejectPinataJwt", () => {
+  it("sends the rejection reason and resolves with the replacement", async () => {
+    invoke.mockResolvedValueOnce("FRESH");
+    expect(await rejectPinataJwt("Pinata says no.")).toBe("FRESH");
+    expect(invoke).toHaveBeenCalledWith("reject_plugin_secret", {
+      key: "pinata_jwt",
+      detail: "Pinata says no.",
+    });
   });
+});
 
-  it("clears the stored JWT for real, so a rejected token cannot come back", async () => {
-    const { setPluginCookie } = await import("@symbiosis-lab/moss-api");
-    await storePinataJwt("STORED");
-    await clearPinataJwt();
-    // Writing an empty array is what the host ignores — it must not be the
-    // mechanism here.
-    expect(vi.mocked(setPluginCookie)).not.toHaveBeenCalledWith([]);
-    expect(h.cookies).toHaveLength(0);
-    expect(await getPinataJwt()).toBeNull();
+describe("outside the moss host", () => {
+  it("fails loudly rather than pretending there is no token", async () => {
+    delete (globalThis as G).__TAURI__;
+    await expect(getPinataJwt()).rejects.toThrow(/moss host/);
   });
 });

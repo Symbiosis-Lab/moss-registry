@@ -51,9 +51,7 @@ Settings render in moss from the plugin manifest:
 | Node RPC Endpoint (`node_rpc`) | _blank_ | Kubo RPC for the local provider. Blank = this machine; set for a NAS/Pi/VPS node. |
 | Co-Pin (`co_pin`) | `false` | Also pin each deploy to the other backend when available — same CID, one more keeper. |
 
-The Pinata JWT is a secret and is stored in a plugin cookie (`src/credentials.ts`), never
-in `config.json`. That cookie jar belongs to moss rather than to one project, so the token
-is shared by every project you publish from — and is sent only to Pinata.
+The Pinata JWT is a declared `secret` setting, so moss collects it in its own credential dialog and holds it in the OS keystore — never in `config.json`. The keystore belongs to moss rather than to one project, so the token is shared by every project you publish from — and is sent only to Pinata.
 
 Settings are read-only to the plugin: moss owns `config.json`, and the plugin's own
 bookkeeping (the IPNS sequence, the last CID) lives beside it in `state.json`.

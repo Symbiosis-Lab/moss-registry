@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-ipfs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Publish your site to IPFS (Pinata or a local Kubo node)",
   "main": "dist/main.bundle.js",
   "scripts": {

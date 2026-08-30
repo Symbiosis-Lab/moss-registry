@@ -25,8 +25,9 @@ export type ProviderId = "pinata" | "local";
 // ============================================================================
 // Settings (user-owned; read-only for the plugin — see settings.ts)
 //
-// The Pinata JWT is a SECRET and is NOT a setting — it lives in a plugin
-// cookie (see credentials.ts).
+// The Pinata JWT is a declared `secret` setting: moss collects it and holds
+// it in the OS keystore; the plugin reads it back via credentials.ts. It
+// never appears in the config record hooks receive.
 // ============================================================================
 
 export interface IpfsSettings {
@@ -86,12 +87,40 @@ export interface IpfsState {
   lastCid?: string;
   /** Reason the last deploy failed (cleared on the next success). */
   lastDeployError?: string;
-  /**
-   * When the user agreed to moss starting an IPFS daemon on this computer.
-   * ISO timestamp; absent means the consent panel has never been accepted.
-   */
-  daemonConsentAt?: string;
 }
+
+// ============================================================================
+// check_setup wire types
+//
+// Declared locally because the published moss-api (0.12.0) predates the setup
+// contract; structurally identical to the SDK's SetupContext/SetupVerdict, so
+// this block becomes a re-export when a release that has them ships.
+// ============================================================================
+
+export interface SetupContext {
+  /** The plugin's resolved plain settings (declared defaults ∪ saved values). */
+  settings?: Record<string, unknown>;
+  /** The blocker id the user answered, on a re-invocation. */
+  action?: string;
+  /** The submitted form values riding with `action`; empty for a button. */
+  values?: Record<string, unknown>;
+}
+
+export interface SetupForm {
+  fields: never[];
+  submit: string;
+}
+
+export interface SetupBlocker {
+  id: string;
+  message?: string;
+  /** A zero-field form is a button. This plugin never asks for typed input here. */
+  form?: SetupForm;
+}
+
+export type SetupVerdict =
+  | { status: "ready" }
+  | { status: "blocked"; blockers: SetupBlocker[] };
 
 // ============================================================================
 // Provider I/O

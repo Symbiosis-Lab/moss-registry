@@ -18,7 +18,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   reportProgress: vi.fn(),
   reportError: vi.fn(),
   showToast: vi.fn(),
-  closeBrowser: vi.fn(),
   httpPost: vi.fn(),
   executeBinary: vi.fn(async (cfg: { binaryPath: string; args: string[] }) => {
     h.calls.push(cfg);

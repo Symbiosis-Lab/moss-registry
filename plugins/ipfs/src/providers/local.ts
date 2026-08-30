@@ -29,23 +29,7 @@ import {
 } from "../constants";
 import { kuboRpcBase, isDefaultNodeRpc } from "../gateways";
 import { postRaw, postMultipart, toMultipartFiles } from "../http";
-import { promptLocalDaemon, promptDaemonConsent, type GatewayPortOffer } from "../setup-panel";
-import {
-  bootstrapLocalNode,
-  kuboInstalled,
-  diagnoseDaemon,
-  describeDaemonFailure,
-} from "../kubo-bootstrap";
-import { findFreeGatewayPort, setGatewayPort } from "../kubo-gateway";
-import { getState, updateState } from "../state";
-import { reportProgress, sleep } from "../utils";
-
-/** Why an automatic start did not produce a reachable daemon. */
-interface FailedStart {
-  reason: string;
-  /** Present when the failure is a taken gateway port we could move off. */
-  portOffer?: GatewayPortOffer;
-}
+import { kuboInstalled } from "../kubo-bootstrap";
 
 interface KuboAddLine {
   Name: string;
@@ -88,93 +72,6 @@ export class LocalProvider implements IpfsProvider {
         ? "Your IPFS node isn't running."
         : "IPFS (Kubo) isn't installed on this computer yet.",
     };
-  }
-
-  async runSetup(): Promise<boolean> {
-    // One automatic start attempt per user decision: the first pass tries it,
-    // and each explicit Retry earns another. `pending` carries what the last
-    // attempt found, so the panel shows the daemon's own reason.
-    let mayAutoStart = isDefaultNodeRpc(this.config);
-    let pending: FailedStart | undefined;
-
-    for (;;) {
-      const state = await this.checkReady();
-      if (state.ready) return true;
-      const installed = await kuboInstalled();
-
-      if (mayAutoStart && installed) {
-        mayAutoStart = false;
-        if (await this.consentToRunADaemon()) {
-          pending = await this.tryBootstrap();
-          if (!pending) return true;
-          console.warn(`   Node bootstrap didn't complete: ${pending.reason}`);
-        }
-      }
-
-      const choice = await promptLocalDaemon({
-        reason: pending?.reason ?? state.reason,
-        installed,
-        portOffer: pending?.portOffer,
-      });
-      if (choice === "cancel") return false;
-      if (choice === "change-port" && pending?.portOffer) {
-        if (!(await setGatewayPort(pending.portOffer.suggested))) {
-          pending = { reason: "moss could not change the gateway port in your IPFS config." };
-          continue;
-        }
-      }
-      pending = undefined;
-      mayAutoStart = isDefaultNodeRpc(this.config);
-    }
-  }
-
-  /**
-   * Consent to moss running a background daemon on this computer, asked once
-   * per project and remembered in the plugin's own state.
-   */
-  private async consentToRunADaemon(): Promise<boolean> {
-    if ((await getState()).daemonConsentAt) return true;
-    if (!(await promptDaemonConsent())) return false;
-    await updateState({ daemonConsentAt: new Date().toISOString() });
-    return true;
-  }
-
-  /** Bootstrap + wait for readiness. Returns undefined on success, else why not. */
-  private async tryBootstrap(): Promise<FailedStart | undefined> {
-    // A heartbeat keeps the inactivity watchdog fed while the start attempt
-    // runs (no event channels under QuickJS for finer-grained progress).
-    let statusMessage = "Setting up an IPFS node...";
-    const heartbeat = setInterval(() => {
-      void reportProgress("setup", 2, 10, statusMessage);
-    }, 5000);
-    let result;
-    try {
-      result = await bootstrapLocalNode((message) => {
-        statusMessage = message;
-        void reportProgress("setup", 2, 10, message);
-      });
-    } finally {
-      clearInterval(heartbeat);
-    }
-
-    if (!result.ok) {
-      const reason = result.reason ?? "Automatic node setup failed.";
-      if (result.gatewayPortTaken === undefined) return { reason };
-      const suggested = await findFreeGatewayPort();
-      return suggested === null
-        ? { reason }
-        : { reason, portOffer: { taken: result.gatewayPortTaken, suggested } };
-    }
-
-    // The spawn is detached, so its exit status proves nothing — poll the RPC
-    // (~45s budget), then ask the process itself what went wrong.
-    for (let i = 0; i < 22; i++) {
-      await reportProgress("setup", 2, 10, `Waiting for the IPFS node... (${i + 1}/22)`);
-      if (await this.daemonReachable()) return undefined;
-      await sleep(2000);
-    }
-    const diagnosis = result.daemon ? await diagnoseDaemon(result.daemon) : null;
-    return { reason: describeDaemonFailure(diagnosis) };
   }
 
   async uploadDir(files: SiteFile[], onProgress: UploadProgress): Promise<DeployOutput> {

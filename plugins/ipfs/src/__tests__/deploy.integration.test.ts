@@ -18,7 +18,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
     api.toasts.push(opts);
   }),
   dismissToast: vi.fn(),
-  closeBrowser: vi.fn(),
   openBrowserWithHtml: vi.fn(),
   onEvent: vi.fn(),
   httpPost: vi.fn(),
@@ -70,7 +69,6 @@ function makeProvider(overrides: Partial<IpfsProvider> = {}): IpfsProvider {
     id: "pinata",
     label: "Pinata",
     checkReady: vi.fn(async () => ({ ready: true as const })),
-    runSetup: vi.fn(async () => true),
     uploadDir: vi.fn(async (_files, onProgress) => {
       onProgress(50, "Uploading...");
       return { cid: "bafyNEW", sizeBytes: 123 };
@@ -272,29 +270,16 @@ describe("deploy — co-pinning", () => {
   });
 });
 
-describe("deploy — setup gate", () => {
-  it("runs setup when not ready, then resumes", async () => {
-    let ready = false;
-    providerRef.current = makeProvider({
-      checkReady: vi.fn(async () => (ready ? { ready: true as const } : { ready: false as const, reason: "Connect Pinata." })),
-      runSetup: vi.fn(async () => {
-        ready = true;
-        return true;
-      }),
-    });
-    const result = await deploy(flatContext);
-    expect(providerRef.current.runSetup).toHaveBeenCalled();
-    expect(result.success).toBe(true);
-  });
-
-  it("fails cleanly when the user cancels setup", async () => {
+describe("deploy — readiness gate", () => {
+  it("fails with the provider's reason when not ready — fixing it belongs to check_setup, never mid-deploy UI", async () => {
     providerRef.current = makeProvider({
       checkReady: vi.fn(async () => ({ ready: false as const, reason: "Connect Pinata." })),
-      runSetup: vi.fn(async () => false),
     });
     const result = await deploy(flatContext);
     expect(result.success).toBe(false);
+    expect(result.message).toBe("Connect Pinata.");
     expect(result.deployment).toBeUndefined();
+    expect(providerRef.current?.uploadDir).not.toHaveBeenCalled();
   });
 });
 

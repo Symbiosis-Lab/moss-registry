@@ -8,7 +8,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   reportError: vi.fn(),
   showToast: vi.fn(),
   dismissToast: vi.fn(),
-  closeBrowser: vi.fn(),
   openBrowserWithHtml: vi.fn(),
   onEvent: vi.fn(),
   httpPost: vi.fn(),

@@ -16,8 +16,8 @@ import type { IpfsSettings, ProviderId } from "./types";
 
 /**
  * Fallbacks for a hook invoked without the host's merged config (a bare
- * `context.config`). They mirror manifest.json's `config` block; the manifest
- * is the source of truth for what a user sees.
+ * `context.config`). They mirror the `default` values in manifest.json's
+ * `setup.settings`; the manifest is the source of truth for what a user sees.
  */
 const DEFAULTS: IpfsSettings = {
   provider: "pinata",
@@ -25,7 +25,7 @@ const DEFAULTS: IpfsSettings = {
   relativeUrls: true,
 };
 
-/** `config_schema` only expresses primitives, so coerce `provider` on read. */
+/** Narrow the untyped config value to a known provider id. */
 function toProvider(value: unknown): ProviderId | undefined {
   return value === "local" || value === "pinata" ? value : undefined;
 }

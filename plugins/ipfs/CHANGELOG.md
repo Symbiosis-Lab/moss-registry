@@ -1,5 +1,15 @@
 # Changelog — moss-plugin-ipfs
 
+## 0.2.0
+
+Migration to moss's plugin setup contract (moss ≥ 0.11.7). The plugin no longer draws any setup UI: moss renders its settings and credential dialogs from the manifest, and the plugin answers `check_setup` verdicts.
+
+- Settings are declared in `contributes.deploy_target.setup.settings` — a typed `provider` select (Pinata / local Kubo), a `secret` Pinata token with a `when` condition, and the existing options — replacing the top-level `config`/`config_schema`/label/description maps.
+- The Pinata JWT lives in moss's OS keystore as the declared `pinata_jwt` secret. The plugin reads it with `get_plugin_secret` and, on a 401/403, hands it back with `reject_plugin_secret` so moss forgets it and re-asks with the reason. The cookie-jar storage and the plugin-drawn token panel are gone; an existing cookie-stored token is not migrated — moss asks once on the next publish.
+- `check_setup` replaces `runSetup`: Pinata verdicts pre-flight the token; local verdicts probe the daemon and return blockers (`start_daemon`, `change_port`, `recheck`) whose buttons moss draws. Daemon-start consent is the click on "Start IPFS", asked exactly when it applies instead of once per project.
+- Deploy no longer opens setup UI mid-hook; when the provider isn't ready it fails with the reason and points back at setup.
+- Deleted: `setup-panel.ts`, `panel-common.ts` (the result panel keeps its own escaping and stylesheet), the cookie credential machinery, and the per-project daemon-consent state.
+
 ## 0.1.0
 
 Initial release.

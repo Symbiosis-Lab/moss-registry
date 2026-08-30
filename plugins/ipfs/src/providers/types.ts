@@ -19,14 +19,12 @@ export interface IpfsProvider {
   id: ProviderId;
   label: string;
 
-  /** Whether the provider is ready to deploy, or a human reason why not. */
-  checkReady(): Promise<ReadyState>;
-
   /**
-   * Run the provider-specific setup flow (Pinata: JWT panel; local: daemon
-   * guidance). Resolves true once the provider is ready, false if cancelled.
+   * Whether the provider is ready to deploy, or a human reason why not.
+   * Interactive setup happens in `check_setup` (setup.ts) BEFORE deploy; this
+   * is the headless gate — it may probe, but it never opens UI.
    */
-  runSetup(): Promise<boolean>;
+  checkReady(): Promise<ReadyState>;
 
   /** Pin the whole site directory (one multipart request); returns the root CID. */
   uploadDir(files: SiteFile[], onProgress: UploadProgress): Promise<DeployOutput>;
