@@ -10,7 +10,15 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { ID_RE, SEMVER_RE, RESERVED_IDS, cmpSemver, parseReleaseTag } from "./registry-rules.mjs";
+import {
+  ID_RE,
+  SEMVER_RE,
+  RESERVED_IDS,
+  cmpSemver,
+  parseReleaseTag,
+  classifyRequirement,
+  REQUIRES_GRAMMAR,
+} from "./registry-rules.mjs";
 
 const failures = [];
 const notes = [];
@@ -167,19 +175,32 @@ if (manifest?.entry) {
     // Host capabilities must be declared. This is the static half of the
     // execute_binary gate: undeclared use is rejected here.
     const requires = Array.isArray(manifest.requires) ? manifest.requires : [];
+    const classified = requires.map((cap) => [cap, classifyRequirement(cap)]);
+    const granted = classified.filter(([, c]) => c.kind !== "unknown");
+    const blanket = classified.some(([, c]) => c.kind === "blanket");
     const usesExecuteBinary = bundle.includes("execute_binary");
-    if (usesExecuteBinary && !requires.includes("execute_binary")) {
-      fail(`${id}: bundle calls execute_binary but the manifest does not declare requires: ["execute_binary"]`);
+    if (usesExecuteBinary && granted.length === 0) {
+      fail(`${id}: bundle calls execute_binary but the manifest grants no binary — declare each one it runs, e.g. requires: ["execute_binary:git"]`);
     }
     if (usesExecuteBinary) {
-      note(`${id}: uses execute_binary (arbitrary native processes) — REVIEWER: confirm the PR justifies it`);
+      const named = granted.filter(([, c]) => c.kind === "named").map(([, c]) => c.binary);
+      // A named grant is still native execution, so it is still reviewed. What
+      // changes is that the reviewer is told which binaries, not just that.
+      note(
+        named.length > 0 && !blanket
+          ? `${id}: runs native binaries (${named.join(", ")}) — REVIEWER: confirm the PR justifies each`
+          : `${id}: uses execute_binary (arbitrary native processes) — REVIEWER: confirm the PR justifies it`,
+      );
     }
-    if (requires.includes("execute_binary") && !usesExecuteBinary) {
+    if (blanket) {
+      note(`${id}: declares the blanket execute_binary, which grants every binary — name each one instead, e.g. "execute_binary:git"`);
+    }
+    if (granted.length > 0 && !usesExecuteBinary) {
       note(`${id}: declares execute_binary but the bundle does not appear to use it — drop the declaration if it is not needed`);
     }
-    for (const cap of requires) {
-      if (cap !== "execute_binary") {
-        fail(`${id}: unknown entry in requires: "${cap}" (recognized: execute_binary)`);
+    for (const [cap, c] of classified) {
+      if (c.kind === "unknown") {
+        fail(`${id}: unknown entry in requires: "${cap}" (recognized: ${REQUIRES_GRAMMAR})`);
       }
     }
   }
