@@ -38,6 +38,7 @@ import {
   shouldNudgeSessionExpired,
   captureLogin,
   beginFreshLogin,
+  bindStoredToken,
   prepareWebviewAuth,
 } from "./credential";
 import { resolveAuthRoute, isUserPresent } from "./auth-route";
@@ -411,6 +412,10 @@ async function persistSyncError(reason: string): Promise<void> {
 async function affirmBindingFromProfile(): Promise<void> {
   try {
     const profile = await fetchUserProfile();
+    // A first login captured the token before anyone knew whose it was; now we
+    // do, so it moves under the account's own key (credential.ts keys the
+    // app-global store by account, not by folder).
+    await bindStoredToken(profile.userName);
     const config = await getConfig();
     if (config.boundUserName !== profile.userName || config.userName !== profile.userName) {
       // Persist the profile language too, so the login-success toast localizes
@@ -626,6 +631,7 @@ export async function process(context: ProcessContext): Promise<HookResult> {
         if (detectedUser) {
           // Auto-bind from existing articles
           await saveConfig({ ...bindingConfig, boundUserName: detectedUser, userName: detectedUser });
+          await bindStoredToken(detectedUser);
           console.log(`🔗 Auto-bound to @${detectedUser} from existing articles`);
         } else {
           // Fresh project — binding requires login, which only a present
@@ -1699,7 +1705,7 @@ export async function waitForPublishOrClose(
 /**
  * Update the syndicated field in article frontmatter
  */
-async function updateFrontmatterSyndicated(
+export async function updateFrontmatterSyndicated(
   filePath: string,
   publishedUrl: string
 ): Promise<void> {
@@ -1712,15 +1718,20 @@ async function updateFrontmatterSyndicated(
       return;
     }
 
-    // Add to syndicated array if not already present
     const syndicated = (parsed.frontmatter.syndicated as string[]) || [];
-    if (!syndicated.includes(publishedUrl)) {
-      syndicated.push(publishedUrl);
-      parsed.frontmatter.syndicated = syndicated;
+    if (syndicated.includes(publishedUrl)) {
+      // Already recorded. Skip the rewrite: regenerateFrontmatter re-serializes
+      // the user's hand-written frontmatter, and any write re-triggers moss's
+      // file watcher rebuild — both unacceptable for a no-op.
+      return;
     }
+    syndicated.push(publishedUrl);
+    parsed.frontmatter.syndicated = syndicated;
 
-    // Regenerate file with updated frontmatter
-    const newContent = regenerateFrontmatter(parsed.frontmatter) + "\n\n" + parsed.body;
+    // Regenerate file with updated frontmatter. parseFrontmatter's body capture
+    // keeps the blank separator line, so trim it or every rewrite grows one.
+    const newContent =
+      regenerateFrontmatter(parsed.frontmatter) + "\n\n" + parsed.body.replace(/^\n+/, "");
     await writeFile(filePath, newContent);
   } catch (error) {
     console.warn(`    ⚠️ Failed to update frontmatter: ${error}`);

@@ -9,7 +9,7 @@
  * The file stores a MattersSocialData object with:
  * - schemaVersion: "1.0.0" - Version for future migrations
  * - updatedAt: ISO timestamp of last update
- * - articles: Map of source .md path (project-relative) to ArticleSocialData
+ * - articles: Map of article uid (path fallback for pre-uid files) to ArticleSocialData
  *
  * Each ArticleSocialData contains:
  * - comments: Array of MattersComment
@@ -52,7 +52,8 @@ const SOCIAL_FILE_PATH = ".moss/data/social/matters.json";
  */
 const LEGACY_SOCIAL_FILE_PATH = ".moss/social/matters.json";
 const LEGACY_SOCIAL_FILE_MIGRATED = ".moss/social/matters.json.migrated-bak";
-const SCHEMA_VERSION = "1.0.0";
+// 1.1.0 = per-comment `source` (moss docs/reference/social-data-standard.md).
+const SCHEMA_VERSION = "1.1.0";
 
 // ============================================================================
 // Legacy Migration
@@ -339,7 +340,7 @@ function mergeAppreciations(
  * Uses upsert semantics: adds new items, updates existing, never removes.
  *
  * @param data - Existing social data structure (will be mutated)
- * @param articleKey - Article identifier (source .md path, project-relative)
+ * @param articleKey - Article identifier (uid; source path only as pre-uid fallback)
  * @param comments - New comments to merge
  * @param donations - New donations to merge
  * @param appreciations - New appreciations to merge

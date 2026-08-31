@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the SDK exactly like api.test.ts does (api.ts imports it at module top).
+import * as keystore from "./helpers/secret-store-mock";
+
 vi.mock("@symbiosis-lab/moss-api", async () => {
   const actual = await vi.importActual("@symbiosis-lab/moss-api");
   return {
@@ -10,6 +12,9 @@ vi.mock("@symbiosis-lab/moss-api", async () => {
     pluginFileExists: vi.fn(),
     readPluginFile: vi.fn(),
     writePluginFile: vi.fn(),
+    // The token lives in moss's keystore now; the real pair reaches Tauri.
+    getSecret: (key: string) => keystore.getSecret(key),
+    setSecret: (key: string, value: string) => keystore.setSecret(key, value),
   };
 });
 
@@ -53,9 +58,9 @@ import {
   getSessionState,
   markSessionInvalidated,
   shouldNudgeSessionExpired,
-  loadStoredToken,
-  saveStoredToken,
+  authHeaderToken,
   clearTokenCache,
+  resetMigrationForTests,
   captureLogin,
 } from "../credential";
 import {
@@ -69,15 +74,32 @@ const FUTURE = Math.floor(Date.now() / 1000) + 90 * 24 * 3600;
 const PAST = Math.floor(Date.now() / 1000) - 24 * 3600;
 const WITHIN_SKEW = Math.floor(Date.now() / 1000) + 30; // < 60s skew margin
 
+/**
+ * Seed the pre-keystore `auth.json` a real upgrading user has on disk. Every
+ * read goes through the migration, so this exercises it on every case below —
+ * which is the point: the migration runs once, on real users' data.
+ */
 function mockAuthFile(record: Record<string, unknown> | null) {
   vi.mocked(pluginFileExists).mockResolvedValue(record !== null);
   vi.mocked(readPluginFile).mockResolvedValue(JSON.stringify(record ?? {}));
 }
 
+/** The stamps file, isolated from the writes the migration itself makes. */
+function stateWrites() {
+  return vi.mocked(writePluginFile).mock.calls.filter(([f]) => f === "auth-state.json");
+}
+
+function resetCredentialState() {
+  vi.clearAllMocks();
+  clearTokenCache();
+  resetMigrationForTests();
+  keystore.resetSecretStore();
+  vi.mocked(writePluginFile).mockResolvedValue(undefined);
+}
+
 describe("getSessionState", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
+    resetCredentialState();
   });
 
   it("returns 'none' when no auth file exists", async () => {
@@ -122,21 +144,20 @@ describe("getSessionState", () => {
   });
 });
 
-describe("loadStoredToken dead-token filtering", () => {
+describe("authHeaderToken dead-token filtering", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
+    resetCredentialState();
   });
 
   it("returns the token for a valid record", async () => {
     const token = fakeJwt({ exp: FUTURE });
     mockAuthFile({ accessToken: token });
-    expect(await loadStoredToken()).toBe(token);
+    expect(await authHeaderToken()).toBe(token);
   });
 
   it("returns null for an expired JWT (login flow must not 'find' a dead token)", async () => {
     mockAuthFile({ accessToken: fakeJwt({ exp: PAST }) });
-    expect(await loadStoredToken()).toBeNull();
+    expect(await authHeaderToken()).toBeNull();
   });
 
   it("returns null for an invalidatedAt-stamped record", async () => {
@@ -144,20 +165,18 @@ describe("loadStoredToken dead-token filtering", () => {
       accessToken: fakeJwt({ exp: FUTURE }),
       invalidatedAt: "2026-06-10T03:00:00.000Z",
     });
-    expect(await loadStoredToken()).toBeNull();
+    expect(await authHeaderToken()).toBeNull();
   });
 
   it("returns an opaque non-JWT token unchanged (cannot judge locally)", async () => {
     mockAuthFile({ accessToken: "opaque-non-jwt-token" });
-    expect(await loadStoredToken()).toBe("opaque-non-jwt-token");
+    expect(await authHeaderToken()).toBe("opaque-non-jwt-token");
   });
 });
 
 describe("captureLogin cookie-branch dead-token filter (login poll)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
-    vi.mocked(writePluginFile).mockResolvedValue(undefined);
+    resetCredentialState();
   });
 
   it("rejects an expired-exp cookie: resolves null and does NOT write auth.json", async () => {
@@ -166,7 +185,7 @@ describe("captureLogin cookie-branch dead-token filter (login poll)", () => {
       { name: "__access_token", value: fakeJwt({ exp: PAST }) },
     ]);
     expect(await captureLogin()).toBeNull();
-    expect(vi.mocked(writePluginFile)).not.toHaveBeenCalled();
+    expect(keystore.secretStore.get("access_token")).toBeUndefined();
   });
 
   it("rejects a cookie identical to the invalidatedAt-stamped record's token", async () => {
@@ -175,11 +194,13 @@ describe("captureLogin cookie-branch dead-token filter (login poll)", () => {
     // record must.
     const revoked = fakeJwt({ exp: FUTURE });
     mockAuthFile({ accessToken: revoked, invalidatedAt: "2026-06-10T03:00:00.000Z" });
+    keystore.secretStore.set("access_token", revoked);
     vi.mocked(getPluginCookie).mockResolvedValue([
       { name: "__access_token", value: revoked },
     ]);
     expect(await captureLogin()).toBeNull();
-    expect(vi.mocked(writePluginFile)).not.toHaveBeenCalled();
+    // The revoked token stays; the cookie did not overwrite it.
+    expect(keystore.secretStore.get("access_token")).toBe(revoked);
   });
 
   it("accepts a fresh future-exp cookie different from the stamped token and persists it", async () => {
@@ -190,69 +211,61 @@ describe("captureLogin cookie-branch dead-token filter (login poll)", () => {
       { name: "__access_token", value: fresh },
     ]);
     expect(await captureLogin()).toBe(fresh);
-    expect(vi.mocked(writePluginFile)).toHaveBeenCalledWith(
-      "auth.json",
-      expect.stringContaining(fresh)
-    );
+    expect(keystore.secretStore.get("access_token")).toBe(fresh);
+    // Nothing the plugin writes to disk may carry the token.
+    for (const [, content] of vi.mocked(writePluginFile).mock.calls) {
+      expect(content as string).not.toContain(fresh);
+    }
   });
 });
 
 describe("markSessionInvalidated", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
+    resetCredentialState();
   });
 
-  it("skips the file write when there is no token to invalidate", async () => {
+  it("skips the stamp write when there is no token to invalidate", async () => {
     mockAuthFile(null);
     await markSessionInvalidated();
-    expect(vi.mocked(writePluginFile)).not.toHaveBeenCalled();
+    expect(stateWrites()).toHaveLength(0);
   });
 
-  it("stamps invalidatedAt while preserving the token", async () => {
+  it("stamps invalidatedAt without touching the stored token", async () => {
     const token = fakeJwt({ exp: FUTURE });
     mockAuthFile({ accessToken: token });
-    vi.mocked(writePluginFile).mockResolvedValue(undefined);
+    keystore.secretStore.set("access_token", token);
 
     await markSessionInvalidated();
 
-    const [file, content] = vi.mocked(writePluginFile).mock.calls[0];
-    expect(file).toBe("auth.json");
-    const written = JSON.parse(content as string);
-    expect(written.accessToken).toBe(token);
+    const written = JSON.parse(stateWrites().at(-1)![1] as string);
     expect(typeof written.invalidatedAt).toBe("string");
-  });
-
-  it("saveStoredToken clears previous stamps (fresh login resets)", async () => {
-    vi.mocked(writePluginFile).mockResolvedValue(undefined);
-    await saveStoredToken("fresh-token");
-    const [, content] = vi.mocked(writePluginFile).mock.calls[0];
-    const written = JSON.parse(content as string);
-    expect(written.accessToken).toBe("fresh-token");
-    expect(written.invalidatedAt).toBeUndefined();
-    expect(written.nudgedAt).toBeUndefined();
+    // The secret stays put: "expired" must stay distinguishable from
+    // "never logged in", and the two route differently.
+    expect(keystore.secretStore.get("access_token")).toBe(token);
+    // And no stamp file ever carries the secret.
+    expect(written.accessToken).toBeUndefined();
   });
 });
 
 describe("shouldNudgeSessionExpired (persisted once-per-expiry-event throttle)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
+    resetCredentialState();
   });
 
   it("nudges the first time and stamps nudgedAt", async () => {
     mockAuthFile({ accessToken: fakeJwt({ exp: PAST }) });
     vi.mocked(writePluginFile).mockResolvedValue(undefined);
     expect(await shouldNudgeSessionExpired()).toBe(true);
-    const [file, content] = vi.mocked(writePluginFile).mock.calls[0];
-    expect(file).toBe("auth.json");
-    expect(JSON.parse(content as string).nudgedAt).toBeTruthy();
+    expect(JSON.parse(stateWrites().at(-1)![1] as string).nudgedAt).toBeTruthy();
   });
 
   it("does not nudge again once nudgedAt is stamped", async () => {
     mockAuthFile({ accessToken: fakeJwt({ exp: PAST }), nudgedAt: "2026-06-10T03:00:00.000Z" });
     expect(await shouldNudgeSessionExpired()).toBe(false);
-    expect(vi.mocked(writePluginFile)).not.toHaveBeenCalled();
+    // The migration writes the stamps through untouched; nothing re-nudges.
+    for (const [, content] of stateWrites()) {
+      expect(JSON.parse(content as string).nudgedAt).toBe("2026-06-10T03:00:00.000Z");
+    }
   });
 
   it("does not nudge when there is no session at all", async () => {
@@ -281,10 +294,8 @@ const TOKEN_INVALID_BODY = {
 
 describe("graphqlQuery auth-error detection", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
+    resetCredentialState();
     mockAuthFile({ accessToken: fakeJwt({ exp: FUTURE }) });
-    vi.mocked(writePluginFile).mockResolvedValue(undefined);
   });
 
   it("throws MattersAuthError on 500 + TOKEN_INVALID body (real Matters shape)", async () => {
@@ -295,9 +306,8 @@ describe("graphqlQuery auth-error detection", () => {
   it("stamps invalidatedAt when an auth error is detected", async () => {
     mockHttpResponse(500, TOKEN_INVALID_BODY);
     await expect(graphqlQuery("query { viewer { id } }")).rejects.toThrow();
-    const writes = vi.mocked(writePluginFile).mock.calls.filter(([f]) => f === "auth.json");
-    expect(writes.length).toBe(1);
-    expect(JSON.parse(writes[0][1] as string).invalidatedAt).toBeTruthy();
+    const writes = stateWrites();
+    expect(JSON.parse(writes.at(-1)![1] as string).invalidatedAt).toBeTruthy();
   });
 
   it("throws MattersAuthError on 200 + UNAUTHENTICATED errors array", async () => {
@@ -345,10 +355,8 @@ describe("graphqlQuery auth-error detection", () => {
 
 describe("graphqlQueryPublic (token-less path)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    clearTokenCache();
+    resetCredentialState();
     mockAuthFile({ accessToken: fakeJwt({ exp: FUTURE }) }); // a valid session exists...
-    vi.mocked(writePluginFile).mockResolvedValue(undefined);
   });
 
   it("auth-code body does NOT stamp the session and is NOT a MattersAuthError", async () => {

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-30
+
+- Publishing reports each step once, when it starts, instead of repeating the same line every ten seconds. The repetition existed to convince moss the plugin was still alive during a long upload; moss now counts the upload itself as being alive.
+
+- Changed (in moss, no plugin release): moss starts and watches the OnionPress stack only while a site hosted on it is open. Launching moss no longer brings the stack up about fifteen minutes in on every machine that has it installed; opening a site hosted on OnionPress brings it up immediately, and a published site whose folder is closed is left to the stack's own watchdog and the menu bar app. ADR-050 § Amendment (2026-08-27).
+
 ## [0.4.0] - 2026-08-20
 
 - Added: large sites upload without running the machine out of memory. The tar was previously sent as one raw request body, which buffered roughly twice its size in memory on the way out and again inside the receiver before the plugin's code ever ran; it is now streamed from disk as a multipart upload at constant memory. Gated on what the receiver reports it supports (`receiver_version` 1.2 or newer, checked numerically, with a missing or unreadable version treated as older): an older receiver keeps the exact request it always got, so nothing has to be upgraded in step. A 65 MB / 302-file publish was verified end to end on a cold stack.

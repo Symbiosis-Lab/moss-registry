@@ -11,6 +11,8 @@ import {
   formatCredentialInput,
   parseCredentialOutput,
   getTokenFromGit,
+  clearToken,
+  getToken,
 } from "../token";
 
 // token.ts no longer imports from utils — no mock needed
@@ -85,6 +87,51 @@ describe("token", () => {
   // =========================================================================
   // getTokenFromGit tests (Bug 8: Git credential helper integration)
   // =========================================================================
+  describe("clearToken", () => {
+    let ctx: MockTauriContext;
+
+    beforeEach(() => {
+      ctx = setupMockTauri({ pluginName: "github", projectPath: "/project" });
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      ctx.cleanup();
+    });
+
+    // Signing out must actually remove the stored token. This used to call
+    // `setPluginCookie([])`, which the host silently ignored, so the token
+    // came back on the next session.
+    it("removes the stored token cookie", async () => {
+      ctx.cookieStorage.setCookies("github", "/project", [
+        { name: "__github_access_token", value: "ghp_secret" },
+      ]);
+
+      await expect(clearToken()).resolves.toBe(true);
+
+      expect(ctx.cookieStorage.getCookies("github", "/project")).toEqual([]);
+    });
+
+    // The same defect one frame up: an inner catch around the cookie clear
+    // reported a sign-out that never happened. And a failed clear must still
+    // empty the memory cache — `getToken()` reads that first, so a token left
+    // there keeps publishing after the user signed out.
+    it("reports a failed clear as false and keeps no token in memory", async () => {
+      ctx.cookieStorage.setCookies("github", "/project", [
+        { name: "__github_access_token", value: "ghp_secret" },
+      ]);
+      await expect(getToken()).resolves.toBe("ghp_secret");
+
+      // No plugin context: clearPluginCookies refuses rather than clearing.
+      ctx.cleanup();
+
+      await expect(clearToken()).resolves.toBe(false);
+      await expect(getToken()).resolves.toBeNull();
+
+      ctx = setupMockTauri({ pluginName: "github", projectPath: "/project" });
+    });
+  });
+
   describe("getTokenFromGit", () => {
     let ctx: MockTauriContext;
 

@@ -10,15 +10,14 @@
  */
 
 import type { DeployContext, ConfigureDomainContext, HookResult, DnsTarget, DnsRecord } from "./types";
-import { getTauriCore, fetchUrl } from "@symbiosis-lab/moss-api";
-import { reportProgress, reportError, setCurrentHookName, showToast, closeBrowser } from "./utils";
+import { fetchUrl } from "@symbiosis-lab/moss-api";
+import { reportProgress, reportError, setCurrentHookName, showToast, closeBrowser, resolveGitPath } from "./utils";
 import { buildPagesUrl, parseGitHubUrl } from "./git";
 import { verifyRepoExists, getOriginOwnerRepo, deployViaGitPush, type DeployResult } from "./github-deploy";
-import { promptLogin, validateToken, hasRequiredScopes } from "./auth";
+import { resolveTokenOutcome } from "./auth";
 import { ensureGitHubRepo } from "./repo-setup";
 import { checkPagesStatus, requestPagesBuild, setCustomDomain, ensurePagesSource, getPages, enforceHttps } from "./github-api";
-import { getToken, getTokenFromGit, storeToken } from "./token";
-import { DEPLOY_HEARTBEAT_INTERVAL_MS } from "./constants";
+import { check_setup } from "./setup";
 
 // ============================================================================
 // GitHub Pages DNS Configuration
@@ -188,11 +187,9 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 
   // Pre-flight: resolve git binary (downloads if needed)
   await reportProgress("configuring", 1, 10, "Checking git...");
-  let gitPath: string;
-  try {
-    gitPath = await getTauriCore().invoke<string>("resolve_git_path");
-  } catch (e) {
-    const msg = `Git is required for deployment. ${e instanceof Error ? e.message : String(e)}\n\nInstall git by running: xcode-select --install`;
+  const gitPath = await resolveGitPath();
+  if (!gitPath) {
+    const msg = "Git is required for deployment.\n\nInstall git by running: xcode-select --install";
     await reportError(msg, "validation", true);
     return { success: false, message: msg };
   }
@@ -208,7 +205,24 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     }
     console.log(`   Site files: ${context.site_files.length} files ready`);
 
-    // Phase 0: Determine deploy target from git state (single source of truth)
+    // Phase 0: the account, before anything that needs it. Signing in is the
+    // setup gate's job — `check_setup` ran on the Publish click and offered
+    // the button — so reaching here without a token means the token stopped
+    // working since. Say so and stop; a login behind a progress bar is the
+    // behaviour this replaced.
+    await reportProgress("configuring", 2, 10, "Checking authentication...");
+    const { token, unreachable } = await resolveTokenOutcome(gitPath);
+    if (!token) {
+      // Offline, the sign-in this would send them to needs the network that
+      // just failed — so naming the token is a wrong diagnosis AND a dead end.
+      const msg = unreachable
+        ? "moss could not reach GitHub. Check your connection and publish again."
+        : "Your GitHub sign-in has expired. Publish again to sign in.";
+      await reportError(msg, "authenticating", true);
+      return { success: false, message: msg };
+    }
+
+    // Phase 1: Determine deploy target from git state (single source of truth)
     let owner: string;
     let repoName: string;
     let wasFirstSetup = false;
@@ -223,7 +237,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     } else {
       // No .git or no GitHub origin — run setup flow
       await reportProgress("setup", 0, 10, "Setting up GitHub repository...");
-      const repoInfo = await ensureGitHubRepo();
+      const repoInfo = await ensureGitHubRepo(token);
 
       if (!repoInfo) {
         return { success: false, message: "Repository setup cancelled." };
@@ -243,52 +257,13 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       console.log("   Browser closed - continuing deployment in background");
     }
 
-    // Phase 1: Ensure authentication (mandatory for GitHub API + push)
-    await reportProgress("configuring", 3, 10, "Checking authentication...");
-    let token = await getToken();
-    if (!token) {
-      const gitToken = await getTokenFromGit(gitPath);
-      if (gitToken) {
-        const validation = await validateToken(gitToken);
-        if (validation.valid && hasRequiredScopes(validation.scopes || [])) {
-          await storeToken(gitToken);
-          token = gitToken;
-        } else {
-          console.log("   Git credential token invalid or lacks required scopes");
-        }
-      }
-      if (!token) {
-        await reportProgress("authenticating", 3, 10, "Authentication required...");
-        const authResult = await promptLogin();
-        if (!authResult) {
-          return { success: false, message: "Authentication required for deployment. Please try again." };
-        }
-        token = await getToken();
-        if (!token) {
-          return { success: false, message: "Authentication failed. No valid token available." };
-        }
-      }
-    }
-
     // Phase 2: Verify repository exists (fail fast with clear error)
     await verifyRepoExists(owner, repoName, token);
 
-    // Heartbeat safety net: report progress periodically to prevent inactivity timeout
-    // and keep the progress panel visible (must be < STALE_TIMEOUT_MS of 15s).
-    // Tracks current phase so heartbeat message is informative, not generic
+    // The deploy's slow tail (source backup to main, the Pages-API liveness
+    // check) is reported as it happens. moss counts a host call in flight as
+    // activity (ADR-072), so nothing has to be said to stay alive.
     let deployResult: DeployResult = { commitSha: "", orphanSha: "", treeChanged: false };
-    let currentPhase = "Deploying...";
-    let currentStep = 5;
-    // Once gh-pages push lands, the deploy is logically done from the user's
-    // perspective — the slow tail (source backup to main, Pages-API liveness
-    // check) shouldn't keep the panel saying "Deployed!" while progress visibly
-    // advances. Track whether we've crossed that boundary so the heartbeat
-    // emits a phase-appropriate message instead.
-    let postDeployPhase = false;
-    const heartbeat = setInterval(() => {
-      const stage = postDeployPhase ? "verifying" : "deploying";
-      reportProgress(stage, currentStep, 10, currentPhase);
-    }, DEPLOY_HEARTBEAT_INTERVAL_MS);
 
     // Use context.domain from DeployContext (populated by Rust from .moss/config.toml).
     // Fall back to GitHub Pages API safety net if local config is missing
@@ -306,35 +281,27 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       }
     }
 
-    try {
-      // Single deploy: commits source + .moss/build/site/, pushes to main,
-      // then extracts .moss/build/site/ tree as orphan commit → gh-pages
-      deployResult = await deployViaGitPush({
-        owner,
-        repo: repoName,
-        token,
-        gitPath,
-        domain,
-        onProgress: (percent, message) => {
-          currentPhase = message;
-          // The plugin emits percent=100 once when gh-pages push lands
-          // ("Deployed!"), then again with a different message for the
-          // post-deploy source-backup phase. Once we've seen that boundary,
-          // step locks to 10 and the heartbeat reports the "verifying" stage.
-          if (percent >= 100) {
-            postDeployPhase = true;
-            currentStep = 10;
-            reportProgress("verifying", currentStep, 10, message);
-          } else {
-            // Map 0-99% to steps 5-9 of overall 10-step progress
-            currentStep = Math.min(5 + Math.floor((percent / 100) * 4), 9);
-            reportProgress("deploying", currentStep, 10, message);
-          }
-        },
-      });
-    } finally {
-      clearInterval(heartbeat);
-    }
+    // Single deploy: commits source + .moss/build/site/, pushes to main,
+    // then extracts .moss/build/site/ tree as orphan commit → gh-pages
+    deployResult = await deployViaGitPush({
+      owner,
+      repo: repoName,
+      token,
+      gitPath,
+      domain,
+      onProgress: (percent, message) => {
+        // The plugin emits percent=100 once when gh-pages push lands
+        // ("Deployed!"), then again with a different message for the
+        // post-deploy source backup. From the user's side the publish is done
+        // at that boundary, so the tail reports "verifying", not "deploying".
+        if (percent >= 100) {
+          reportProgress("verifying", 10, 10, message);
+        } else {
+          // Map 0-99% to steps 5-9 of overall 10-step progress
+          reportProgress("deploying", Math.min(5 + Math.floor((percent / 100) * 4), 9), 10, message);
+        }
+      },
+    });
 
     // Ensure GitHub Pages serves from gh-pages (non-fatal)
     try {
@@ -539,14 +506,9 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
   console.log(`GitHub Deployer: Configuring custom domain "${domain}"...`);
 
   try {
-    // Resolve git binary (may use portable download if system git unavailable)
-    let gitPath: string;
-    try {
-      gitPath = await getTauriCore().invoke<string>("resolve_git_path");
-    } catch (e) {
-      console.log(`   Git resolution failed, falling back to system git: ${e instanceof Error ? e.message : String(e)}`);
-      gitPath = "git"; // Fallback — configure_domain is non-fatal
-    }
+    // configure_domain is non-fatal, so an unresolvable git falls back to
+    // whatever "git" means on this machine rather than refusing.
+    const gitPath = (await resolveGitPath()) ?? "git";
 
     // Get deploy target from git origin
     const repoConfig = await getOriginOwnerRepo(gitPath);
@@ -559,20 +521,13 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
 
     const { owner, repo } = repoConfig;
 
-    // Get authentication token (should already be stored from deploy)
-    let token = await getToken();
-    if (!token) {
-      // Try git credential helper as fallback
-      token = await getTokenFromGit(gitPath);
-      if (token) {
-        await storeToken(token);
-      }
-    }
-
+    const { token, unreachable } = await resolveTokenOutcome(gitPath);
     if (!token) {
       return {
         success: false,
-        message: "No GitHub authentication token available. Please deploy first to authenticate.",
+        message: unreachable
+          ? "moss could not reach GitHub."
+          : "No GitHub authentication token available. Please deploy first to authenticate.",
       };
     }
 
@@ -636,11 +591,12 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
 const GithubPlugin = {
   deploy,
   configure_domain,
+  check_setup,
 };
 
 // Register plugin globally for the plugin runtime
 (window as unknown as { GithubPlugin: typeof GithubPlugin }).GithubPlugin = GithubPlugin;
 
 // Also export for module usage
-export { deploy, deploy as on_deploy, configure_domain, configure_domain as on_configure_domain };
+export { deploy, deploy as on_deploy, configure_domain, configure_domain as on_configure_domain, check_setup };
 export default GithubPlugin;

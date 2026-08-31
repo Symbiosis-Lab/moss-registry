@@ -17,6 +17,7 @@ import type { DeployContext } from "../types";
 
 // We need to mock the utils module to prevent actual IPC calls for logging
 vi.mock("../utils", () => ({
+  resolveGitPath: vi.fn().mockResolvedValue("git"),
   reportProgress: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
   setCurrentHookName: vi.fn(),
@@ -35,20 +36,12 @@ vi.mock("../github-deploy", () => ({
 
 // Mock the auth module
 vi.mock("../auth", () => ({
+  resolveTokenOutcome: vi.fn(),
   promptLogin: vi.fn(),
   checkAuthentication: vi.fn(),
-  validateToken: vi.fn(),
-  hasRequiredScopes: vi.fn(),
 }));
 
 // Mock the token module
-vi.mock("../token", () => ({
-  getToken: vi.fn(),
-  getTokenFromGit: vi.fn(),
-  storeToken: vi.fn(),
-  clearToken: vi.fn(),
-}));
-
 // Mock the git module
 vi.mock("../git", () => ({
   buildPagesUrl: vi.fn().mockImplementation((owner: string, repo: string) => {
@@ -97,8 +90,7 @@ vi.mock("../github-api", () => ({
 import { on_deploy } from "../main";
 import { reportProgress, showToast } from "../utils";
 import { verifyRepoExists, getOriginOwnerRepo, deployViaGitPush } from "../github-deploy";
-import { promptLogin, validateToken, hasRequiredScopes } from "../auth";
-import { getToken, getTokenFromGit, storeToken } from "../token";
+import { resolveTokenOutcome } from "../auth";
 import { buildPagesUrl, parseGitHubUrl } from "../git";
 import { checkPagesStatus, ensurePagesSource, getPages } from "../github-api";
 import { ensureGitHubRepo } from "../repo-setup";
@@ -113,10 +105,9 @@ function createMockContext(overrides?: Partial<DeployContext>): DeployContext {
     output_dir: "/test/project/.moss/build/site",
     site_files: ["index.html", "style.css"],
     project_info: {
-      project_type: "markdown",
-      content_folders: ["posts"],
       total_files: 10,
       homepage_file: "index.md",
+      lang: "en",
     },
     config: {},
     ...overrides,
@@ -149,9 +140,8 @@ function setupDeployMocks(
     needsSetup = false,
   } = options ?? {};
 
-  // Token is available
-  vi.mocked(getToken).mockResolvedValue(token);
-  vi.mocked(getTokenFromGit).mockResolvedValue(null);
+  // An account is connected — the setup gate's job, done before the publish.
+  vi.mocked(resolveTokenOutcome).mockResolvedValue({ token: token, unreachable: false });
 
   if (needsSetup) {
     // No .git origin — setup flow runs
@@ -358,64 +348,18 @@ describe("on_deploy integration", () => {
   });
 
   describe("Authentication", () => {
-    it("prompts OAuth when no token available", async () => {
-      vi.mocked(getOriginOwnerRepo).mockResolvedValue({ owner: "user", repo: "repo" });
-      vi.mocked(getToken).mockResolvedValue(null);
-      vi.mocked(getTokenFromGit).mockResolvedValue(null);
-
-      vi.mocked(promptLogin).mockResolvedValue(true);
-      vi.mocked(getToken)
-        .mockResolvedValueOnce(null) // Phase 1 check
-        .mockResolvedValueOnce("new-token"); // after promptLogin
-
-      vi.mocked(deployViaGitPush).mockResolvedValue({ commitSha: "", orphanSha: "", treeChanged: false });
+    it("stops with a sign-in message when the account has gone away", async () => {
+      // The gate ran before this hook and offered the button; reaching here
+      // unauthenticated means the token stopped working since. Opening a login
+      // behind the progress bar is the behaviour this replaced.
+      setupDeployMocks(ctx);
+      vi.mocked(resolveTokenOutcome).mockResolvedValue({ token: null, unreachable: false });
 
       const result = await on_deploy(createMockContext());
 
-      expect(vi.mocked(promptLogin)).toHaveBeenCalled();
-    });
-
-    it("uses git credential token when valid", async () => {
-      vi.mocked(getOriginOwnerRepo).mockResolvedValue({ owner: "test-user", repo: "test-repo" });
-      vi.mocked(getToken).mockResolvedValue(null);
-      vi.mocked(getTokenFromGit).mockResolvedValue("git-credential-token");
-
-      vi.mocked(validateToken).mockResolvedValue({
-        valid: true,
-        user: { login: "test-user", id: 1, avatar_url: "", html_url: "" },
-        scopes: ["repo"],
-      });
-      vi.mocked(hasRequiredScopes).mockReturnValue(true);
-
-      vi.mocked(deployViaGitPush).mockResolvedValue({ commitSha: "commit-sha", orphanSha: "orphan-commit-sha", treeChanged: true });
-      vi.mocked(checkPagesStatus).mockResolvedValue({ status: "built", url: "", commit: "orphan-commit-sha" });
-
-      const result = await on_deploy(createMockContext());
-
-      expect(vi.mocked(validateToken)).toHaveBeenCalledWith("git-credential-token");
-      expect(vi.mocked(storeToken)).toHaveBeenCalledWith("git-credential-token");
-      expect(result.success).toBe(true);
-    });
-
-    it("falls through to OAuth when git credential token lacks scopes", async () => {
-      vi.mocked(getOriginOwnerRepo).mockResolvedValue({ owner: "test-user", repo: "test-repo" });
-      vi.mocked(getToken).mockResolvedValue(null);
-      vi.mocked(getTokenFromGit).mockResolvedValue("weak-git-token");
-
-      vi.mocked(validateToken).mockResolvedValue({
-        valid: true,
-        user: { login: "test-user", id: 1, avatar_url: "", html_url: "" },
-        scopes: ["gist"],
-      });
-      vi.mocked(hasRequiredScopes).mockReturnValue(false);
-
-      vi.mocked(promptLogin).mockResolvedValue(false);
-
-      const result = await on_deploy(createMockContext());
-
-      expect(vi.mocked(storeToken)).not.toHaveBeenCalledWith("weak-git-token");
-      expect(vi.mocked(promptLogin)).toHaveBeenCalled();
       expect(result.success).toBe(false);
+      expect(result.message).toContain("sign in");
+      expect(vi.mocked(deployViaGitPush)).not.toHaveBeenCalled();
     });
 
     it("auth error returns helpful message", async () => {

@@ -1065,6 +1065,7 @@ export async function fetchArticleComments(
       const node = edge.node;
       allComments.push({
         id: node.id,
+        source: "matters",
         content: node.content,
         createdAt: node.createdAt,
         state: node.state as "active" | "archived" | "banned" | "collapsed",

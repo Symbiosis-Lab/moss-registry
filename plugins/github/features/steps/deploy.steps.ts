@@ -19,6 +19,7 @@ const feature = await loadFeature("features/deploy/validation.feature");
 
 // Mock the utils module
 vi.mock("../../src/utils", () => ({
+  resolveGitPath: vi.fn().mockResolvedValue("git"),
   reportProgress: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
   setCurrentHookName: vi.fn(),
@@ -37,18 +38,8 @@ vi.mock("../../src/github-deploy", () => ({
 
 // Mock the auth module
 vi.mock("../../src/auth", () => ({
+  resolveTokenOutcome: vi.fn(),
   promptLogin: vi.fn(),
-  checkAuthentication: vi.fn(),
-  validateToken: vi.fn(),
-  hasRequiredScopes: vi.fn(),
-}));
-
-// Mock the token module
-vi.mock("../../src/token", () => ({
-  getToken: vi.fn(),
-  getTokenFromGit: vi.fn(),
-  storeToken: vi.fn(),
-  clearToken: vi.fn(),
 }));
 
 // Mock the git module (only pure functions still imported by main.ts)
@@ -83,7 +74,7 @@ vi.mock("../../src/github-api", () => ({
 // Import after mocking
 const { on_deploy } = await import("../../src/main");
 const { deployViaGitPush, getOriginOwnerRepo } = await import("../../src/github-deploy");
-const { getToken, getTokenFromGit } = await import("../../src/token");
+const { resolveTokenOutcome } = await import("../../src/auth");
 const { parseGitHubUrl, buildPagesUrl } = await import("../../src/git");
 const { checkPagesStatus } = await import("../../src/github-api");
 const { ensureGitHubRepo } = await import("../../src/repo-setup");
@@ -105,10 +96,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       output_dir: `${projectPath}/.moss/build/site`,
       site_files: scenarioSiteFiles,
       project_info: {
-        project_type: "markdown",
-        content_folders: ["posts"],
         total_files: 10,
         homepage_file: "index.md",
+        lang: "en",
       },
       config: {},
     };
@@ -134,6 +124,9 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       return `https://${owner}.github.io/${repo}`;
     });
     vi.mocked(checkPagesStatus).mockResolvedValue({ status: "built" });
+    // Default: signed in — the setup gate runs before the hook, so a deploy
+    // scenario that is not about the account starts with one connected.
+    vi.mocked(resolveTokenOutcome).mockResolvedValue({ token: "test-token", unreachable: false });
     // Default: no git origin (first-time user)
     vi.mocked(getOriginOwnerRepo).mockResolvedValue(null);
   });
@@ -277,10 +270,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
 
     And("the GitHub Actions workflow already exists", () => {
-      // Token available
-      vi.mocked(getToken).mockResolvedValue("test-token");
-      vi.mocked(getTokenFromGit).mockResolvedValue(null);
-
       // deployViaGitPush returns DeployResult
       vi.mocked(deployViaGitPush).mockResolvedValue({ commitSha: "new-commit-sha", orphanSha: "orphan-sha", treeChanged: true });
 
@@ -327,10 +316,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
 
     And("the GitHub Actions workflow does not exist", () => {
-      // Token available
-      vi.mocked(getToken).mockResolvedValue("test-token");
-      vi.mocked(getTokenFromGit).mockResolvedValue(null);
-
       // deployViaGitPush returns DeployResult
       vi.mocked(deployViaGitPush).mockResolvedValue({ commitSha: "first-commit-sha", orphanSha: "orphan-sha", treeChanged: true });
 

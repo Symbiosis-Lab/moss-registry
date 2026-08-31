@@ -12,39 +12,34 @@ import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
 const mockOpenBrowserWithHtml = vi.fn().mockResolvedValue(undefined);
 const mockCloseBrowser = vi.fn().mockResolvedValue(undefined);
 const mockOnEvent = vi.fn();
+// The form wait tells moss the hook is awaiting a person, which is what keeps
+// the 60 s inactivity watchdog off it.
+const mockAwaiting = vi.fn().mockResolvedValue(undefined);
+const mockSucceeded = vi.fn().mockResolvedValue(undefined);
+const mockFailed = vi.fn().mockResolvedValue(undefined);
+const mockCancelled = vi.fn().mockResolvedValue(undefined);
+const mockStartTask = vi.fn().mockResolvedValue({
+  id: "1",
+  progress: vi.fn(),
+  awaiting: (...args: unknown[]) => mockAwaiting(...args),
+  advise: vi.fn(),
+  succeeded: (...args: unknown[]) => mockSucceeded(...args),
+  failed: (...args: unknown[]) => mockFailed(...args),
+  cancelled: (...args: unknown[]) => mockCancelled(...args),
+});
 
 vi.mock("@symbiosis-lab/moss-api", () => ({
   openBrowserWithHtml: (...args: unknown[]) => mockOpenBrowserWithHtml(...args),
   closeBrowser: () => mockCloseBrowser(),
   onEvent: (...args: unknown[]) => mockOnEvent(...args),
   executeBinary: vi.fn().mockResolvedValue({ success: true, stdout: "", stderr: "" }),
+  startTask: (...args: unknown[]) => mockStartTask(...args),
 }));
 
 // Mock utils
 vi.mock("../utils", () => ({
+  resolveGitPath: vi.fn().mockResolvedValue("git"),
   reportProgress: vi.fn().mockResolvedValue(undefined),
-}));
-
-// Mock token module
-const mockGetToken = vi.fn();
-const mockGetTokenFromGit = vi.fn();
-const mockStoreToken = vi.fn();
-
-vi.mock("../token", () => ({
-  getToken: () => mockGetToken(),
-  getTokenFromGit: () => mockGetTokenFromGit(),
-  storeToken: (token: string) => mockStoreToken(token),
-}));
-
-// Mock auth module
-const mockPromptLogin = vi.fn();
-const mockValidateToken = vi.fn();
-const mockHasRequiredScopes = vi.fn();
-
-vi.mock("../auth", () => ({
-  promptLogin: () => mockPromptLogin(),
-  validateToken: (token: string) => mockValidateToken(token),
-  hasRequiredScopes: (scopes: string[]) => mockHasRequiredScopes(scopes),
 }));
 
 // Mock github-api module
@@ -62,7 +57,7 @@ vi.mock("../github-api", () => ({
 
 describe("ensureGitHubRepo", () => {
   // Import will fail until we implement the function
-  let ensureGitHubRepo: () => Promise<{
+  let ensureGitHubRepo: (token: string) => Promise<{
     name: string;
     sshUrl: string;
     fullName: string;
@@ -76,66 +71,8 @@ describe("ensureGitHubRepo", () => {
     ensureGitHubRepo = module.ensureGitHubRepo;
   });
 
-  describe("authentication", () => {
-    it("returns null when no token available and login fails", async () => {
-      // No cached token
-      mockGetToken.mockResolvedValue(null);
-      mockGetTokenFromGit.mockResolvedValue(null);
-      // Login fails
-      mockPromptLogin.mockResolvedValue(false);
-
-      const result = await ensureGitHubRepo();
-
-      expect(result).toBeNull();
-      expect(mockPromptLogin).toHaveBeenCalled();
-    });
-
-    it("uses cached token when available", async () => {
-      // Cached token exists
-      mockGetToken.mockResolvedValue("cached-token");
-      mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
-      // Root is available - auto create
-      mockCheckRepoExists.mockResolvedValue(false);
-      mockCreateRepository.mockResolvedValue({
-        name: "testuser.github.io",
-        fullName: "testuser/testuser.github.io",
-        sshUrl: "git@github.com:testuser/testuser.github.io.git",
-      });
-
-      const result = await ensureGitHubRepo();
-
-      expect(result).not.toBeNull();
-      expect(mockPromptLogin).not.toHaveBeenCalled();
-    });
-
-    it("tries git credentials when no cached token", async () => {
-      // No cached token
-      mockGetToken.mockResolvedValue(null);
-      // Git credentials available
-      mockGetTokenFromGit.mockResolvedValue("git-token");
-      mockValidateToken.mockResolvedValue({ valid: true, scopes: ["repo", "workflow"], user: { login: "testuser" } });
-      mockHasRequiredScopes.mockReturnValue(true);
-      mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
-      // Root is available - auto create
-      mockCheckRepoExists.mockResolvedValue(false);
-      mockCreateRepository.mockResolvedValue({
-        name: "testuser.github.io",
-        fullName: "testuser/testuser.github.io",
-        sshUrl: "git@github.com:testuser/testuser.github.io.git",
-      });
-
-      const result = await ensureGitHubRepo();
-
-      expect(result).not.toBeNull();
-      expect(mockGetTokenFromGit).toHaveBeenCalled();
-      expect(mockStoreToken).toHaveBeenCalledWith("git-token");
-    });
-  });
-
   describe("auto-create root repo when available", () => {
     beforeEach(() => {
-      // Setup: Authenticated user
-      mockGetToken.mockResolvedValue("test-token");
       mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
     });
 
@@ -150,7 +87,7 @@ describe("ensureGitHubRepo", () => {
         cloneUrl: "https://github.com/testuser/testuser.github.io.git",
       });
 
-      const result = await ensureGitHubRepo();
+      const result = await ensureGitHubRepo("test-token");
 
       // Should NOT show any UI
       expect(mockOpenBrowserWithHtml).not.toHaveBeenCalled();
@@ -176,7 +113,7 @@ describe("ensureGitHubRepo", () => {
       });
       mockGetAuthenticatedUser.mockResolvedValue({ login: "myuser" });
 
-      const result = await ensureGitHubRepo();
+      const result = await ensureGitHubRepo("test-token");
 
       expect(result?.name).toBe("myuser.github.io");
       expect(result?.fullName).toBe("myuser/myuser.github.io");
@@ -185,8 +122,6 @@ describe("ensureGitHubRepo", () => {
 
   describe("show deploy choice UI when root is taken", () => {
     beforeEach(() => {
-      // Setup: Authenticated user
-      mockGetToken.mockResolvedValue("test-token");
       mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
     });
 
@@ -206,7 +141,7 @@ describe("ensureGitHubRepo", () => {
 
       mockGetRepoSshUrl.mockResolvedValue("git@github.com:testuser/testuser.github.io.git");
 
-      const result = await ensureGitHubRepo();
+      const result = await ensureGitHubRepo("test-token");
 
       // Should use openBrowserWithHtml
       expect(mockOpenBrowserWithHtml).toHaveBeenCalledWith(expect.any(String));
@@ -258,7 +193,7 @@ describe("ensureGitHubRepo", () => {
         sshUrl: "git@github.com:testuser/my-website.git",
       });
 
-      const result = await ensureGitHubRepo();
+      const result = await ensureGitHubRepo("test-token");
 
       // Should create custom repo
       expect(mockCreateRepository).toHaveBeenCalledWith("my-website", "test-token", "Created with moss");
@@ -297,7 +232,7 @@ describe("ensureGitHubRepo", () => {
       });
 
       // Start the flow (will timeout, but we inspect HTML)
-      const resultPromise = ensureGitHubRepo();
+      const resultPromise = ensureGitHubRepo("test-token");
       await new Promise(resolve => setTimeout(resolve, 10));
 
       const html = mockOpenBrowserWithHtml.mock.calls[0][0] as string;
@@ -313,9 +248,63 @@ describe("ensureGitHubRepo", () => {
     });
   });
 
+  /**
+   * The form is a wait on a person. moss's 60 s inactivity watchdog spares a
+   * hook that is `awaiting` or blocked in a host call, and reading a form is
+   * neither — so the awaiting state IS what keeps the publish alive here.
+   */
+  describe("waiting on the person", () => {
+    beforeEach(() => {
+      mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
+      mockCheckRepoExists.mockResolvedValue(true);
+    });
+
+    it("tells moss the hook is waiting on the user while the form is open", async () => {
+      mockOnEvent.mockImplementation(async (eventName: string, handler: (p: unknown) => void) => {
+        if (eventName === "github:deploy-choice") {
+          setTimeout(() => handler({ action: "replace-root" }), 10);
+        }
+        return vi.fn();
+      });
+      mockGetRepoSshUrl.mockResolvedValue("git@github.com:testuser/testuser.github.io.git");
+
+      await ensureGitHubRepo("test-token");
+
+      expect(mockStartTask).toHaveBeenCalled();
+      expect(mockAwaiting).toHaveBeenCalledWith(
+        expect.stringContaining("publish"),
+        "the window moss opened"
+      );
+      // The wait ends explicitly, or the watchdog stays off the hook for the
+      // whole rest of the publish.
+      expect(mockSucceeded).toHaveBeenCalled();
+    });
+
+    it("gives up on the form rather than waiting forever", async () => {
+      vi.useFakeTimers();
+      mockOnEvent.mockImplementation(async () => vi.fn());
+
+      const result = ensureGitHubRepo("test-token");
+      await vi.advanceTimersByTimeAsync(300000);
+
+      expect(await result).toBeNull();
+      // Nobody filled the form in, so the panel must not claim a step happened.
+      expect(mockCancelled).toHaveBeenCalled();
+      expect(mockSucceeded).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it("returns null when the window cannot be opened at all", async () => {
+      mockOpenBrowserWithHtml.mockRejectedValueOnce(new Error("no webview"));
+      mockOnEvent.mockImplementation(async () => vi.fn());
+
+      expect(await ensureGitHubRepo("test-token")).toBeNull();
+      expect(mockFailed).toHaveBeenCalledWith(expect.stringContaining("no webview"));
+    });
+  });
+
   describe("error handling", () => {
     beforeEach(() => {
-      mockGetToken.mockResolvedValue("test-token");
       mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
     });
 
@@ -323,7 +312,7 @@ describe("ensureGitHubRepo", () => {
       mockCheckRepoExists.mockResolvedValue(false);
       mockCreateRepository.mockRejectedValue(new Error("API rate limit exceeded"));
 
-      const result = await ensureGitHubRepo();
+      const result = await ensureGitHubRepo("test-token");
 
       expect(result).toBeNull();
     });
@@ -331,7 +320,7 @@ describe("ensureGitHubRepo", () => {
     it("returns null when getting user info fails", async () => {
       mockGetAuthenticatedUser.mockRejectedValue(new Error("Token expired"));
 
-      const result = await ensureGitHubRepo();
+      const result = await ensureGitHubRepo("test-token");
 
       expect(result).toBeNull();
     });
@@ -339,7 +328,6 @@ describe("ensureGitHubRepo", () => {
 
   describe("deploy choice UI input field attributes", () => {
     beforeEach(() => {
-      mockGetToken.mockResolvedValue("test-token");
       mockGetAuthenticatedUser.mockResolvedValue({ login: "testuser" });
     });
 
@@ -351,7 +339,7 @@ describe("ensureGitHubRepo", () => {
         return vi.fn();
       });
 
-      const resultPromise = ensureGitHubRepo();
+      const resultPromise = ensureGitHubRepo("test-token");
       await new Promise(resolve => setTimeout(resolve, 10));
 
       expect(mockOpenBrowserWithHtml).toHaveBeenCalled();

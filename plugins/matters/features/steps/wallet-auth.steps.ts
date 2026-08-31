@@ -1,9 +1,8 @@
 import { loadFeature, describeFeature } from "@amiceli/vitest-cucumber";
-import { expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   walletLogin,
   createAuthenticatedClient,
-  generateTestWallet,
   type WalletAuthResult,
 } from "../../test-helpers/wallet-auth";
 import { graphqlQuery } from "../../test-helpers/api-client";
@@ -11,6 +10,19 @@ import { graphqlQuery } from "../../test-helpers/api-client";
 const feature = await loadFeature("features/auth/wallet-auth.feature");
 
 const TEST_ENDPOINT = "https://server.matters.icu/graphql";
+
+// Live suite: every scenario signs in against server.matters.icu with the
+// shared test wallet (test-helpers/TEST_ACCOUNT.md). Without the key this file
+// used to generate a RANDOM wallet and still hit the network — which can
+// create a stray account on staging and passes green while proving nothing —
+// so an unset key now skips the whole feature loudly instead.
+const TEST_WALLET_KEY = process.env.MATTERS_TEST_WALLET_PRIVATE_KEY ?? "";
+
+if (!TEST_WALLET_KEY) {
+  describe.skip("Wallet authentication against matters.icu", () => {
+    it("requires MATTERS_TEST_WALLET_PRIVATE_KEY (see test-helpers/TEST_ACCOUNT.md)", () => {});
+  });
+}
 
 // GraphQL queries for testing
 const GENERATE_SIGNING_MESSAGE_MUTATION = `
@@ -53,133 +65,110 @@ interface ViewerResponse {
   } | null;
 }
 
-describeFeature(feature, ({ Scenario, Background }) => {
-  // Test state
-  let testAddress: string;
-  let testPrivateKey: string;
-  let signingMessageResponse: GenerateSigningMessageResponse["generateSigningMessage"];
-  let authResult: WalletAuthResult;
-  let authToken: string;
-  let authenticatedQuery: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>;
+if (TEST_WALLET_KEY)
+  describeFeature(feature, ({ Scenario, Background }) => {
+    // Test state
+    let testAddress: string;
+    let signingMessageResponse: GenerateSigningMessageResponse["generateSigningMessage"];
+    let authResult: WalletAuthResult;
+    let authToken: string;
+    let authenticatedQuery: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>;
 
-  Background(({ Given }) => {
-    Given("I am using the Matters test environment", () => {
-      // Test endpoint is already set to matters.icu
-    });
-  });
-
-  Scenario("Login with valid wallet signature", ({ Given, When, Then, And }) => {
-    Given("I have a valid Ethereum private key", async () => {
-      testPrivateKey = process.env.MATTERS_TEST_WALLET_PRIVATE_KEY || "";
-
-      if (!testPrivateKey) {
-        // Generate a test wallet for structure verification
-        const wallet = await generateTestWallet();
-        testPrivateKey = wallet.privateKey;
-        testAddress = wallet.address;
-        console.warn("⚠️ Using generated test wallet - full auth flow may create new account");
-      }
+    Background(({ Given }) => {
+      Given("I am using the Matters test environment", () => {
+        // Test endpoint is already set to matters.icu
+      });
     });
 
-    When("I complete the wallet login flow", async () => {
-      authResult = await walletLogin(testPrivateKey, TEST_ENDPOINT);
+    Scenario("Login with valid wallet signature", ({ Given, When, Then, And }) => {
+      Given("I have a valid Ethereum private key", () => {
+        expect(TEST_WALLET_KEY.length).toBeGreaterThan(0);
+      });
+
+      When("I complete the wallet login flow", async () => {
+        authResult = await walletLogin(TEST_WALLET_KEY, TEST_ENDPOINT);
+      });
+
+      Then("I should receive an auth token", () => {
+        expect(authResult.token).toBeDefined();
+        expect(authResult.token.length).toBeGreaterThan(0);
+      });
+
+      And("I should receive my user info", () => {
+        expect(authResult.user).toBeDefined();
+        expect(authResult.user.id).toBeDefined();
+        expect(authResult.user.userName).toBeDefined();
+      });
+
+      And('the type should be "Login" or "Signup"', () => {
+        expect(["Login", "Signup", "LinkAccount"]).toContain(authResult.type);
+      });
     });
 
-    Then("I should receive an auth token", () => {
-      expect(authResult.token).toBeDefined();
-      expect(authResult.token.length).toBeGreaterThan(0);
-    });
-
-    And("I should receive my user info", () => {
-      expect(authResult.user).toBeDefined();
-      expect(authResult.user.id).toBeDefined();
-      expect(authResult.user.userName).toBeDefined();
-    });
-
-    And('the type should be "Login" or "Signup"', () => {
-      expect(["Login", "Signup", "LinkAccount"]).toContain(authResult.type);
-    });
-  });
-
-  Scenario("Generate signing message", ({ Given, When, Then, And }) => {
-    Given("I have a valid Ethereum address", async () => {
-      // Generate or use configured wallet
-      const privateKey = process.env.MATTERS_TEST_WALLET_PRIVATE_KEY;
-
-      if (privateKey) {
+    Scenario("Generate signing message", ({ Given, When, Then, And }) => {
+      Given("I have a valid Ethereum address", async () => {
         const { Wallet } = await import("ethers");
-        const wallet = new Wallet(privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`);
+        const wallet = new Wallet(
+          TEST_WALLET_KEY.startsWith("0x") ? TEST_WALLET_KEY : `0x${TEST_WALLET_KEY}`
+        );
         testAddress = wallet.address;
-      } else {
-        const wallet = await generateTestWallet();
-        testAddress = wallet.address;
-      }
-    });
+      });
 
-    When("I request a signing message for login", async () => {
-      const response = await graphqlQuery<GenerateSigningMessageResponse>(
-        GENERATE_SIGNING_MESSAGE_MUTATION,
-        {
-          input: {
-            address: testAddress,
-            purpose: "login",
+      When("I request a signing message for login", async () => {
+        const response = await graphqlQuery<GenerateSigningMessageResponse>(
+          GENERATE_SIGNING_MESSAGE_MUTATION,
+          {
+            input: {
+              address: testAddress,
+              purpose: "login",
+            },
           },
-        },
-        TEST_ENDPOINT
-      );
+          TEST_ENDPOINT
+        );
 
-      signingMessageResponse = response.generateSigningMessage;
+        signingMessageResponse = response.generateSigningMessage;
+      });
+
+      Then("I should receive a nonce", () => {
+        expect(signingMessageResponse.nonce).toBeDefined();
+        expect(signingMessageResponse.nonce.length).toBeGreaterThan(0);
+      });
+
+      And("I should receive a signingMessage", () => {
+        expect(signingMessageResponse.signingMessage).toBeDefined();
+        expect(signingMessageResponse.signingMessage.length).toBeGreaterThan(0);
+      });
+
+      And("the message should contain the address", () => {
+        // EIP-4361 signing messages include the wallet address
+        expect(signingMessageResponse.signingMessage.toLowerCase()).toContain(
+          testAddress.toLowerCase()
+        );
+      });
     });
 
-    Then("I should receive a nonce", () => {
-      expect(signingMessageResponse.nonce).toBeDefined();
-      expect(signingMessageResponse.nonce.length).toBeGreaterThan(0);
-    });
+    Scenario("Create authenticated client", ({ Given, When, Then, And }) => {
+      Given("I have completed wallet login", async () => {
+        authResult = await walletLogin(TEST_WALLET_KEY, TEST_ENDPOINT);
+      });
 
-    And("I should receive a signingMessage", () => {
-      expect(signingMessageResponse.signingMessage).toBeDefined();
-      expect(signingMessageResponse.signingMessage.length).toBeGreaterThan(0);
-    });
+      And("I have an auth token", () => {
+        authToken = authResult.token;
+        expect(authToken).toBeDefined();
+        expect(authToken.length).toBeGreaterThan(0);
+      });
 
-    And("the message should contain the address", () => {
-      // EIP-4361 signing messages include the wallet address
-      expect(signingMessageResponse.signingMessage.toLowerCase()).toContain(
-        testAddress.toLowerCase()
-      );
-    });
-  });
+      When("I create an authenticated client", () => {
+        authenticatedQuery = createAuthenticatedClient(authToken, TEST_ENDPOINT);
+      });
 
-  Scenario("Create authenticated client", ({ Given, When, Then, And }) => {
-    Given("I have completed wallet login", async () => {
-      const privateKey = process.env.MATTERS_TEST_WALLET_PRIVATE_KEY;
+      Then("the client should be able to make authenticated requests", async () => {
+        // Make an authenticated query to verify the client works
+        const response = await authenticatedQuery<ViewerResponse>(VIEWER_QUERY);
 
-      if (!privateKey) {
-        const wallet = await generateTestWallet();
-        testPrivateKey = wallet.privateKey;
-      } else {
-        testPrivateKey = privateKey;
-      }
-
-      authResult = await walletLogin(testPrivateKey, TEST_ENDPOINT);
-    });
-
-    And("I have an auth token", () => {
-      authToken = authResult.token;
-      expect(authToken).toBeDefined();
-      expect(authToken.length).toBeGreaterThan(0);
-    });
-
-    When("I create an authenticated client", () => {
-      authenticatedQuery = createAuthenticatedClient(authToken, TEST_ENDPOINT);
-    });
-
-    Then("the client should be able to make authenticated requests", async () => {
-      // Make an authenticated query to verify the client works
-      const response = await authenticatedQuery<ViewerResponse>(VIEWER_QUERY);
-
-      expect(response.viewer).not.toBeNull();
-      expect(response.viewer!.id).toBeDefined();
-      expect(response.viewer!.userName).toBe(authResult.user.userName);
+        expect(response.viewer).not.toBeNull();
+        expect(response.viewer!.id).toBeDefined();
+        expect(response.viewer!.userName).toBe(authResult.user.userName);
+      });
     });
   });
-});

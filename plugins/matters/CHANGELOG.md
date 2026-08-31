@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _Pending publish — cumulative since `1.1.2` (last released on main); full detail under [1.4.0] and [1.2.0]._
 
+- Changed (`1.5.2`): your Matters login is now kept by moss, in the same place it keeps your signing keys, instead of in a file inside your site folder. That file was part of what gets committed to your repository and uploaded by whatever syncs the folder — Google Drive, iCloud, Dropbox — so anyone with a copy of the folder had a working login. Upgrading moves it for you: you stay signed in, and the old file is emptied only once moss has confirmed it can read the login back. Emptying the file does not cancel the login that was in it: every earlier commit and every file version your sync service kept still holds one that works until it expires, so if that folder has been shared, sign out of Matters in moss and sign back in — that replaces the login, and only the new one is kept outside the folder. If two folders are connected to two different Matters accounts, each keeps its own account, as before.
+
+- Changed (`1.5.1`): no behaviour change. The manifest now spells "you connect a Matters account" as `login: true` inside `contributes.channel`, the name moss uses for it everywhere else; the old `requires_login` spelling still reads the same way, so an installed copy keeps its connection row and its account.
+
+- Fixed (`1.4.13`): syndicating no longer edits articles it has nothing to add to. Recording a published Matters URL rewrote the whole file even when that URL was already listed — re-serializing hand-written frontmatter and triggering a site rebuild for a no-op — and every rewrite also grew one extra blank line between the frontmatter and the first paragraph. An already-recorded article is now left untouched, and a real recording no longer adds the blank line.
+- Changed (`1.4.13`): comments saved into the site's social data now name their source (`"source": "matters"` on each comment, schema `1.1.0` per moss's social data standard), so a site merging comments from several services can tell them apart. Existing files load unchanged.
+
 - Changed (`1.4.12`): the plugin now marks itself as a preview in its manifest, so moss offers
   it only to people who have turned on preview features. It is not ready to be offered to
   everyone yet, and a channel that half-works is worse to meet than one that isn't offered at

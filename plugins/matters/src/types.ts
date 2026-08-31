@@ -252,6 +252,12 @@ export interface SocialUser {
  */
 export interface MattersComment {
   id: string;
+  /**
+   * Social-data standard 1.1.0 (moss docs/reference/social-data-standard.md):
+   * every written comment names its source. Required so a writer cannot fall
+   * back on the reader's file-stem default.
+   */
+  source: "matters";
   content: string;
   createdAt: string;
   state: "active" | "archived" | "banned" | "collapsed";

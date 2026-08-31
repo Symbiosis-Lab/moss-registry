@@ -69,7 +69,7 @@ describe("Social Data Integration", () => {
       const socialData = await loadSocialData();
 
       // Verify empty structure
-      expect(socialData.schemaVersion).toBe("1.0.0");
+      expect(socialData.schemaVersion).toBe("1.1.0");
       expect(socialData.articles).toEqual({});
 
       // Add some social data
@@ -94,7 +94,7 @@ describe("Social Data Integration", () => {
 
       // Verify content structure
       const parsed = JSON.parse(savedFile!.content);
-      expect(parsed.schemaVersion).toBe("1.0.0");
+      expect(parsed.schemaVersion).toBe("1.1.0");
       expect(parsed.articles["article123"]).toBeDefined();
       expect(parsed.articles["article123"].comments).toHaveLength(1);
       expect(parsed.articles["article123"].donations).toHaveLength(1);
@@ -350,7 +350,7 @@ describe("Social Data Integration", () => {
 
       // Parse and verify content
       const parsed = JSON.parse(savedFile!.content);
-      expect(parsed.schemaVersion).toBe("1.0.0");
+      expect(parsed.schemaVersion).toBe("1.1.0");
       expect(Object.keys(parsed.articles)).toHaveLength(34);
 
       // Verify counts

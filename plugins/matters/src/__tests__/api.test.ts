@@ -24,6 +24,8 @@ import { clearTokenCache } from "../credential";
 import type { MattersDraft } from "../types";
 
 // Mock the SDK's getPluginCookie, httpPost, and plugin storage
+import * as keystore from "./helpers/secret-store-mock";
+
 vi.mock("@symbiosis-lab/moss-api", async () => {
   const actual = await vi.importActual("@symbiosis-lab/moss-api");
   return {
@@ -33,6 +35,9 @@ vi.mock("@symbiosis-lab/moss-api", async () => {
     pluginFileExists: vi.fn(),
     readPluginFile: vi.fn(),
     writePluginFile: vi.fn(),
+    // The token lives in moss's keystore now; the real pair reaches Tauri.
+    getSecret: (key: string) => keystore.getSecret(key),
+    setSecret: (key: string, value: string) => keystore.setSecret(key, value),
   };
 });
 

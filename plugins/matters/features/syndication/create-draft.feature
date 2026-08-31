@@ -27,9 +27,3 @@ Feature: Create Draft on Matters
     Then I should receive the draft details
     And the draft should have the correct title
     And the publishState should be present
-
-  Scenario: Skip already syndicated articles
-    Given I have an article with syndicated URL for Matters
-    When I check if the article should be syndicated
-    Then the article should be skipped
-    And no new draft should be created

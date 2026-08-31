@@ -279,27 +279,3 @@ export async function getTestAccount(
 ): Promise<WalletAuthResult> {
   return walletLogin(undefined, endpoint);
 }
-
-/**
- * Generate a new random wallet for testing
- *
- * Returns the private key and address.
- * Note: The account won't exist on Matters until first login.
- */
-export async function generateTestWallet(): Promise<{
-  privateKey: string;
-  address: string;
-}> {
-  try {
-    const { Wallet } = await import("ethers");
-    const wallet = Wallet.createRandom();
-    return {
-      privateKey: wallet.privateKey,
-      address: wallet.address,
-    };
-  } catch {
-    throw new Error(
-      "ethers.js is required. Install with: npm install --save-dev ethers"
-    );
-  }
-}

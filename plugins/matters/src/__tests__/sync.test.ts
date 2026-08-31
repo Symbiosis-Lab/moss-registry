@@ -72,10 +72,56 @@ describe("isRemoteNewer", () => {
   });
 });
 
-describe("syncToLocalFiles", () => {
-  it("exports syncToLocalFiles function", async () => {
-    const module = await import("../sync");
-    expect(typeof module.syncToLocalFiles).toBe("function");
+describe("syncToLocalFiles - language-derived article folder", () => {
+  let ctx: MockTauriContext;
+
+  beforeEach(() => {
+    ctx = setupMockTauri({ projectPath: "/test-project" });
+  });
+
+  afterEach(() => {
+    ctx.cleanup();
+  });
+
+  const article = {
+    id: "a1",
+    title: "山中書",
+    slug: "shan-zhong-shu",
+    shortHash: "abc123",
+    content: "<p>content</p>",
+    summary: "",
+    createdAt: "2024-01-01T00:00:00Z",
+    tags: [],
+  };
+
+  it("places articles under 文章/ for a Chinese profile", async () => {
+    const { syncToLocalFiles } = await import("../sync");
+    const result = await syncToLocalFiles([article], [], [], "testuser", {}, {
+      displayName: "測試",
+      userName: "testuser",
+      description: "",
+      language: "zh_hant",
+    });
+
+    expect(result.result.errors).toEqual([]);
+    const paths = ctx.filesystem.listFiles();
+    expect(paths.some((p) => p.includes("/文章/"))).toBe(true);
+    expect(paths.some((p) => p.includes("/articles/"))).toBe(false);
+  });
+
+  it("places articles under articles/ when the profile language is not Chinese", async () => {
+    const { syncToLocalFiles } = await import("../sync");
+    const result = await syncToLocalFiles([article], [], [], "testuser", {}, {
+      displayName: "Test User",
+      userName: "testuser",
+      description: "",
+      language: "en",
+    });
+
+    expect(result.result.errors).toEqual([]);
+    const paths = ctx.filesystem.listFiles();
+    expect(paths.some((p) => p.includes("/articles/"))).toBe(true);
+    expect(paths.some((p) => p.includes("/文章/"))).toBe(false);
   });
 });
 

@@ -12,7 +12,12 @@
  * is installed, silently falls through to OAuth when it's not).
  */
 
-import { getPluginCookie, setPluginCookie, executeBinary } from "@symbiosis-lab/moss-api";
+import {
+  getPluginCookie,
+  setPluginCookie,
+  clearPluginCookies,
+  executeBinary,
+} from "@symbiosis-lab/moss-api";
 
 const GITHUB_HOST = "github.com";
 const TOKEN_COOKIE_NAME = "__github_access_token";
@@ -182,15 +187,17 @@ export async function clearToken(): Promise<boolean> {
   try {
     console.log("   Clearing GitHub access token...");
 
-    // Clear from plugin cookies
-    try {
-      await setPluginCookie([]);
-    } catch {
-      // Ignore cookie clear errors
-    }
-
-    // Clear memory cache
+    // Memory cache first: `getToken()` consults it before the cookies, so a
+    // throw from the store below must not leave the token live in this
+    // process. Clearing it first makes that ordering unloseable.
     cachedToken = null;
+
+    // Clear from plugin cookies. `setPluginCookie([])` used to stand in for
+    // this and stored nothing while reporting success, so the token survived
+    // every "sign out"; moss now refuses the empty write outright. A failure
+    // here must reach the caller as `false` for the same reason — swallowing
+    // it reports a sign-out that did not happen.
+    await clearPluginCookies();
 
     console.log("   Token cleared successfully");
     return true;

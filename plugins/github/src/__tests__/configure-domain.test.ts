@@ -51,16 +51,10 @@ vi.mock("../github-deploy", () => ({
   deployViaGitPush: vi.fn(),
 }));
 
-vi.mock("../token", () => ({
-  getToken: vi.fn().mockResolvedValue("test-token-123"),
-  getTokenFromGit: vi.fn().mockResolvedValue(null),
-  storeToken: vi.fn(),
-}));
-
 vi.mock("../auth", () => ({
+  resolveTokenOutcome: vi.fn().mockResolvedValue({ token: "test-token-123", unreachable: false }),
   promptLogin: vi.fn(),
-  validateToken: vi.fn(),
-  hasRequiredScopes: vi.fn(),
+  checkAuthentication: vi.fn().mockResolvedValue({ isAuthenticated: true, username: "test-user" }),
 }));
 
 vi.mock("../repo-setup", () => ({
@@ -73,6 +67,7 @@ vi.mock("../git", () => ({
 }));
 
 vi.mock("../utils", () => ({
+  resolveGitPath: vi.fn().mockResolvedValue("git"),
   reportProgress: vi.fn(),
   reportError: vi.fn(),
   setCurrentHookName: vi.fn(),

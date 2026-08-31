@@ -26,7 +26,6 @@ import {
   receiverSupportsReachability,
 } from "./receiver";
 import { setCurrentHookName, reportProgress, reportError } from "./utils";
-import { DEPLOY_HEARTBEAT_INTERVAL_MS } from "./constants";
 import { classifyLiveness } from "./liveness";
 
 // This hook raises no toasts. moss owns every status surface (see moss's
@@ -69,32 +68,20 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
   const genId = generationId();
   let tarPath: string | undefined;
 
-  // ── Heartbeat: keep the 60s inactivity watchdog fed ─────────────────────
-  // The tar + upload of a large generation can exceed one tick, so re-report
-  // the current phase every DEPLOY_HEARTBEAT_INTERVAL_MS (mirrors github).
-  let currentStep = 3;
-  let currentPhase = "Publishing to OnionPress...";
-  const heartbeat = setInterval(() => {
-    reportProgress("deploying", currentStep, 10, currentPhase);
-  }, DEPLOY_HEARTBEAT_INTERVAL_MS);
-
+  // Each step reports once, when it starts. moss counts a host call in flight
+  // as activity (ADR-072), so the tar and the upload keep the publish alive by
+  // being the work — nothing has to be said on a timer.
   try {
     // ── 2. Pack the sealed generation ─────────────────────────────────────
-    currentStep = 3;
-    currentPhase = "Packing your site...";
-    await reportProgress("deploying", currentStep, 10, currentPhase);
+    await reportProgress("deploying", 3, 10, "Packing your site...");
     tarPath = await packGeneration(genId);
 
     // ── 3. Upload (aborts before commit on any failure) ───────────────────
-    currentStep = 6;
-    currentPhase = "Uploading to OnionPress...";
-    await reportProgress("deploying", currentStep, 10, currentPhase);
+    await reportProgress("deploying", 6, 10, "Uploading to OnionPress...");
     await uploadGeneration(endpoint.baseUrl, genId, tarPath, endpoint.status.receiver_version);
 
     // ── 4. Commit — atomic flip, returns the onion URL ────────────────────
-    currentStep = 9;
-    currentPhase = "Publishing...";
-    await reportProgress("deploying", currentStep, 10, currentPhase);
+    await reportProgress("deploying", 9, 10, "Publishing...");
     const commit = await commitGeneration(endpoint.baseUrl, genId);
     const onionUrl = commit.url as string;
     const onionAddress = endpoint.status.onion_address || hostFromUrl(onionUrl);
@@ -112,8 +99,7 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
     let reachable: boolean | null = null;
     let httpCode: string | null = null;
     if (receiverSupportsReachability(endpoint.status.receiver_version)) {
-      currentPhase = "Confirming it's reachable on Tor...";
-      await reportProgress("deploying", currentStep, 10, currentPhase);
+      await reportProgress("deploying", 9, 10, "Confirming it's reachable on Tor...");
       ({ reachable, httpCode } = await waitForReachability(endpoint.baseUrl));
     }
 
@@ -166,7 +152,6 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
       },
     };
   } finally {
-    clearInterval(heartbeat);
     if (tarPath) {
       await cleanupTar(tarPath);
     }
