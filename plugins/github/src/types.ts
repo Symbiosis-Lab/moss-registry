@@ -78,6 +78,12 @@ export interface AuthState {
   username?: string;
   /** Token scopes if authenticated */
   scopes?: string[];
+  /**
+   * GitHub never answered, so we do not know whether the token is good.
+   * Distinct from `isAuthenticated: false`, which means GitHub answered and
+   * said no — the two lead the user to opposite remedies.
+   */
+  unreachable?: boolean;
 }
 
 /**

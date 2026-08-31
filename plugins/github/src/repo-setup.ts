@@ -11,12 +11,8 @@
  * - repo-dialog.ts
  */
 
-import { openBrowserWithHtml, closeBrowser, onEvent } from "@symbiosis-lab/moss-api";
-import { reportProgress } from "./utils";
-import { getToken, getTokenFromGit, storeToken } from "./token";
+import { openBrowserWithHtml, closeBrowser, onEvent, startTask } from "@symbiosis-lab/moss-api";
 import { getAuthenticatedUser, checkRepoExists, createRepository, getRepoSshUrl } from "./github-api";
-import { promptLogin, validateToken, hasRequiredScopes } from "./auth";
-import { DEPLOY_HEARTBEAT_INTERVAL_MS } from "./constants";
 
 /**
  * Result from the repo setup flow
@@ -50,16 +46,10 @@ interface DeployChoice {
  *
  * @returns Repository info, or null if cancelled/failed
  */
-export async function ensureGitHubRepo(): Promise<RepoSetupResult | null> {
+export async function ensureGitHubRepo(token: string): Promise<RepoSetupResult | null> {
   console.log("   Ensuring GitHub repository...");
 
-  // Step 1: Ensure authentication
-  const token = await ensureAuthenticated();
-  if (!token) {
-    return null;
-  }
-
-  // Step 2: Get authenticated user info
+  // Step 1: Get authenticated user info
   let username: string;
   try {
     const user = await getAuthenticatedUser(token);
@@ -70,11 +60,11 @@ export async function ensureGitHubRepo(): Promise<RepoSetupResult | null> {
     return null;
   }
 
-  // Step 3: Check if {username}.github.io exists
+  // Step 2: Check if {username}.github.io exists
   const rootRepoName = `${username}.github.io`;
   const rootExists = await checkRepoExists(username, rootRepoName, token);
 
-  // Step 4: Auto-create or show deploy choice UI
+  // Step 3: Auto-create or show deploy choice UI
   if (!rootExists) {
     // Root is available - auto-create (no UI needed!)
     return await createRootRepo(username, rootRepoName, token);
@@ -96,47 +86,6 @@ export async function ensureGitHubRepo(): Promise<RepoSetupResult | null> {
       return { name: createdRepo.name, sshUrl: createdRepo.sshUrl, fullName: createdRepo.fullName };
     }
   }
-}
-
-/**
- * Ensure user is authenticated, trying various sources
- */
-async function ensureAuthenticated(): Promise<string | null> {
-  // Try 1: Cached token
-  let token = await getToken();
-  if (token) {
-    return token;
-  }
-
-  // Try 2: Git credential helper
-  console.log("   No cached token, checking git credentials...");
-  token = await getTokenFromGit();
-  if (token) {
-    const validation = await validateToken(token);
-    if (validation.valid && hasRequiredScopes(validation.scopes || [])) {
-      console.log(`   Using token from git credentials (${validation.user?.login})`);
-      await storeToken(token);
-      return token;
-    } else {
-      console.log("   Git credential token invalid or missing scopes");
-    }
-  }
-
-  // Try 3: OAuth login
-  console.log("   No valid credentials found, prompting login...");
-  const loginSuccess = await promptLogin();
-  if (!loginSuccess) {
-    console.warn("   GitHub login cancelled or failed");
-    return null;
-  }
-
-  token = await getToken();
-  if (!token) {
-    console.error("   Failed to get token after login");
-    return null;
-  }
-
-  return token;
 }
 
 /**
@@ -165,40 +114,45 @@ async function createRootRepo(
 }
 
 /**
- * Show browser with HTML and wait for form submission with progress heartbeats.
+ * Show browser with HTML and wait for form submission.
  *
  * Uses the new manual browser control pattern:
  * - openBrowserWithHtml() to display content
  * - onEvent() to listen for custom events
  * - Caller is responsible for calling closeBrowser() when done
  *
- * Sends progress heartbeats every 30 seconds to prevent inactivity timeout.
- *
  * @param html - The HTML content for the form
  * @param eventName - Custom event name to listen for (e.g., "github:repo-created")
- * @param progressMessage - Message to show during heartbeat updates
  * @param timeoutMs - Maximum time to wait (default: 300000ms / 5 minutes)
  * @returns Form result or null if cancelled/timeout/error
  */
 async function showBrowserWithProgress<T>(
   html: string,
   eventName: string,
-  progressMessage: string,
+  directive: string,
   timeoutMs: number = 300000
 ): Promise<T | null> {
-  // Start heartbeat interval — must be < progress panel STALE_TIMEOUT_MS (15s)
-  const heartbeat = setInterval(async () => {
-    await reportProgress("setup", 0, 6, progressMessage);
-  }, DEPLOY_HEARTBEAT_INTERVAL_MS);
-
   let unlisten: (() => void) | null = null;
+
+  // The hook is now waiting on a person, and moss must be told so: its 60 s
+  // inactivity watchdog spares a hook that is `awaiting` or blocked in a host
+  // call, and reading a form is neither. This is what the deleted heartbeat
+  // was faking — an awaiting task says the true thing, and the panel shows the
+  // user what it is waiting for instead of a progress bar that says "working".
+  const task = await startTask("GitHub repository", {
+    hook: "deploy",
+    trigger: "manual_one",
+    hasProgress: false,
+    cancellable: true,
+  });
+  await task.awaiting(directive, "the window moss opened");
 
   try {
     // Open browser with HTML
     await openBrowserWithHtml(html);
 
     // Wait for form submission or timeout
-    return await Promise.race([
+    const answer = await Promise.race([
       // Wait for event
       new Promise<T>(async (resolve) => {
         unlisten = await onEvent<T>(eventName, (payload) => {
@@ -211,12 +165,16 @@ async function showBrowserWithProgress<T>(
         setTimeout(() => resolve(null), timeoutMs);
       }),
     ]);
+    // The waiting is over either way, and the task must say which way: a form
+    // nobody filled in is cancelled, not succeeded — the panel would otherwise
+    // report a step the user never took.
+    await (answer == null ? task.cancelled() : task.succeeded());
+    return answer;
   } catch (error) {
     console.error(`   Form display error: ${error}`);
+    await task.failed(String(error));
     return null;
   } finally {
-    // Always clear interval and unlisten from event
-    clearInterval(heartbeat);
     if (unlisten != null) {
       (unlisten as () => void)();
     }
@@ -237,7 +195,7 @@ async function showDeployChoiceUI(
   return await showBrowserWithProgress<DeployChoice>(
     html,
     "github:deploy-choice",
-    "Setting up GitHub repository...",
+    "choose where this site should publish",
     300000
   );
 }

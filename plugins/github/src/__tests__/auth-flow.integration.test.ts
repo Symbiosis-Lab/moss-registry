@@ -33,6 +33,7 @@ testCtx.cleanup();
 
 // Mock the utils module to prevent actual IPC calls
 vi.mock("../utils", () => ({
+  resolveGitPath: vi.fn().mockResolvedValue("git"),
   reportProgress: vi.fn().mockResolvedValue(undefined),
   reportError: vi.fn().mockResolvedValue(undefined),
   setCurrentHookName: vi.fn(),
@@ -45,8 +46,8 @@ import {
   pollForToken,
   validateToken,
   checkAuthentication,
+  resolveTokenOutcome,
   promptLogin,
-  hasRequiredScopes,
   CLIENT_ID,
   REQUIRED_SCOPES,
 } from "../auth";
@@ -270,7 +271,7 @@ describe("GitHub OAuth Device Flow", () => {
       expect(result.scopes).toContain("workflow");
     });
 
-    it("returns invalid for unauthorized token", async () => {
+    it("reports a 401 as GitHub rejecting the token", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -279,17 +280,33 @@ describe("GitHub OAuth Device Flow", () => {
 
       const result = await validateToken("gho_invalidtoken");
 
-      expect(result.valid).toBe(false);
+      expect(result).toMatchObject({ valid: false, rejected: true });
       expect(result.user).toBeUndefined();
     });
 
-    it("handles network errors gracefully", async () => {
+    /**
+     * The caller deletes the token on `rejected`, so nothing but an actual
+     * refusal may look like one. 403 is how GitHub reports a rate limit or a
+     * blocked IP, and 429/5xx are the server having a bad day.
+     */
+    it.each([403, 429, 500, 502])("reports a %i as GitHub not answering", async (status) => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status });
+      global.fetch = mockFetch;
+
+      expect(await validateToken("gho_anytoken")).toMatchObject({
+        valid: false,
+        rejected: false,
+      });
+    });
+
+    it("reports a network error as never having asked", async () => {
       mockFetch.mockRejectedValueOnce(new Error("Network error"));
       global.fetch = mockFetch;
 
-      const result = await validateToken("gho_anytoken");
-
-      expect(result.valid).toBe(false);
+      expect(await validateToken("gho_anytoken")).toMatchObject({
+        valid: false,
+        rejected: false,
+      });
     });
 
     it("parses empty scopes header correctly", async () => {
@@ -308,23 +325,91 @@ describe("GitHub OAuth Device Flow", () => {
   });
 
   // ==========================================================================
-  // Scope Validation Tests
+  // resolveTokenOutcome — the question every hook asks
   // ==========================================================================
 
-  describe("hasRequiredScopes", () => {
-    it("returns true when repo scope is present", () => {
-      expect(hasRequiredScopes(["repo"])).toBe(true);
-      expect(hasRequiredScopes(["repo", "user"])).toBe(true);
-      expect(hasRequiredScopes(["repo", "workflow", "user"])).toBe(true);
+  describe("resolveTokenOutcome", () => {
+    it("answers from the stored token, once GitHub confirms it still works", async () => {
+      ctx.cookieStorage.setCookies(ctx.pluginName, ctx.projectPath, [
+        { name: "__github_access_token", value: "gho_cached", domain: "github.com" },
+      ]);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ login: "someone" }),
+        headers: new Headers({ "X-OAuth-Scopes": "repo, workflow" }),
+      });
+      global.fetch = mockFetch;
+
+      expect((await resolveTokenOutcome()).token).toBe("gho_cached");
     });
 
-    it("returns false when repo scope is missing", () => {
-      expect(hasRequiredScopes(["workflow"])).toBe(false);
-      expect(hasRequiredScopes(["user", "gist"])).toBe(false);
+    /**
+     * A token revoked on github.com is still sitting in the plugin's cookies.
+     * Handing it back would spend the publish and fail as GitHub's 401, which
+     * says nothing about signing in again.
+     */
+    it("refuses a stored token GitHub has stopped honouring", async () => {
+      ctx.cookieStorage.setCookies(ctx.pluginName, ctx.projectPath, [
+        { name: "__github_access_token", value: "gho_revoked", domain: "github.com" },
+      ]);
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({}),
+        headers: new Headers({}),
+      });
+      global.fetch = mockFetch;
+
+      expect((await resolveTokenOutcome()).token).toBeNull();
     });
 
-    it("returns false with empty scopes", () => {
-      expect(hasRequiredScopes([])).toBe(false);
+    /**
+     * `resolveTokenOutcome` runs on every Publish click, and a failed validation used
+     * to delete the stored token. Offline that signed the user out of a service
+     * that never said anything — and the sign-in button that would fix it needs
+     * the same network that just failed.
+     */
+    it("keeps the stored token when GitHub cannot be reached", async () => {
+      ctx.cookieStorage.setCookies(ctx.pluginName, ctx.projectPath, [
+        { name: "__github_access_token", value: "gho_offline", domain: "github.com" },
+      ]);
+      mockFetch.mockRejectedValue(new Error("Network error"));
+      global.fetch = mockFetch;
+
+      expect((await resolveTokenOutcome("git")).token).toBeNull();
+
+      // Back online, with nothing to sign in to again.
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ login: "someone" }),
+        headers: new Headers({ "X-OAuth-Scopes": "repo, workflow" }),
+      });
+      expect((await resolveTokenOutcome("git")).token).toBe("gho_offline");
+    });
+
+    it("falls back to the git credential helper, and keeps what it finds", async () => {
+      ctx.binaryConfig.setResult("git credential fill", {
+        success: true,
+        exitCode: 0,
+        stdout: "protocol=https\nhost=github.com\nusername=x-access-token\npassword=ghp_fromgit\n",
+        stderr: "",
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ login: "gituser" }),
+        headers: new Headers({ "X-OAuth-Scopes": "repo, workflow" }),
+      });
+      global.fetch = mockFetch;
+
+      expect((await resolveTokenOutcome("git")).token).toBe("ghp_fromgit");
+    });
+
+    it("never signs anyone in — that is the setup gate's button", async () => {
+      global.fetch = mockFetch;
+
+      expect((await resolveTokenOutcome("git")).token).toBeNull();
+      expect(ctx.browserTracker.isOpen).toBe(false);
     });
   });
 
@@ -348,7 +433,7 @@ describe("GitHub OAuth Device Flow", () => {
       });
       global.fetch = mockFetch;
 
-      const result = await checkAuthentication();
+      const result = await checkAuthentication("git");
 
       expect(result.isAuthenticated).toBe(true);
       expect(result.username).toBe("testuser");
@@ -357,7 +442,7 @@ describe("GitHub OAuth Device Flow", () => {
 
     it("returns unauthenticated when no token exists", async () => {
       // Setup: No token in cookie storage (default empty state)
-      const result = await checkAuthentication();
+      const result = await checkAuthentication("git");
 
       expect(result.isAuthenticated).toBe(false);
     });
@@ -375,7 +460,7 @@ describe("GitHub OAuth Device Flow", () => {
       });
       global.fetch = mockFetch;
 
-      const result = await checkAuthentication();
+      const result = await checkAuthentication("git");
 
       expect(result.isAuthenticated).toBe(false);
     });
@@ -394,7 +479,7 @@ describe("GitHub OAuth Device Flow", () => {
       });
       global.fetch = mockFetch;
 
-      const result = await checkAuthentication();
+      const result = await checkAuthentication("git");
 
       expect(result.isAuthenticated).toBe(false);
     });
@@ -671,7 +756,7 @@ describe("GitHub OAuth Device Flow", () => {
       });
       global.fetch = mockFetch;
 
-      const result = await checkAuthentication();
+      const result = await checkAuthentication("git");
 
       // Should be authenticated using git token
       expect(result.isAuthenticated).toBe(true);
@@ -696,7 +781,7 @@ describe("GitHub OAuth Device Flow", () => {
       });
       global.fetch = mockFetch;
 
-      await checkAuthentication();
+      await checkAuthentication("git");
 
       // Token should be stored in cookies for faster future access
       const cookies = ctx.cookieStorage.getCookies(ctx.pluginName, ctx.projectPath);
@@ -726,7 +811,7 @@ describe("GitHub OAuth Device Flow", () => {
       });
       global.fetch = mockFetch;
 
-      const result = await checkAuthentication();
+      const result = await checkAuthentication("git");
 
       // Should use cookie token, not git token
       expect(result.isAuthenticated).toBe(true);

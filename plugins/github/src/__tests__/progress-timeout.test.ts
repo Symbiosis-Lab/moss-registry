@@ -194,16 +194,4 @@ describe("Progress Timeout Fix", () => {
       expect(totalTime).toBe(31005);
     });
   });
-
-  describe("deploy heartbeat interval", () => {
-    it("heartbeat interval must be shorter than progress panel stale timeout (15s)", async () => {
-      // The progress panel auto-removes tasks after STALE_TIMEOUT_MS (15s).
-      // If the deploy heartbeat fires less frequently than that, the progress
-      // bar disappears between heartbeats — making it invisible during long pushes.
-      const { DEPLOY_HEARTBEAT_INTERVAL_MS } = await import("../constants");
-      const STALE_TIMEOUT_MS = 15_000; // from src/preview/progress-panel.ts
-
-      expect(DEPLOY_HEARTBEAT_INTERVAL_MS).toBeLessThan(STALE_TIMEOUT_MS);
-    });
-  });
 });

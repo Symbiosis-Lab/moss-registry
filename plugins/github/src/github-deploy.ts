@@ -501,9 +501,8 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     // Stage the entire vault (may be slow on iCloud) and push source to main.
     // This happens AFTER "Deployed!" so the user isn't waiting.
     //
-    // Emit a phase change so the parent's heartbeat shows the right message
-    // ("Backing up source...") instead of repeating "Deployed!" for minutes
-    // while iCloud-synced `git add --all` of the whole vault grinds.
+    // Say what the slow tail is doing: an iCloud-synced `git add --all` of the
+    // whole vault can grind for minutes after the site is already live.
     onProgress(100, "Backing up source...");
     let sha = "";
     try {

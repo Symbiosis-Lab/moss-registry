@@ -1,21 +1,21 @@
 {
   "name": "matters",
-  "version": "1.4.12",
+  "version": "1.5.2",
   "display_name": "Matters",
   "description": "Syndicate your articles to Matters.town (POSSE)",
   "author": "moss team",
-  "min_moss_version": "0.7.23",
+  "min_moss_version": "0.11.7",
   "preview": true,
   "entry": "main.bundle.js",
   "capabilities": [
-    "process",
-    "syndicate",
-    "import",
-    "login"
+    "process"
   ],
   "global_name": "MattersPlugin",
   "domain": "matters.town",
-  "domains": ["matters.town", "matters.icu"],
+  "domains": [
+    "matters.town",
+    "matters.icu"
+  ],
   "icon": "icon.svg",
   "config": {
     "add_canonical_link": true,
@@ -33,6 +33,10 @@
     "sync_on_build": "Automatically check Matters.town for new posts and drafts each time your site rebuilds."
   },
   "contributes": {
+    "channel": {
+      "imports": true,
+      "login": true
+    },
     "jobs": {
       "syndicate": {
         "verb": "Syndicated",

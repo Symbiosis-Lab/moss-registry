@@ -1,6 +1,6 @@
 # ADR-050: moss owns the serving outcome; OnionPress keeps the work
 
-**Status:** Accepted
+**Status:** Accepted, amended 2026-08-27 (see § Amendment)
 **Date:** 2026-08-08
 
 ## The decision in one sentence
@@ -119,3 +119,19 @@ the serving outcome.
   testing session behind this, with the `pmset` and watchdog-log evidence.
 - OnionPress `app/Resources/docker/tor/tor-watchdog.py` — the escalation ladder
   whose timings this ADR's grace window is derived from.
+
+## Amendment (2026-08-27): supervision follows the open folder
+
+**What changed.** Rule 1 now reads "Awareness is unconditional *while a folder that publishes to OnionPress is open*." The watch is a task owned by the folder session (`stack_serving::watch`, started from the GUI open funnel's success tail) rather than a machine-scoped task for the life of the process. It dies with the folder, and on every tick it derives whether the open folder's host is OnionPress from the Publish routing rule (`deploy::current_deploy_target`, rules a/b/c in `docs/reference/deploy-target-resolution.md`) — nothing stores the answer. A folder hosted elsewhere gets a dormant watch that never probes. The first consequence above, "moss carries a machine-scoped watch for the life of the process", is superseded.
+
+**Why.** The original scope's only gate was "the stack is installed". So on any machine with the stack installed, merely launching moss brought up the vendor menu bar app, its splash, a virtual machine and its containers about fifteen minutes in — whether or not anything was there to serve, and whether or not the folder open in moss publishes to OnionPress at all. The sleep/wake healing that motivated this ADR was worth a watch; it was not worth OnionPress starting uninvited.
+
+**What is given up, deliberately.** A published onion site is not revived while its folder is closed. Its container watchdog — the ladder rule 2 already defers to — and the vendor menu bar app own it then. moss's self-heal covers an outage only while that folder is open.
+
+**What was added.** Opening an OnionPress-hosted folder warms the stack immediately through `ensure_onionpress_ready`, the same start-and-provision path the publish pre-flight uses, instead of leaving a down stack alone until the grace window has run out. The warm-up is not an intervention: it counts against no cap and starts no outage clock, and a fresh watch begins with the outage clock cleared so a stack the warm-up has just started gets the whole grace window before the ladder may touch it. The intervention cap (rule 6) is per process, not per open, and survives reopening. Switching the host in the settings tab wakes the watch, so a switch to OnionPress warms up at once. Nothing here installs the stack: an OnionPress-hosted folder on a machine without it does nothing, and Settings remains the only install path.
+
+**One host predicate.** The watch, the publish pre-flight and the Host row now resolve the host through the same read-only rule. The pre-flight used to ask plugin discovery directly, which answered "OnionPress" for a site that had never published and merely had the plugin installed; Publish routes that site to the moss first-publish modal, so the pre-flight no longer runs for it.
+
+**What did NOT change.** Rules 2 through 7 stand: subsidiarity, acting only through `onionpress start` and `quit`, no key minting, silence by default, the intervention cap and the publish lease. There is still no stop verb; closing a folder leaves a serving site serving.
+
+Provenance: `docs/archive/2026-08-27-onionpress-folder-scoped-supervision.md` in the moss repository.

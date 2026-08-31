@@ -31,7 +31,7 @@ describe("Social Module", () => {
     it("returns empty data structure when file does not exist", async () => {
       const data = await loadSocialData();
 
-      expect(data.schemaVersion).toBe("1.0.0");
+      expect(data.schemaVersion).toBe("1.1.0");
       expect(data.articles).toEqual({});
       expect(data.updatedAt).toBeDefined();
     });
@@ -67,7 +67,7 @@ describe("Social Module", () => {
 
       const data = await loadSocialData();
 
-      expect(data.schemaVersion).toBe("1.0.0");
+      expect(data.schemaVersion).toBe("1.1.0");
       expect(data.articles).toEqual({});
     });
 
@@ -79,7 +79,7 @@ describe("Social Module", () => {
 
       const data = await loadSocialData();
 
-      expect(data.schemaVersion).toBe("1.0.0");
+      expect(data.schemaVersion).toBe("1.1.0");
       expect(data.articles).toEqual({});
     });
 
@@ -91,7 +91,7 @@ describe("Social Module", () => {
 
       const data = await loadSocialData();
 
-      expect(data.schemaVersion).toBe("1.0.0");
+      expect(data.schemaVersion).toBe("1.1.0");
       expect(data.articles).toEqual({});
     });
   });

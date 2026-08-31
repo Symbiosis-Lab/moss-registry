@@ -72,9 +72,7 @@ vi.mock("../config", () => ({
 
 vi.mock("../credential", () => ({
   clearTokenCache: vi.fn(),
-  loadStoredToken: vi.fn().mockResolvedValue(null),
-  saveStoredToken: vi.fn().mockResolvedValue(undefined),
-  clearStoredToken: vi.fn().mockResolvedValue(undefined),
+  bindStoredToken: vi.fn().mockResolvedValue(undefined),
   getSessionState: vi.fn().mockResolvedValue("valid"),
   shouldNudgeSessionExpired: vi.fn().mockResolvedValue(false),
   markSessionInvalidated: vi.fn().mockResolvedValue(undefined),

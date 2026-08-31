@@ -12,6 +12,7 @@ global.fetch = mockFetch;
 
 // Mock utils
 vi.mock("../utils", () => ({
+  resolveGitPath: vi.fn().mockResolvedValue("git"),
   showToast: vi.fn().mockResolvedValue(undefined),
 }));
 

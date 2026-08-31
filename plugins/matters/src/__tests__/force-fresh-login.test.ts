@@ -78,9 +78,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
 
 vi.mock("../credential", () => ({
   clearTokenCache: vi.fn(),
-  loadStoredToken: vi.fn().mockResolvedValue(null),
-  saveStoredToken: vi.fn().mockResolvedValue(undefined),
-  clearStoredToken: vi.fn().mockResolvedValue(undefined),
+  bindStoredToken: vi.fn().mockResolvedValue(undefined),
   getSessionState: (...args: unknown[]) => mockGetSessionState(...args),
   shouldNudgeSessionExpired: (...args: unknown[]) => mockShouldNudge(...args),
   markSessionInvalidated: vi.fn().mockResolvedValue(undefined),

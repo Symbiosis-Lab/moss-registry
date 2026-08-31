@@ -13,7 +13,7 @@
  */
 
 import { openSystemBrowser, httpPost, openBrowserWithHtml, closeBrowser, onEvent } from "@symbiosis-lab/moss-api";
-import { sleep, reportProgress } from "./utils";
+import { sleep, reportProgress, resolveGitPath } from "./utils";
 import { storeToken, getToken, clearToken, getTokenFromGit } from "./token";
 import type {
   DeviceCodeResponse,
@@ -124,10 +124,19 @@ export async function pollForToken(
 }
 
 /**
- * Validate an access token by calling the GitHub API
+ * Validate an access token by calling the GitHub API.
+ *
+ * `valid: false` answers two different questions and the caller must not
+ * confuse them, so `rejected` says which: GitHub answered 401, the one status
+ * that means "not this token", versus anything else — offline, rate-limited,
+ * a bad day at GitHub. Only the first is grounds for deleting the token;
+ * clearing it on the others signs the user out over a service that never
+ * refused them, and the sign-in that would fix it needs the same network.
  */
 export async function validateToken(token: string): Promise<{
   valid: boolean;
+  /** GitHub answered and refused. `false` also means "we never asked". */
+  rejected: boolean;
   user?: GitHubUser;
   scopes?: string[];
 }> {
@@ -141,7 +150,10 @@ export async function validateToken(token: string): Promise<{
     });
 
     if (!response.ok) {
-      return { valid: false };
+      // Only 401 is GitHub saying "not this token". 403 is how it reports a
+      // rate limit or a blocked IP, 5xx and 429 are a bad day — none of them
+      // are grounds for throwing the user's sign-in away.
+      return { valid: false, rejected: response.status === 401 };
     }
 
     const user = (await response.json()) as GitHubUser;
@@ -150,9 +162,10 @@ export async function validateToken(token: string): Promise<{
     const scopeHeader = response.headers.get("X-OAuth-Scopes") || "";
     const scopes = scopeHeader.split(",").map((s) => s.trim()).filter(Boolean);
 
-    return { valid: true, user, scopes };
+    return { valid: true, rejected: false, user, scopes };
   } catch {
-    return { valid: false };
+    // Offline, DNS failure, a proxy in the way — we never heard from GitHub.
+    return { valid: false, rejected: false };
   }
 }
 
@@ -176,7 +189,7 @@ export function hasRequiredScopes(scopes: string[]): boolean {
  *
  * Note: Plugin identity and project path are auto-detected from runtime context.
  */
-export async function checkAuthentication(): Promise<AuthState> {
+export async function checkAuthentication(gitPath: string): Promise<AuthState> {
   console.log("   Checking GitHub authentication...");
 
   // 1. Try to get token from plugin cookies (fastest)
@@ -195,14 +208,24 @@ export async function checkAuthentication(): Promise<AuthState> {
       };
     }
 
-    // Token is invalid - clear it and try git credentials
+    if (!validation.valid && !validation.rejected) {
+      // GitHub never answered. Keep the token — it is probably fine, and the
+      // sign-in this would send the user to needs the same network that just
+      // failed. Report "not signed in" so the publish stops rather than pushing
+      // with a token we could not confirm.
+      console.log("   Could not reach GitHub to validate the token; keeping it");
+      return { isAuthenticated: false, unreachable: true };
+    }
+
+    // GitHub refused it, or it lacks the scopes we need: clear it and try git
+    // credentials.
     console.log("   Cached token invalid, clearing...");
     await clearToken();
   }
 
   // 2. Try git credential helper (Bug 8 fix)
   console.log("   Checking git credential helper...");
-  token = await getTokenFromGit();
+  token = await getTokenFromGit(gitPath);
 
   if (token) {
     const validation = await validateToken(token);
@@ -223,6 +246,33 @@ export async function checkAuthentication(): Promise<AuthState> {
 
   console.log("   No valid credentials found");
   return { isAuthenticated: false };
+}
+
+/**
+ * The token to work with — or null, and WHY it is null.
+ *
+ * No token and an unreachable GitHub both stop a publish, but they are not the
+ * same news: one is "sign in again", the other is "we could not ask", and the
+ * remedies point opposite ways. Every caller puts words on a screen, so every
+ * caller needs the reason.
+ *
+ * One owner for a question three hooks ask, and one answer: the cached token is
+ * validated like any other, because a revoked one that passes here would fail
+ * later as GitHub's 401 rather than as "sign in again". The cost is one API
+ * call against a publish that is about to push a whole site.
+ *
+ * It never signs anyone in. Signing in is [`promptLogin`], which the setup gate
+ * calls from `check_setup` before a publish starts, on a button the user
+ * clicked.
+ */
+export async function resolveTokenOutcome(
+  gitPath?: string,
+): Promise<{ token: string | null; unreachable: boolean }> {
+  const auth = await checkAuthentication(gitPath ?? (await resolveGitPath()) ?? "git");
+  return {
+    token: auth.isAuthenticated ? await getToken() : null,
+    unreachable: auth.unreachable === true,
+  };
 }
 
 /**

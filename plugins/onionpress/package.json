@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-onionpress",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Publish moss sites to a self-hosted OnionPress (.onion) receiver",
   "main": "dist/main.js",
   "scripts": {
@@ -37,7 +37,7 @@
     "directory": "onionpress"
   },
   "devDependencies": {
-    "@symbiosis-lab/moss-api": "^0.12.0",
+    "@symbiosis-lab/moss-api": "^0.13.0",
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^3.2.7",
     "chokidar-cli": "^3.0.0",

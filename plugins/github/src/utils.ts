@@ -5,6 +5,7 @@
  */
 
 import {
+  getTauriCore,
   setMessageContext,
   reportProgress as sdkReportProgress,
   reportError as sdkReportError,
@@ -105,4 +106,22 @@ export async function closeBrowser(): Promise<void> {
  */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The git moss resolved for us, or null if this machine has none.
+ *
+ * moss downloads a portable git when the system has none, so asking it is not
+ * the same as assuming `"git"` is on PATH. Callers decide what a null means:
+ * a deploy cannot proceed without git, a domain configuration falls back.
+ */
+export async function resolveGitPath(): Promise<string | null> {
+  try {
+    return await getTauriCore().invoke<string>("resolve_git_path");
+  } catch (e) {
+    // Loud: the deploy caller can only tell the user "git is required", so the
+    // reason git could not be resolved exists nowhere else.
+    console.error(`   Git resolution failed: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
 }

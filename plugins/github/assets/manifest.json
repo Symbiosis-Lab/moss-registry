@@ -1,15 +1,12 @@
 {
   "name": "github",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "display_name": "GitHub",
   "description": "Deploy to GitHub Pages via GitHub Actions",
   "author": "moss team",
-  "min_moss_version": "0.7.23",
+  "min_moss_version": "0.11.7",
   "preview": true,
   "entry": "main.bundle.js",
-  "capabilities": [
-    "deploy"
-  ],
   "domain": "github.com",
   "global_name": "GithubPlugin",
   "icon": "icon.svg",
@@ -22,6 +19,18 @@
     "video_max_size_mb": "number"
   },
   "requires": [
-    "execute_binary"
-  ]
+    "execute_binary:git",
+    "execute_binary:readlink",
+    "execute_binary:rm",
+    "execute_binary:sh",
+    "execute_binary:find"
+  ],
+  "contributes": {
+    "deploy_target": {
+      "display_name": "GitHub Pages",
+      "setup": {
+        "check": true
+      }
+    }
+  }
 }

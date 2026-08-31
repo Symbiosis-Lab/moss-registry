@@ -82,9 +82,7 @@ vi.mock("../config", () => ({
 
 vi.mock("../credential", () => ({
   clearTokenCache: vi.fn(),
-  loadStoredToken: vi.fn().mockResolvedValue(null),
-  saveStoredToken: vi.fn().mockResolvedValue(undefined),
-  clearStoredToken: vi.fn().mockResolvedValue(undefined),
+  bindStoredToken: vi.fn().mockResolvedValue(undefined),
   getSessionState: vi.fn().mockResolvedValue("valid"),
   shouldNudgeSessionExpired: vi.fn().mockResolvedValue(false),
   markSessionInvalidated: vi.fn().mockResolvedValue(undefined),
@@ -563,6 +561,61 @@ describe("Law 3 — one terminal L3 ack after the loop (not per article)", () =>
     expect(opts.actions).toBeDefined();
     expect(opts.actions![0].url).toContain("matters.town");
     expect(opts.actions![0].label).toMatch(/[Pp]rofile|[Vv]iew/);
+  });
+});
+
+describe("already-syndicated filter — a recorded Matters URL excludes the article", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    restartMockTask();
+    resetFetchDraftToPublished();
+    resetGetSessionStateToValid();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 } as unknown as Response));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("succeeds without drafting or toasting when every article already has a Matters URL", async () => {
+    const ctx = makeSyndicateContext([
+      makeUnsyncedArticle({
+        frontmatter: { syndicated: ["https://matters.town/@guo/alpha-abc"] },
+      }),
+      makeUnsyncedArticle({
+        source_path: "posts/beta.md",
+        url_path: "posts/beta/",
+        frontmatter: {
+          syndicated: ["https://example.com/mirror", "https://matters.town/@guo/beta-def"],
+        },
+      }),
+    ]);
+
+    const result = await syndicate(ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("No new articles to syndicate");
+    const { createDraft } = await import("../api");
+    expect(createDraft).not.toHaveBeenCalled();
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it("only a MATTERS url counts — a non-Matters mirror leaves the article queued", async () => {
+    const ctx = makeSyndicateContext([
+      makeUnsyncedArticle({
+        frontmatter: { syndicated: ["https://example.com/mirror"] },
+      }),
+      makeUnsyncedArticle({
+        source_path: "posts/done.md",
+        url_path: "posts/done/",
+        frontmatter: { syndicated: ["https://matters.town/@guo/done-abc"] },
+      }),
+    ]);
+
+    await syndicate(ctx);
+
+    const { createDraft } = await import("../api");
+    expect(createDraft).toHaveBeenCalledTimes(1);
   });
 });
 

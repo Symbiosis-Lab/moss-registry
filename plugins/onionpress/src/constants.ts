@@ -6,15 +6,6 @@
  */
 
 /**
- * Deploy heartbeat interval in milliseconds.
- *
- * Must be shorter than the progress panel's 60s inactivity watchdog (and the
- * 15s STALE_TIMEOUT_MS) so the progress bar stays visible while the tar +
- * upload of a large generation is in flight. Mirrors the github plugin.
- */
-export const DEPLOY_HEARTBEAT_INTERVAL_MS = 10_000;
-
-/**
  * Ports probed for a running OnionPress receiver, in order.
  *
  * OnionPress multi-user installs offset the loopback receiver port by +10000

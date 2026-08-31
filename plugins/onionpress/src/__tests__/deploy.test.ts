@@ -271,35 +271,3 @@ describe("deploy — reachability confirmation", () => {
   });
 });
 
-// ============================================================================
-// Heartbeat
-// ============================================================================
-
-describe("deploy — inactivity-watchdog heartbeat", () => {
-  it("schedules a 10s heartbeat during deploy and clears it on completion", async () => {
-    mockDiscover.mockResolvedValue(endpoint());
-    const setSpy = vi.spyOn(globalThis, "setInterval");
-    const clearSpy = vi.spyOn(globalThis, "clearInterval");
-
-    await deploy(CONTEXT);
-
-    // Scheduled with the shared heartbeat interval (10_000 ms).
-    expect(setSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
-    // Cleared with the exact handle setInterval returned (no leaked timer).
-    const handle = setSpy.mock.results[0].value;
-    expect(clearSpy).toHaveBeenCalledWith(handle);
-  });
-
-  it("clears the heartbeat even when the deploy throws", async () => {
-    mockDiscover.mockResolvedValue(endpoint());
-    mockCommit.mockRejectedValue(new Error("commit blew up"));
-    const setSpy = vi.spyOn(globalThis, "setInterval");
-    const clearSpy = vi.spyOn(globalThis, "clearInterval");
-
-    const result = await deploy(CONTEXT);
-
-    expect(result.success).toBe(false);
-    const handle = setSpy.mock.results[0].value;
-    expect(clearSpy).toHaveBeenCalledWith(handle);
-  });
-});
