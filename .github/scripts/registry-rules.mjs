@@ -65,3 +65,27 @@ export function parseReleaseTag(tag) {
   if (!SEMVER_RE.test(version)) return null;
   return { id, version };
 }
+
+/**
+ * A `requires` entry is one of two shapes. `execute_binary:<basename>` grants
+ * exactly one executable; the bare `execute_binary` grants every one of them
+ * and is deprecated — moss still honours it, with a warning per run.
+ *
+ * The basename must be what moss resolves a `binaryPath` down to, so a grant
+ * carrying a path separator can never match and is rejected here rather than
+ * silently granting nothing.
+ */
+export const BLANKET_EXECUTE_BINARY = "execute_binary";
+
+const NAMED_EXECUTE_BINARY_RE = /^execute_binary:([^\s:/\\]+)$/;
+
+/** Classify one `requires` entry: `blanket`, `named` (with `binary`), or `unknown`. */
+export function classifyRequirement(entry) {
+  if (entry === BLANKET_EXECUTE_BINARY) return { kind: "blanket" };
+  const named = NAMED_EXECUTE_BINARY_RE.exec(entry);
+  if (named) return { kind: "named", binary: named[1] };
+  return { kind: "unknown" };
+}
+
+/** The grammar, for an error message that tells a contributor what to write. */
+export const REQUIRES_GRAMMAR = 'execute_binary:<binary> (e.g. "execute_binary:git"), or the deprecated blanket execute_binary';
