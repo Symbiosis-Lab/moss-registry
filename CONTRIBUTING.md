@@ -158,8 +158,10 @@ author's machine, so they are not negotiable.
 - **Declare your network use.** Your README needs a `## Network access` section
   listing every domain you contact and why. "None" is a fine answer.
 - **Prefer zero runtime dependencies.** The moss-api SDK should be enough.
-  Dependencies are bundled into the artifact and are the hardest part to review,
-  so adding one needs justification in the PR.
+  Dependencies are bundled into the artifact and run with every capability the
+  plugin holds, so adding one needs justification in the PR, and review reads
+  the dependency's code as if it were yours. A lockfile diff is not a review of
+  what it pulls in.
 - **`execute_binary` requires declaration and justification.** It runs arbitrary
   native processes. Declare it in `requires` and explain in the PR why nothing
   weaker works. Reviewers may decline it.
