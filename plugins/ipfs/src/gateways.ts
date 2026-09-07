@@ -17,6 +17,7 @@ import {
   PINATA_DEFAULT_GATEWAY,
   DEFAULT_KUBO_RPC,
 } from "./constants";
+import type { DeployAddress } from "@symbiosis-lab/moss-api";
 import type { IpfsSettings, ProviderId } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +117,41 @@ export function siteDisplayUrl(
 export interface GatewayLink {
   label: string;
   url: string;
+}
+
+/**
+ * The publish, as the addresses moss renders: the CID naming these exact
+ * bytes, the IPNS name that will name the next ones, and every gateway door
+ * onto them. moss owns the rows, the copy buttons and the modal; this decides
+ * only what exists and what each one is called.
+ */
+export function deployAddresses(opts: {
+  cid: string;
+  ipnsName?: string;
+  provider: ProviderId;
+  config: IpfsSettings;
+  localHost?: string;
+  domain?: string;
+  localOnly: boolean;
+}): DeployAddress[] {
+  const { cid, ipnsName, provider, config, localHost, domain, localOnly } = opts;
+  const addresses: DeployAddress[] = [];
+  if (domain) addresses.push({ kind: "domain", label: "Custom domain", url: `https://${domain}` });
+  for (const link of gatewayLinks(cid, ipnsName, provider, config, localHost)) {
+    addresses.push({
+      kind: link.label === "IPNS (stable)" ? "ipns" : "gateway",
+      label: link.label,
+      url: link.url,
+      // The one thing a reader cannot see from the row itself: this door is
+      // open only while the node on this computer is.
+      ...(localOnly && link.label === "Local gateway"
+        ? { note: "Served by the IPFS node on this computer — reachable only while it runs." }
+        : {}),
+    });
+  }
+  addresses.push({ kind: "cid", label: "CID", value: cid });
+  if (ipnsName) addresses.push({ kind: "ipns", label: "IPNS name", value: ipnsName });
+  return addresses;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   localGatewayCidUrl,
   siteDisplayUrl,
   gatewayLinks,
+  deployAddresses,
   kuboRpcBase,
   isDefaultNodeRpc,
 } from "../gateways";
@@ -130,5 +131,53 @@ describe("gatewayLinks", () => {
     expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe(
       `https://${ipns}.ipns.dweb.link`,
     );
+  });
+});
+
+describe("deployAddresses", () => {
+  const local = {
+    cid: CIDV1,
+    ipnsName: "k51x",
+    provider: "local" as const,
+    config: {},
+    localHost: "localhost:8081",
+    localOnly: true,
+  };
+
+  it("gives the CID and IPNS name a copyable value and no url", () => {
+    const rows = deployAddresses(local);
+    const cid = rows.find((a) => a.kind === "cid");
+    expect(cid).toEqual({ kind: "cid", label: "CID", value: CIDV1 });
+    expect(cid?.url).toBeUndefined();
+    expect(rows.find((a) => a.label === "IPNS name")?.value).toBe("k51x");
+  });
+
+  it("omits the IPNS row entirely when the publish had no name", () => {
+    const rows = deployAddresses({ ...local, ipnsName: undefined });
+    expect(rows.map((a) => a.label)).not.toContain("IPNS name");
+    expect(rows.some((a) => a.kind === "cid")).toBe(true);
+  });
+
+  it("notes the node dependency on the local gateway row, and only there", () => {
+    const rows = deployAddresses(local);
+    expect(rows.find((a) => a.label === "Local gateway")?.note).toMatch(/only while it runs/);
+    expect(rows.filter((a) => a.note).length).toBe(1);
+  });
+
+  it("drops the note when a co-pin keeps the site up without this machine", () => {
+    const rows = deployAddresses({ ...local, localOnly: false });
+    expect(rows.every((a) => !a.note)).toBe(true);
+  });
+
+  it("leads with a custom domain when one is configured", () => {
+    const rows = deployAddresses({ ...local, domain: "example.com" });
+    expect(rows[0]).toEqual({ kind: "domain", label: "Custom domain", url: "https://example.com" });
+  });
+
+  it("gives every gateway row a url so moss renders it as a link", () => {
+    for (const row of deployAddresses(local).filter((a) => a.kind === "gateway")) {
+      expect(row.url).toMatch(/^https?:\/\//);
+      expect(row.value).toBeUndefined();
+    }
   });
 });

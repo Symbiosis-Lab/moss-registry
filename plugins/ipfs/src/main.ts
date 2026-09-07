@@ -28,7 +28,7 @@ import { getState, recordSuccess, recordError } from "./state";
 import { getProvider, makeProviderById } from "./providers";
 import { readSiteFiles } from "./site-files";
 import { makeSiteRelative } from "./relative-urls";
-import { siteDisplayUrl, gatewayLinks } from "./gateways";
+import { siteDisplayUrl, deployAddresses } from "./gateways";
 import { localGatewayHost } from "./kubo-gateway";
 import { generateDnsTarget } from "./dnslink";
 import { categorizeError } from "./errors";
@@ -36,13 +36,11 @@ import {
   setCurrentHookName,
   reportProgress,
   reportError,
-  showToast,
 } from "./utils";
 import { getUrl } from "./http";
 import { publishIdentityIpns, isPublished } from "./ipns-identity";
 import { checkSetup } from "./setup";
 import type { SetupContext, SetupVerdict } from "./types";
-import { showResultPanel, type ResultView } from "./result-panel";
 import { REACHABILITY_TIMEOUT_MS, HEARTBEAT_MS } from "./constants";
 
 /**
@@ -81,7 +79,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     config.pinName = context.project_info?.site_name || context.project_info?.folder_name;
   }
   const state = await getState();
-  const firstDeploy = !state.lastCid;
   const provider = getProvider(config);
 
   // Progress state. The helper keeps the heartbeat's closure vars in sync with
@@ -253,7 +250,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         : {}),
     });
 
-    const links = gatewayLinks(cid, ipnsName, provider.id, config, localHost);
     const domain = context.domain;
     const dnsTarget = domain ? generateDnsTarget({ cid }) : undefined;
 
@@ -261,49 +257,35 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     stopHeartbeat();
 
     // A site kept alive ONLY by this machine's node disappears when the node
-    // stops — say so (UX contract: never let a site vanish silently).
+    // stops — say so (UX contract: never let a site vanish silently). It rides
+    // on the local gateway's own row, where the reader is looking at it.
     const localOnly = provider.id === "local" && coPinnedId !== "pinata";
-    const availabilityNote = localOnly
-      ? `\n\nHeads up: your site is served by the IPFS node on this computer — it stays ` +
-        `online only while that node is running. Turn on Co-Pin (with Pinata connected) ` +
-        `or use the Pinata provider to keep it up around the clock.`
-      : ``;
+    const addresses = deployAddresses({
+      cid,
+      ipnsName,
+      provider: provider.id,
+      config,
+      localHost,
+      domain,
+      localOnly,
+    });
     const message =
       `Your site is on IPFS!\n\n` +
       `URL: ${displayUrl}\n` +
       (ipnsName ? `Stable IPNS: ${ipnsName}\n` : ``) +
       `CID: ${cid}\n\n` +
       `Pinned via ${provider.label}.` +
-      (coPinnedId ? ` Also pinned to ${coPinnedId === "local" ? "your local node" : "Pinata"}.` : ``) +
-      availabilityNote;
-
-    await showToast({
-      message: "Published to IPFS!",
-      variant: "success",
-      actions: [{ label: "View site", url: displayUrl }],
-      duration: 8000,
-    });
-
-    // First successful deploy: open the details panel. Resolves on open — it
-    // does not block the hook on user dismissal.
-    if (firstDeploy) {
-      const view: ResultView = {
-        cid,
-        ipnsName,
-        providerLabel: provider.label,
-        primaryUrl: displayUrl,
-        links,
-        domain,
-        localOnly,
-      };
-      await showResultPanel(view);
-    }
+      (coPinnedId ? ` Also pinned to ${coPinnedId === "local" ? "your local node" : "Pinata"}.` : ``);
 
     return {
       success: true,
       message,
+      // Outcome UX is data: moss renders the toast, and opens the addresses
+      // window itself the first time a site lands on this target.
+      toast: { outcome: "success", title: "Published to IPFS!", url: displayUrl },
       deployment: {
         method: "ipfs",
+        addresses,
         url: displayUrl,
         deployed_at: new Date().toISOString(),
         metadata: {
@@ -325,8 +307,11 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     console.error(`IPFS Deployer: Failed - ${errorMessage}`);
     await recordError(errorMessage);
     await reportError(errorMessage, "deploy", true);
-    await showToast({ message: categorizeError(errorMessage), variant: "error", duration: 5000 });
-    return { success: false, message: errorMessage };
+    return {
+      success: false,
+      message: errorMessage,
+      toast: { outcome: "error", title: categorizeError(errorMessage) },
+    };
   } finally {
     stopHeartbeat();
   }
