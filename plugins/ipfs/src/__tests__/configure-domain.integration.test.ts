@@ -67,6 +67,21 @@ describe("configure_domain", () => {
     expect(result.message).toContain("/ipfs/bafyPERSISTED");
   });
 
+  it("falls back to persisted state per field, even when this deployment's metadata has a cid", async () => {
+    // Metadata predating the ipns_name key carries a cid but no ipns_name at
+    // all; state.json is the only place the name still lives. Gating the
+    // whole fallback on `meta` truthiness would make state.ipnsName
+    // unreachable here.
+    api.state = JSON.stringify({ lastCid: "bafyOLD", ipnsName: "k51persisted" });
+    const result = await configure_domain({
+      domain: "example.com",
+      deployment: { metadata: { cid: "bafyCID" } },
+    } as never);
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("/ipfs/bafyCID");
+    expect(result.message).toContain("k51persisted");
+  });
+
   it("fails when there is no deployment at all", async () => {
     const result = await configure_domain({ domain: "example.com" } as never);
     expect(result.success).toBe(false);

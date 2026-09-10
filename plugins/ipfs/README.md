@@ -56,23 +56,27 @@ The Pinata JWT is a declared `secret` setting, so moss collects it in its own cr
 Settings are read-only to the plugin: moss owns `config.json`, and the plugin's own
 bookkeeping (the IPNS sequence, the last CID) lives beside it in `state.json`.
 
+## Addresses
+
+After a publish, moss shows one row per fact — never several links to the same thing:
+
+- **Custom domain** — only once DNSLink is configured; the address to hand out.
+- **IPNS name** — the address that stays: it names your next publish too, copyable and openable through the public gateway. The record itself decays about 48 hours after your last publish (see above); publishing again refreshes it.
+- **CID** — this exact publish, copyable and openable the same way. Changes every deploy; paste it to verify you're looking at the right version.
+- **Local gateway** (local provider) or **Pinata gateway** (Pinata) — the provider's own door onto the above. For a local node this only works while the node is running on this computer, which the row says.
+
+The View-site button and the toast both use the standing address — the domain if set, else the IPNS name, else the CID — always through the public gateway (the `gateway` setting, or dweb.link), never a `localhost` link private to this machine.
+
 ## Network access
 
 Endpoints this plugin talks to, and why:
 
 - `https://uploads.pinata.cloud/v3/files` — site upload (Pinata provider; JWT auth).
 - `https://api.pinata.cloud/data/testAuthentication` — JWT pre-flight check (Pinata).
-- `<node_rpc>/api/v0/*` (default `http://127.0.0.1:5001`) — local provider: add,
-  verification (`ls`), keys, IPNS `name/publish`, and identity-IPNS `routing/put`.
-- your node's own gateway (its port is read from `Addresses.Gateway`, never assumed) /
-  `https://dweb.link` / `https://ipfs.io` /
-  `https://ipfs.filebase.io` — read-only gateway checks (structure verification and the
-  informational liveness probe) and the View-site links surfaced to the user.
-No other hosts are contacted. The `execute_binary` requirement covers detecting and
-starting an already-installed Kubo (`ipfs version` / `ipfs init` / `ipfs config` / a
-detached `ipfs daemon`) — the plugin never downloads binaries. It asks before starting a
-daemon, and again before changing your node's gateway port. Site content is uploaded only to the provider(s) the user
-configured.
+- `<node_rpc>/api/v0/*` (default `http://127.0.0.1:5001`) — local provider: add, verification (`ls`), keys, IPNS `name/publish`, and identity-IPNS `routing/put`.
+- your node's own gateway (its port is read from `Addresses.Gateway`, never assumed), and the configured `gateway` setting or `dweb.link` otherwise — the View-site links and address rows surfaced to the user. No fetch is made to either; they are shown, not probed.
+
+No other hosts are contacted. The `execute_binary` requirement covers detecting and starting an already-installed Kubo (`ipfs version` / `ipfs init` / `ipfs config` / a detached `ipfs daemon`) — the plugin never downloads binaries. It asks before starting a daemon, and again before changing your node's gateway port. Site content is uploaded only to the provider(s) the user configured.
 
 ## Architecture
 

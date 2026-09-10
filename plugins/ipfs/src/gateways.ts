@@ -13,7 +13,6 @@
 
 import {
   PUBLIC_GATEWAY_DWEB,
-  PUBLIC_GATEWAY_W3S,
   PINATA_DEFAULT_GATEWAY,
   DEFAULT_KUBO_RPC,
 } from "./constants";
@@ -91,39 +90,63 @@ export function localGatewayCidUrl(cid: string, host: string): string {
 }
 
 /**
- * The URL shown to the user (toast, result panel, deployment record).
- * - custom gateway host configured → path form on that host;
- * - local provider whose gateway we could actually locate → that gateway
- *   (instant and origin-rooted; a laptop node's content reaches public
- *   gateways only after propagation);
- * - otherwise → the public dweb.link gateway.
+ * The public-facing gateway host for any address that has to work for someone
+ * who isn't running this plugin: the configured `gateway` setting (including a
+ * Pinata dedicated gateway, which is just a hostname here), else dweb.link.
  */
-export function siteDisplayUrl(
-  cid: string,
-  provider: ProviderId,
-  config: IpfsSettings,
-  localHost?: string,
-): string {
+function publicGatewayHost(config: IpfsSettings): string {
   const custom = config.gateway?.trim();
-  if (custom) return pathCidUrl(custom, cid);
-  // Localhost links only make sense for the same-machine daemon; a custom
-  // node endpoint (NAS/VPS) gets the public gateway.
-  if (provider === "local" && isDefaultNodeRpc(config) && localHost) {
-    return localGatewayCidUrl(cid, localHost);
-  }
-  return bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
-}
-
-export interface GatewayLink {
-  label: string;
-  url: string;
+  return custom && custom.length > 0 ? custom : PUBLIC_GATEWAY_DWEB;
 }
 
 /**
- * The publish, as the addresses moss renders: the CID naming these exact
- * bytes, the IPNS name that will name the next ones, and every gateway door
- * onto them. moss owns the rows, the copy buttons and the modal; this decides
- * only what exists and what each one is called.
+ * The CID through the public door: path form on a configured gateway (not
+ * every custom host supports subdomain isolation), else the best form on
+ * dweb.link.
+ */
+function publicDoorCidUrl(cid: string, config: IpfsSettings): string {
+  const custom = config.gateway?.trim();
+  return custom && custom.length > 0 ? pathCidUrl(custom, cid) : bestCidUrl(cid, PUBLIC_GATEWAY_DWEB);
+}
+
+/**
+ * The IPNS name through the public door, in subdomain form — IPNS names
+ * (k51…/base36 libp2p keys) are DNS-label-safe, so this works on any host.
+ */
+function publicDoorIpnsUrl(name: string, config: IpfsSettings): string {
+  return subdomainIpnsUrl(name, publicGatewayHost(config));
+}
+
+/**
+ * The site's standing address — what you hand out, and what the View button
+ * and toast use. A local node's own gateway is instant but private to this
+ * machine, so it never becomes the standing address; it exists only as the
+ * "Local gateway" row `deployAddresses` emits.
+ */
+export function siteDisplayUrl(
+  cid: string,
+  config: IpfsSettings,
+  opts: { ipnsName?: string; domain?: string } = {},
+): string {
+  if (opts.domain) return `https://${opts.domain}`;
+  if (opts.ipnsName) return publicDoorIpnsUrl(opts.ipnsName, config);
+  return publicDoorCidUrl(cid, config);
+}
+
+/**
+ * The IPNS record's lifecycle, in one line. Shared by the IPNS row's note and
+ * the domain-setup message (main.ts) so the two surfaces state the same fact
+ * and can't drift apart.
+ */
+export const IPNS_RECORD_NOTE =
+  "The record behind this name expires 48 hours after your last publish.";
+
+/**
+ * The publish, as the addresses moss renders — one row per fact: the address
+ * that stays (a custom domain, or the IPNS name), the version you're looking
+ * at (the CID), and the provider's own door onto them. moss owns the rows,
+ * the copy buttons and the modal; this decides only what exists and what each
+ * one is called.
  */
 export function deployAddresses(opts: {
   cid: string;
@@ -136,60 +159,50 @@ export function deployAddresses(opts: {
 }): DeployAddress[] {
   const { cid, ipnsName, provider, config, localHost, domain, localOnly } = opts;
   const addresses: DeployAddress[] = [];
-  if (domain) addresses.push({ kind: "domain", label: "Custom domain", url: `https://${domain}` });
-  for (const link of gatewayLinks(cid, ipnsName, provider, config, localHost)) {
+
+  if (domain) {
+    addresses.push({ kind: "domain", label: "Custom domain", url: `https://${domain}` });
+  }
+
+  if (ipnsName) {
     addresses.push({
-      kind: link.label === "IPNS (stable)" ? "ipns" : "gateway",
-      label: link.label,
-      url: link.url,
+      kind: "ipns",
+      label: "IPNS name",
+      value: ipnsName,
+      url: publicDoorIpnsUrl(ipnsName, config),
+      note: IPNS_RECORD_NOTE,
+    });
+  }
+
+  addresses.push({
+    kind: "cid",
+    label: "CID",
+    value: cid,
+    url: publicDoorCidUrl(cid, config),
+    note: "Names exactly this version",
+  });
+
+  // The provider's own door — the only row that can vanish (a remote/unknown
+  // local node offers no local link at all, rather than one that 404s).
+  const useLocalHost = provider === "local" && isDefaultNodeRpc(config) && !!localHost;
+  if (provider === "pinata") {
+    addresses.push({
+      kind: "gateway",
+      label: "Pinata gateway",
+      url: pinataGatewayUrl(cid, config.gateway),
+    });
+  } else if (useLocalHost) {
+    addresses.push({
+      kind: "gateway",
+      label: "Local gateway",
+      url: localGatewayCidUrl(cid, localHost as string),
       // The one thing a reader cannot see from the row itself: this door is
       // open only while the node on this computer is.
-      ...(localOnly && link.label === "Local gateway"
+      ...(localOnly
         ? { note: "Served by the IPFS node on this computer — reachable only while it runs." }
         : {}),
     });
   }
-  addresses.push({ kind: "cid", label: "CID", value: cid });
-  if (ipnsName) addresses.push({ kind: "ipns", label: "IPNS name", value: ipnsName });
-  return addresses;
-}
 
-/**
- * All gateway/IPNS links to surface in the result panel, most-shareable first.
- * Provider-specific and local links are appended where relevant.
- */
-export function gatewayLinks(
-  cid: string,
-  ipnsName: string | undefined,
-  provider: ProviderId,
-  config: IpfsSettings,
-  localHost?: string,
-): GatewayLink[] {
-  const links: GatewayLink[] = [
-    { label: "dweb.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_DWEB) },
-    // Serves HTML directly to browsers (no service-worker hop — dweb.link and
-    // ipfs.io 302 navigations to inbrowser.link, whose worker can fail to
-    // install). Path form works because uploads are relative-URL rewritten.
-    { label: "filebase.io (direct)", url: pathCidUrl("ipfs.filebase.io", cid) },
-    { label: "w3s.link", url: bestCidUrl(cid, PUBLIC_GATEWAY_W3S) },
-  ];
-  const useLocalHost = provider === "local" && isDefaultNodeRpc(config) && localHost;
-  if (provider === "pinata") {
-    links.push({ label: "Pinata gateway", url: pinataGatewayUrl(cid, config.gateway) });
-  } else if (useLocalHost) {
-    links.push({ label: "Local gateway", url: localGatewayCidUrl(cid, localHost) });
-  }
-  if (ipnsName) {
-    // IPNS names (k51…/base36 libp2p keys) are DNS-label-safe, so the
-    // subdomain form works. For the local provider the LOCAL gateway is the
-    // one that resolves the name immediately; a laptop-published IPNS record
-    // reaches public gateways only after DHT propagation.
-    links.push({
-      label: "IPNS (stable)",
-      url: useLocalHost
-        ? `http://${ipnsName}.ipns.${localHost}`
-        : subdomainIpnsUrl(ipnsName, PUBLIC_GATEWAY_DWEB),
-    });
-  }
-  return links;
+  return addresses;
 }

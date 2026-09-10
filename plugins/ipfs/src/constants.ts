@@ -46,8 +46,6 @@ export const DEFAULT_KUBO_RPC = "http://127.0.0.1:5001";
 
 /** DNSLink-resolving public gateway; the default for shareable View-site links. */
 export const PUBLIC_GATEWAY_DWEB = "dweb.link";
-/** Secondary public gateway (subdomain form; does NOT resolve DNSLink). */
-export const PUBLIC_GATEWAY_W3S = "w3s.link";
 
 // ---------------------------------------------------------------------------
 // IPNS
@@ -60,7 +58,6 @@ export const PUBLIC_GATEWAY_W3S = "w3s.link";
 export const UPLOAD_TIMEOUT_MS = 300_000;
 export const DAEMON_PROBE_TIMEOUT_MS = 2_000;
 export const API_TIMEOUT_MS = 30_000;
-export const REACHABILITY_TIMEOUT_MS = 15_000;
 /**
  * IPNS record publishing does a DHT put — measured 10–60s+ on a real Kubo
  * node (slowest right after daemon start). 30s produced real-world timeouts.

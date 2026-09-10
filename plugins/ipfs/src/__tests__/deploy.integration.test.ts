@@ -32,7 +32,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
     api.files[name] = content;
   }),
   readSiteFile: vi.fn(async () => "aGVsbG8="),
-  fetchUrl: vi.fn(async () => ({ ok: true, status: 200 })),
 }));
 
 // --- identity IPNS stub ------------------------------------------------------
@@ -146,20 +145,20 @@ describe("deploy — happy path (already verified)", () => {
 });
 
 describe("deploy — structure verification", () => {
-  it("verifies once, persists the result per provider, and marks structure_verified", async () => {
+  it("verifies once and persists the result per provider", async () => {
     api.files["state.json"] = FRESH_STATE;
     const result = await deploy(nestedContext);
     expect(result.success).toBe(true);
     expect(providerRef.current?.verifyDirectory).toHaveBeenCalledWith("bafyNEW", "assets/app.css");
-    expect(result.deployment?.metadata?.structure_verified).toBe("true");
     expect(state().structureVerified).toEqual({ pinata: true });
   });
 
   it("skips verification for a flat site (nothing can lose structure)", async () => {
     api.files["state.json"] = FRESH_STATE;
     const result = await deploy(flatContext);
+    expect(result.success).toBe(true);
     expect(providerRef.current?.verifyDirectory).not.toHaveBeenCalled();
-    expect(result.deployment?.metadata?.structure_verified).toBe("true");
+    expect(state().structureVerified).toEqual({ pinata: true });
   });
 
   it("fails loudly on a CONFIRMED broken structure (never a silent broken site)", async () => {
@@ -184,7 +183,6 @@ describe("deploy — structure verification", () => {
     const result = await deploy(nestedContext);
     expect(result.success).toBe(true);
     expect(providerRef.current?.verifyDirectory).not.toHaveBeenCalled();
-    expect(result.deployment?.metadata?.structure_verified).toBe("true");
     expect(state().structureVerified).toEqual({ pinata: true });
   });
 
@@ -206,7 +204,6 @@ describe("deploy — structure verification", () => {
     });
     const result = await deploy(nestedContext);
     expect(result.success).toBe(true); // multipart result stands
-    expect(result.deployment?.metadata?.structure_verified).toBe("false");
     expect(state().structureVerified).toBeUndefined();
     // No CAR retry on a transient failure.
     expect(providerRef.current?.uploadDir).toHaveBeenCalledTimes(1);
@@ -229,7 +226,6 @@ describe("deploy — co-pinning", () => {
     expect(result.success).toBe(true);
     expect(providerRef.secondary?.uploadDir).toHaveBeenCalledTimes(1);
     expect(result.message).toMatch(/Also pinned to your local node/);
-    expect(result.deployment?.metadata?.co_pinned).toBe("local");
     expect(result.deployment?.metadata?.cid).toBe("bafyNEW");
   });
 
@@ -241,7 +237,7 @@ describe("deploy — co-pinning", () => {
     const result = await deploy(copinContext);
     expect(result.success).toBe(true);
     expect(providerRef.secondary?.uploadDir).not.toHaveBeenCalled();
-    expect(result.deployment?.metadata?.co_pinned).toBe("");
+    expect(result.message).not.toMatch(/Also pinned/);
   });
 
   it("does NOT claim a keeper when the secondary returns a different CID", async () => {
@@ -252,7 +248,6 @@ describe("deploy — co-pinning", () => {
     });
     const result = await deploy(copinContext);
     expect(result.success).toBe(true);
-    expect(result.deployment?.metadata?.co_pinned).toBe("");
     expect(result.message).not.toMatch(/Also pinned/);
   });
 
@@ -265,8 +260,7 @@ describe("deploy — co-pinning", () => {
     });
     const result = await deploy(copinContext);
     expect(result.success).toBe(true);
-    expect(result.deployment?.metadata?.co_pinned).toBe("");
-    expect(api.toasts.at(-1)?.variant).toBe("success");
+    expect(result.message).not.toMatch(/Also pinned/);
   });
 });
 

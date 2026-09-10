@@ -1,5 +1,9 @@
 # Changelog — moss-plugin-ipfs
 
+## Unreleased
+
+The deploy tab now shows one address row per fact instead of seven near-duplicates: **IPNS name** and **CID** are each both copyable and openable, plus your provider's own **Local gateway** or **Pinata gateway** door, and a **Custom domain** row once DNSLink is set. The View-site button and toast now always open the public gateway address (your custom domain, else the IPNS name, else the CID) rather than a `localhost` link that only worked on the machine that published it.
+
 ## 0.2.0
 
 Migration to moss's plugin setup contract (moss ≥ 0.11.7). The plugin no longer draws any setup UI: moss renders its settings and credential dialogs from the manifest, and the plugin answers `check_setup` verdicts.

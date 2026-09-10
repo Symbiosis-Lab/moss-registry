@@ -7,12 +7,11 @@ import {
   pinataGatewayUrl,
   localGatewayCidUrl,
   siteDisplayUrl,
-  gatewayLinks,
   deployAddresses,
   kuboRpcBase,
   isDefaultNodeRpc,
+  IPNS_RECORD_NOTE,
 } from "../gateways";
-import type { IpfsSettings } from "../types";
 
 const CIDV1 = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
 const CIDV0 = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
@@ -55,30 +54,28 @@ describe("provider gateway URLs", () => {
 });
 
 describe("siteDisplayUrl", () => {
-  it("prefers a configured custom gateway (path form)", () => {
-    expect(siteDisplayUrl(CIDV1, "pinata", { gateway: "g.example" })).toBe(
+  it("prefers a configured custom gateway (path form) for the CID", () => {
+    expect(siteDisplayUrl(CIDV1, { gateway: "g.example" })).toBe(
       `https://g.example/ipfs/${CIDV1}`,
     );
   });
-  it("uses the local gateway the node reported for the default same-machine node", () => {
-    expect(siteDisplayUrl(CIDV1, "local", {}, "localhost:8081")).toBe(
-      `http://${CIDV1}.ipfs.localhost:8081`,
+  it("uses the public dweb.link gateway when nothing else is set", () => {
+    expect(siteDisplayUrl(CIDV1, {})).toBe(`https://${CIDV1}.ipfs.dweb.link`);
+  });
+  it("never returns a local/private url for a local-node deploy — that door is a row, not the standing address", () => {
+    // Regression: this used to be `http://<cid>.ipfs.localhost:<port>` for a
+    // local node whose gateway was known.
+    expect(siteDisplayUrl(CIDV1, {})).not.toMatch(/localhost|127\.0\.0\.1/);
+  });
+  it("prefers the IPNS name, through the public door, once one is published", () => {
+    expect(siteDisplayUrl(CIDV1, {}, { ipnsName: "k51x" })).toBe(
+      "https://k51x.ipns.dweb.link",
     );
   });
-  it("falls back to the public gateway when the node's gateway port is unknown", () => {
-    // Never a guess: Kubo's default 8080 is moss's own preview-server port, so
-    // a hardcoded local link lands on moss's refusal page (observed live).
-    expect(siteDisplayUrl(CIDV1, "local", {}, undefined)).toBe(
-      `https://${CIDV1}.ipfs.dweb.link`,
+  it("prefers a DNSLink domain over the IPNS name and the CID", () => {
+    expect(siteDisplayUrl(CIDV1, {}, { ipnsName: "k51x", domain: "example.com" })).toBe(
+      "https://example.com",
     );
-  });
-  it("uses the public gateway for a REMOTE node endpoint (its gateway is unknowable)", () => {
-    expect(siteDisplayUrl(CIDV1, "local", { nodeRpc: "http://my-pi:5001" })).toBe(
-      `https://${CIDV1}.ipfs.dweb.link`,
-    );
-  });
-  it("uses the public dweb.link gateway otherwise", () => {
-    expect(siteDisplayUrl(CIDV1, "pinata", {})).toBe(`https://${CIDV1}.ipfs.dweb.link`);
   });
 });
 
@@ -95,45 +92,6 @@ describe("node endpoint helpers", () => {
   });
 });
 
-describe("gatewayLinks", () => {
-  it("lists public + provider links, and IPNS only when present", () => {
-    const links = gatewayLinks(CIDV1, undefined, "pinata", {});
-    const labels = links.map((l) => l.label);
-    expect(labels).toContain("dweb.link");
-    expect(labels).toContain("w3s.link");
-    expect(labels).toContain("Pinata gateway");
-    expect(labels).not.toContain("IPNS (stable)");
-  });
-
-  it("uses the LOCAL IPNS subdomain link, on the port the node reported", () => {
-    const ipns = "k51qzi5uqu5dgja8f9x0h1e0y9pjzqf2m8xg2k4c7bq2d5e6f7g8h9i0j1k2l3";
-    const links = gatewayLinks(CIDV1, ipns, "local", {}, "localhost:8081");
-    const ipnsLink = links.find((l) => l.label === "IPNS (stable)");
-    expect(ipnsLink?.url).toBe(`http://${ipns}.ipns.localhost:8081`);
-    expect(links.map((l) => l.label)).toContain("Local gateway");
-  });
-
-  it("offers no local link at all when the node's gateway port is unknown", () => {
-    const links = gatewayLinks(CIDV1, "k51x", "local", {}, undefined);
-    expect(links.map((l) => l.label)).not.toContain("Local gateway");
-    expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe("https://k51x.ipns.dweb.link");
-  });
-
-  it("omits the Local-gateway link and localizes nothing for a remote node", () => {
-    const links = gatewayLinks(CIDV1, "k51x", "local", { nodeRpc: "http://my-pi:5001" });
-    expect(links.map((l) => l.label)).not.toContain("Local gateway");
-    expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe("https://k51x.ipns.dweb.link");
-  });
-
-  it("uses the public IPNS subdomain link for non-local providers", () => {
-    const ipns = "k51qzi5uqu5dgja8f9x0h1e0y9pjzqf2m8xg2k4c7bq2d5e6f7g8h9i0j1k2l3";
-    const links = gatewayLinks(CIDV1, ipns, "pinata", {});
-    expect(links.find((l) => l.label === "IPNS (stable)")?.url).toBe(
-      `https://${ipns}.ipns.dweb.link`,
-    );
-  });
-});
-
 describe("deployAddresses", () => {
   const local = {
     cid: CIDV1,
@@ -144,29 +102,59 @@ describe("deployAddresses", () => {
     localOnly: true,
   };
 
-  it("gives the CID and IPNS name a copyable value and no url", () => {
+  it("emits exactly four rows for a local node, in order: IPNS name, CID, Local gateway", () => {
     const rows = deployAddresses(local);
-    const cid = rows.find((a) => a.kind === "cid");
-    expect(cid).toEqual({ kind: "cid", label: "CID", value: CIDV1 });
-    expect(cid?.url).toBeUndefined();
-    expect(rows.find((a) => a.label === "IPNS name")?.value).toBe("k51x");
+    expect(rows.map((a) => a.label)).toEqual(["IPNS name", "CID", "Local gateway"]);
+    expect(rows.map((a) => a.kind)).toEqual(["ipns", "cid", "gateway"]);
+  });
+
+  it("emits exactly three rows for Pinata: no local gateway", () => {
+    const rows = deployAddresses({ ...local, provider: "pinata" as const });
+    expect(rows.map((a) => a.label)).toEqual(["IPNS name", "CID", "Pinata gateway"]);
+  });
+
+  it("gives the IPNS name both a copy value and an open url through the public door", () => {
+    const ipns = deployAddresses(local).find((a) => a.kind === "ipns");
+    expect(ipns?.value).toBe("k51x");
+    expect(ipns?.url).toBe("https://k51x.ipns.dweb.link");
+    expect(ipns?.note).toBe(IPNS_RECORD_NOTE);
+  });
+
+  it("gives the CID both a copy value and an open url through the public door", () => {
+    const cid = deployAddresses(local).find((a) => a.kind === "cid");
+    expect(cid?.value).toBe(CIDV1);
+    expect(cid?.url).toBe(`https://${CIDV1}.ipfs.dweb.link`);
+    expect(cid?.note).toBe("Names exactly this version");
   });
 
   it("omits the IPNS row entirely when the publish had no name", () => {
     const rows = deployAddresses({ ...local, ipnsName: undefined });
     expect(rows.map((a) => a.label)).not.toContain("IPNS name");
-    expect(rows.some((a) => a.kind === "cid")).toBe(true);
+    expect(rows.map((a) => a.label)).toEqual(["CID", "Local gateway"]);
   });
 
-  it("notes the node dependency on the local gateway row, and only there", () => {
+  it("offers no gateway row at all when the local node's gateway port is unknown", () => {
+    // Never a guess: Kubo's default 8080 is moss's own preview-server port, so
+    // a hardcoded local link lands on moss's refusal page (observed live).
+    const rows = deployAddresses({ ...local, localHost: undefined });
+    expect(rows.map((a) => a.kind)).toEqual(["ipns", "cid"]);
+  });
+
+  it("offers no gateway row for a remote local-provider node (its gateway is unknowable)", () => {
+    const rows = deployAddresses({ ...local, config: { nodeRpc: "http://my-pi:5001" } });
+    expect(rows.map((a) => a.kind)).toEqual(["ipns", "cid"]);
+  });
+
+  it("notes the node dependency on the Local gateway row, and only there", () => {
     const rows = deployAddresses(local);
     expect(rows.find((a) => a.label === "Local gateway")?.note).toMatch(/only while it runs/);
-    expect(rows.filter((a) => a.note).length).toBe(1);
+    const otherNotes = rows.filter((a) => a.label !== "Local gateway").map((a) => a.note);
+    expect(otherNotes.some((n) => n && /only while it runs/.test(n))).toBe(false);
   });
 
-  it("drops the note when a co-pin keeps the site up without this machine", () => {
+  it("drops the Local-gateway note when a co-pin keeps the site up without this machine", () => {
     const rows = deployAddresses({ ...local, localOnly: false });
-    expect(rows.every((a) => !a.note)).toBe(true);
+    expect(rows.find((a) => a.label === "Local gateway")?.note).toBeUndefined();
   });
 
   it("leads with a custom domain when one is configured", () => {
@@ -174,7 +162,7 @@ describe("deployAddresses", () => {
     expect(rows[0]).toEqual({ kind: "domain", label: "Custom domain", url: "https://example.com" });
   });
 
-  it("gives every gateway row a url so moss renders it as a link", () => {
+  it("gives every gateway-kind row a url and no copy value", () => {
     for (const row of deployAddresses(local).filter((a) => a.kind === "gateway")) {
       expect(row.url).toMatch(/^https?:\/\//);
       expect(row.value).toBeUndefined();

@@ -28,7 +28,7 @@ import { getState, recordSuccess, recordError } from "./state";
 import { getProvider, makeProviderById } from "./providers";
 import { readSiteFiles } from "./site-files";
 import { makeSiteRelative } from "./relative-urls";
-import { siteDisplayUrl, deployAddresses } from "./gateways";
+import { siteDisplayUrl, deployAddresses, IPNS_RECORD_NOTE } from "./gateways";
 import { localGatewayHost } from "./kubo-gateway";
 import { generateDnsTarget } from "./dnslink";
 import { categorizeError } from "./errors";
@@ -37,11 +37,10 @@ import {
   reportProgress,
   reportError,
 } from "./utils";
-import { getUrl } from "./http";
 import { publishIdentityIpns, isPublished } from "./ipns-identity";
 import { checkSetup } from "./setup";
 import type { SetupContext, SetupVerdict } from "./types";
-import { REACHABILITY_TIMEOUT_MS, HEARTBEAT_MS } from "./constants";
+import { HEARTBEAT_MS } from "./constants";
 
 /**
  * The path whose resolution proves the directory tree reconstructed: any
@@ -140,7 +139,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
     };
     const alreadyVerified = state.structureVerified?.[provider.id] === true;
     const upload = await provider.uploadDir(files, onUpload);
-    const { cid, sizeBytes } = upload;
+    const { cid } = upload;
     console.log(`   Pinned CID: ${cid}`);
 
     // --- Structure verification (until proven once per provider). When the
@@ -177,19 +176,11 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       }
     }
 
-    // --- Reachability (informational): probe the URL users actually click,
-    // concurrent with IPNS publish. (Pinata's shared gateway 403s HTML, and a
-    // laptop node's content lags on public gateways — siteDisplayUrl picks the
-    // URL that should genuinely work per provider.)
     // Ask the node where its gateway is rather than assuming Kubo's default
     // 8080, which moss's own preview server holds on every machine. Unknown
     // means no local link is offered at all — better than one that 404s.
     const localHost =
       provider.id === "local" ? await localGatewayHost(config) : undefined;
-    const displayUrl = siteDisplayUrl(cid, provider.id, config, localHost);
-    const isLivePromise = getUrl(`${displayUrl.replace(/\/$/, "")}/`, REACHABILITY_TIMEOUT_MS)
-      .then((r) => r.ok)
-      .catch(() => false);
 
     // --- Publish the site's stable IPNS name. ---
     // One owner: the name derives from moss's own key (ipns-identity.ts). A
@@ -240,8 +231,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       }
     }
 
-    const isLive = await isLivePromise;
-
     // --- Persist derived state in one write. ---
     await recordSuccess(cid, {
       lastUsedIpns: !!ipnsName,
@@ -252,6 +241,12 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 
     const domain = context.domain;
     const dnsTarget = domain ? generateDnsTarget({ cid }) : undefined;
+    // The standing address: the domain if one is set, else the IPNS name
+    // (now that it's published), else the CID — always through the public
+    // door. The local node's own gateway is instant but private to this
+    // machine, so it never becomes this URL; it exists only as the "Local
+    // gateway" row below.
+    const displayUrl = siteDisplayUrl(cid, config, { ipnsName, domain });
 
     await progress("complete", 10, "Published to IPFS!");
     stopHeartbeat();
@@ -288,16 +283,13 @@ async function deploy(context: DeployContext): Promise<HookResult> {
         addresses,
         url: displayUrl,
         deployed_at: new Date().toISOString(),
+        // Only the two keys configure_domain reads back; every other field
+        // this used to carry (provider, gateway, pin_name, size_bytes,
+        // structure_verified, co_pinned, is_live) has no reader in moss or
+        // this plugin — state.json is where that bookkeeping actually lives.
         metadata: {
-          provider: provider.id,
           cid,
           ipns_name: ipnsName ?? "",
-          pin_name: config.pinName ?? "",
-          size_bytes: String(sizeBytes),
-          gateway: displayUrl,
-          structure_verified: String(verifiedNow),
-          co_pinned: coPinnedId,
-          is_live: String(isLive),
         },
         ...(dnsTarget ? { dns_target: dnsTarget } : {}),
       },
@@ -331,10 +323,15 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
   const domain = context.domain ?? "";
   console.log(`IPFS Deployer: Configuring custom domain "${domain}"...`);
 
+  // Per-field fallback: a deployment can carry metadata with a CID but no
+  // ipns_name (IPNS off for that publish, or an older deploy that had a
+  // publish since), and state.json is the only place the name still lives.
+  // Gating the whole fallback on `meta` made state?.ipnsName unreachable
+  // whenever metadata had a cid.
   const meta = context.deployment?.metadata;
-  const state = meta?.cid ? undefined : await getState();
-  const cid = meta?.cid || state?.lastCid;
-  const ipnsName = meta ? meta.ipns_name || undefined : state?.ipnsName;
+  const state = await getState();
+  const cid = meta?.cid ?? state?.lastCid;
+  const ipnsName = meta?.ipns_name ?? state?.ipnsName;
 
   if (!cid) {
     return { success: false, message: "No IPFS deployment found. Deploy first." };
@@ -346,9 +343,8 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
     `Publishing again gives you a new record to paste — moss shows it each time.\n` +
     (ipnsName
       ? `Your site also has a stable IPNS address (${ipnsName}) that always follows the ` +
-        `latest publish. It isn't the domain's target because an IPNS record expires ` +
-        `48 hours after the publish that made it, which would take the domain down ` +
-        `between publishes.\n`
+        `latest publish, but isn't the domain's target: ${IPNS_RECORD_NOTE} ` +
+        `That would take the domain down between publishes.\n`
       : ``) +
     `Your site resolves at https://${domain} through DNSLink-aware gateways (dweb.link, ipfs.io).`;
 

@@ -74,7 +74,7 @@
             "key": "gateway",
             "type": "string",
             "label": "Custom gateway host",
-            "description": "For View-site links. Blank uses dweb.link."
+            "description": "For View-site links. Blank uses dweb.link, which redirects a browser to inbrowser.link — its service worker can fail to install. A path-style gateway such as ipfs.filebase.io serves the page directly if that happens to you."
           },
           {
             "key": "pin_name",
