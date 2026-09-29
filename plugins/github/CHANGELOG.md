@@ -16,6 +16,11 @@
 - The plugin now declares `requires: ["execute_binary"]` in its manifest. moss has begun refusing privileged host capabilities that a plugin has not declared, and this plugin runs `git` to publish. Without the declaration, publishing to GitHub Pages would stop working.
 - The plugin now states its display name and the oldest moss it supports, so it reads as "GitHub" rather than "Github" wherever moss lists it — in Settings today, and in the plugin catalog arriving in a future release. Its published copy is now built and released from moss itself; the registry previously kept a second copy of the source, which had already begun to diverge.
 
+### Fixed
+
+- Deploying no longer wipes a git repository the plugin didn't create. If a project folder already had its own `.git` — pointed at a different GitHub repository, using an SSH remote, or with no `origin` at all — the plugin used to delete that repository's entire history and start over; it now fails the deploy instead, naming both the folder's current origin and the configured deploy target.
+- The plugin now recognizes its own repository under any common remote spelling, and repoints rather than deletes. A repo it already deployed to is reused as-is no matter how its remote is written; a repo it *created* whose deploy target later changes gets its `origin` updated in place instead of being wiped.
+
 ## 1.5.1
 
 ### Patch Changes

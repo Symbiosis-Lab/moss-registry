@@ -1,6 +1,6 @@
 {
   "name": "github",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "display_name": "GitHub",
   "description": "Deploy to GitHub Pages via GitHub Actions",
   "author": "moss team",

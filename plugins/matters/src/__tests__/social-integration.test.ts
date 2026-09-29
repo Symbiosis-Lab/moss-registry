@@ -383,4 +383,27 @@ describe("Social Data Integration", () => {
       expect(expectedPath.endsWith("/matters.json")).toBe(true);
     });
   });
+
+  // The mock's `write_project_file`/`read_project_file` handlers enforce the
+  // same `.moss/` sandbox fence the real Rust command does (see
+  // mock-moss-fence.ts). Before that guard existed here, every test above
+  // passed against a mock that could not see the real command refuse
+  // `.moss/data/social/matters.json` — the production regression this suite
+  // exists to catch. The fence's own allow/deny cases (own file, a sibling
+  // plugin's, first-party review.json, no plugin identity, …) are pinned
+  // once, against the same fixture the Rust guard's test reads, in
+  // `open/packages/moss-api/src/testing/__tests__/mock-moss-fence.test.ts` —
+  // not re-asserted per plugin. What's plugin-specific, and belongs here, is
+  // that the real Matters code path (setupMockTauri's `pluginName: "matters"`
+  // flowing through ctx.plugin_name into saveSocialData's writeFile call)
+  // actually reaches the door.
+  it("saveSocialData uses the one sanctioned .moss/ door and it succeeds", async () => {
+    const socialData = await loadSocialData();
+    mergeSocialData(socialData, "a1", [createComment("c1", "hi")], [], []);
+
+    await expect(saveSocialData(socialData)).resolves.not.toThrow();
+
+    const saved = ctx.filesystem.getFile(`${ctx.projectPath}/.moss/data/social/matters.json`);
+    expect(JSON.parse(saved!.content).articles["a1"]).toBeDefined();
+  });
 });

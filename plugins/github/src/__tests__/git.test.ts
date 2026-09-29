@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseGitHubUrl, extractGitHubPagesUrl, buildPagesUrl, isRootRepo } from "../git";
+import { parseGitHubUrl, extractGitHubPagesUrl, buildPagesUrl, isRootRepo, isSameGitHubRepo } from "../git";
 
 describe("parseGitHubUrl", () => {
   describe("HTTPS URLs", () => {
@@ -74,6 +74,23 @@ describe("parseGitHubUrl", () => {
     it("parses user site repo without .git suffix via SSH", () => {
       const result = parseGitHubUrl("git@github.com:guoliu/guoliu.github.io");
       expect(result).toEqual({ owner: "guoliu", repo: "guoliu.github.io" });
+    });
+  });
+
+  describe("ssh:// URLs", () => {
+    it("parses ssh:// URL with .git extension", () => {
+      const result = parseGitHubUrl("ssh://git@github.com/user/repo.git");
+      expect(result).toEqual({ owner: "user", repo: "repo" });
+    });
+
+    it("parses ssh:// URL without .git extension", () => {
+      const result = parseGitHubUrl("ssh://git@github.com/user/repo");
+      expect(result).toEqual({ owner: "user", repo: "repo" });
+    });
+
+    it("parses org repo ssh:// URL", () => {
+      const result = parseGitHubUrl("ssh://git@github.com/symbiosis-lab/moss.git");
+      expect(result).toEqual({ owner: "symbiosis-lab", repo: "moss" });
     });
   });
 
@@ -146,6 +163,44 @@ describe("extractGitHubPagesUrl", () => {
     expect(() => {
       extractGitHubPagesUrl("not-a-url");
     }).toThrow("Could not parse GitHub URL from remote");
+  });
+});
+
+describe("isSameGitHubRepo", () => {
+  it("matches HTTPS against SSH shorthand for the same repo", () => {
+    expect(isSameGitHubRepo("https://github.com/user/repo.git", "git@github.com:user/repo.git")).toBe(true);
+  });
+
+  it("matches HTTPS with and without the .git suffix", () => {
+    expect(isSameGitHubRepo("https://github.com/user/repo", "https://github.com/user/repo.git")).toBe(true);
+  });
+
+  it("matches SSH shorthand against ssh://", () => {
+    expect(isSameGitHubRepo("git@github.com:user/repo.git", "ssh://git@github.com/user/repo")).toBe(true);
+  });
+
+  it("matches ssh:// with and without the .git suffix", () => {
+    expect(isSameGitHubRepo("ssh://git@github.com/user/repo.git", "ssh://git@github.com/user/repo")).toBe(true);
+  });
+
+  it("matches regardless of owner/repo case", () => {
+    expect(isSameGitHubRepo("https://github.com/User/Repo.git", "git@github.com:user/repo.git")).toBe(true);
+  });
+
+  it("does not match a different owner", () => {
+    expect(isSameGitHubRepo("https://github.com/user/repo.git", "git@github.com:other/repo.git")).toBe(false);
+  });
+
+  it("does not match a different repo", () => {
+    expect(isSameGitHubRepo("https://github.com/user/repo.git", "git@github.com:user/other.git")).toBe(false);
+  });
+
+  it("does not match when either URL is not a GitHub URL", () => {
+    expect(isSameGitHubRepo("https://gitlab.com/user/repo.git", "https://github.com/user/repo.git")).toBe(false);
+  });
+
+  it("does not match a malformed URL", () => {
+    expect(isSameGitHubRepo("not-a-url", "https://github.com/user/repo.git")).toBe(false);
   });
 });
 

@@ -357,6 +357,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // git init
         .mockResolvedValueOnce(gitResult(true))                    // git config user.email
         .mockResolvedValueOnce(gitResult(true))                    // git config user.name
+        .mockResolvedValueOnce(gitResult(true))                    // git config moss.managed true
         .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
         .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
@@ -504,6 +505,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // git init
         .mockResolvedValueOnce(gitResult(true))                    // git config user.email
         .mockResolvedValueOnce(gitResult(true))                    // git config user.name
+        .mockResolvedValueOnce(gitResult(true))                    // git config moss.managed true
         .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
         .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
@@ -692,19 +694,69 @@ describe("github-deploy", () => {
     });
 
     // ========================================================================
-    // Idempotency: repo change detection (14a)
+    // Repo ownership: moss never wipes or repoints a repo it did not create
     // ========================================================================
-    it("reinitializes git when target repo changes", async () => {
+    it("refuses to touch a foreign repo whose origin points at a different GitHub repo", async () => {
+      const foreignOrigin = "https://github.com/oldowner/old-repo.git";
+      mockExecuteBinary
+        .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir (repo exists)
+        .mockResolvedValueOnce(gitResult(true, foreignOrigin + "\n"))  // remote get-url origin (DIFFERENT repo)
+        .mockResolvedValueOnce(gitResult(false))                   // git config --get moss.managed (not set)
+        .mockResolvedValueOnce(gitResult(true, "someone@example.com\n"));  // git config --get user.email (not moss's)
+
+      const onProgress = vi.fn();
+
+      await expect(
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+      ).rejects.toThrow(expect.objectContaining({
+        message: expect.stringContaining(foreignOrigin),
+      }));
+
+      // The refusal happens before any git write: rm is never called, and
+      // the only git calls made are the read-only checks above.
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "rm" })
+      );
+      const gitArgsCalled = mockExecuteBinary.mock.calls
+        .filter((call) => call[0].binaryPath === "git")
+        .map((call) => call[0].args.slice(0, 2).join(" "));
+      expect(gitArgsCalled).toEqual([
+        "rev-parse --git-dir",
+        "remote get-url",
+        "config --get",
+        "config --get",
+      ]);
+    });
+
+    it("refuses to touch a repo with no origin remote that is not moss-managed", async () => {
+      mockExecuteBinary
+        .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir (repo exists)
+        .mockResolvedValueOnce(gitResult(false))                   // remote get-url origin FAILS (no remote)
+        .mockResolvedValueOnce(gitResult(false))                   // git config --get moss.managed (not set)
+        .mockResolvedValueOnce(gitResult(false));                  // git config --get user.email (not set either)
+
+      const onProgress = vi.fn();
+
+      await expect(
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+      ).rejects.toThrow(expect.objectContaining({
+        message: expect.stringContaining(`${OWNER}/${REPO}`),
+      }));
+
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "rm" })
+      );
+    });
+
+    it("treats a pre-marker moss repo (legacy user.email, no moss.managed) as managed on a target change", async () => {
       const oldMarker = "https://github.com/oldowner/old-repo.git";
       mockExecuteBinary
         .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir (repo exists)
         .mockResolvedValueOnce(gitResult(true, oldMarker + "\n"))  // remote get-url origin (DIFFERENT repo)
-        .mockResolvedValueOnce(gitResult(true))                    // rm -rf .git
-        .mockResolvedValueOnce(gitResult(true))                    // git init
-        .mockResolvedValueOnce(gitResult(true))                    // git config user.email
-        .mockResolvedValueOnce(gitResult(true))                    // git config user.name
-        .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
-        .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
+        .mockResolvedValueOnce(gitResult(false))                   // git config --get moss.managed (marker absent — pre-upgrade repo)
+        .mockResolvedValueOnce(gitResult(true, "moss@symbiosis-lab.com\n"))  // git config --get user.email (moss's own init signature)
+        .mockResolvedValueOnce(gitResult(true))                    // git remote set-url origin
+        .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, no shared history with new remote yet)
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
@@ -733,38 +785,29 @@ describe("github-deploy", () => {
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
-      // Verify rm -rf .git was called
-      expect(mockExecuteBinary).toHaveBeenCalledWith(
-        expect.objectContaining({
-          binaryPath: "rm",
-          args: ["-rf", ".git"],
-        })
-      );
-
-      // Verify reinit happened
-      expect(mockExecuteBinary).toHaveBeenCalledWith(
-        expect.objectContaining({ binaryPath: "git", args: ["init"] })
-      );
-
-      // Verify remote add origin with new marker URL
+      // Repointed via the legacy signal, never wiped
       expect(mockExecuteBinary).toHaveBeenCalledWith(
         expect.objectContaining({
           binaryPath: "git",
-          args: ["remote", "add", "origin", REPO_MARKER],
+          args: ["remote", "set-url", "origin", REPO_MARKER],
         })
+      );
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "rm", args: ["-rf", ".git"] })
+      );
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "git", args: ["init"] })
       );
     });
 
-    it("reinitializes git when origin is missing", async () => {
+    it("repoints origin instead of wiping when a moss-managed repo's target changes", async () => {
+      const oldMarker = "https://github.com/oldowner/old-repo.git";
       mockExecuteBinary
         .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir (repo exists)
-        .mockResolvedValueOnce(gitResult(false))                   // remote get-url origin FAILS (no remote)
-        .mockResolvedValueOnce(gitResult(true))                    // rm -rf .git
-        .mockResolvedValueOnce(gitResult(true))                    // git init
-        .mockResolvedValueOnce(gitResult(true))                    // git config user.email
-        .mockResolvedValueOnce(gitResult(true))                    // git config user.name
-        .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
-        .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
+        .mockResolvedValueOnce(gitResult(true, oldMarker + "\n"))  // remote get-url origin (DIFFERENT repo)
+        .mockResolvedValueOnce(gitResult(true, "true\n"))          // git config --get moss.managed (moss created this repo)
+        .mockResolvedValueOnce(gitResult(true))                    // git remote set-url origin
+        .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, no shared history with new remote yet)
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
@@ -789,19 +832,74 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
 
-      // Verify rm -rf .git was called
+      expect((result as DeployResult).commitSha).toBe("abc1234");
+
+      // Repointed, never wiped
       expect(mockExecuteBinary).toHaveBeenCalledWith(
         expect.objectContaining({
-          binaryPath: "rm",
-          args: ["-rf", ".git"],
+          binaryPath: "git",
+          args: ["remote", "set-url", "origin", REPO_MARKER],
         })
       );
-
-      // Verify reinit happened
-      expect(mockExecuteBinary).toHaveBeenCalledWith(
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "rm", args: ["-rf", ".git"] })
+      );
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
         expect.objectContaining({ binaryPath: "git", args: ["init"] })
+      );
+    });
+
+    it("reuses a user's repo whose origin is an SSH spelling of the deploy target", async () => {
+      const sshOrigin = `git@github.com:${OWNER}/${REPO}.git`;
+      mockExecuteBinary
+        .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir (repo exists)
+        .mockResolvedValueOnce(gitResult(true, sshOrigin + "\n"))  // remote get-url origin (same repo, SSH spelling)
+        .mockResolvedValueOnce(gitResult(true))                    // git fetch --depth=1 origin
+        .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
+        .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
+        .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
+        // Site-only staging:
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        // .nojekyll injection:
+        .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
+        .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
+        .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
+        .mockResolvedValueOnce(gitResult(false))                   // rev-parse refs/remotes/origin/gh-pages (no prev)
+        .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // commit-tree
+        .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
+        // Deferred source backup:
+        .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(true))                    // git add --all
+        .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
+        .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
+        .mockResolvedValueOnce(gitResult(true, "abc1234\n"))       // rev-parse --short HEAD
+        .mockResolvedValueOnce(gitResult(true));                   // push main
+
+      const onProgress = vi.fn();
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+
+      expect((result as DeployResult).commitSha).toBe("abc1234");
+
+      // No wipe, no set-url, no init — the SSH origin was already recognized
+      // as the same repo as the HTTPS deploy target. (Lock-file cleanup still
+      // runs `rm -f .git/index.lock` etc. regardless of repo ownership; only
+      // the destructive `rm -rf .git` is asserted absent here.)
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "rm", args: ["-rf", ".git"] })
+      );
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({ binaryPath: "git", args: ["init"] })
+      );
+      expect(mockExecuteBinary).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          binaryPath: "git",
+          args: ["remote", "set-url", "origin", REPO_MARKER],
+        })
       );
     });
 
@@ -1488,6 +1586,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // git init
           .mockResolvedValueOnce(gitResult(true))                    // git config user.email
           .mockResolvedValueOnce(gitResult(true))                    // git config user.name
+          .mockResolvedValueOnce(gitResult(true))                    // git config moss.managed true
           .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
           .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
           .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
@@ -1849,12 +1948,14 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true, "orphan1\n"))       // commit-tree
           .mockResolvedValueOnce(gitResult(false, "", corruptPushError))  // push gh-pages FAILS (corrupt)
           // Recovery: rm -rf .git
+          .mockResolvedValueOnce(gitResult(true, "true\n"))          // git config --get moss.managed (managed → wipe allowed)
           .mockResolvedValueOnce(gitResult(true))                    // rm -rf .git
           // Retry: full deploy sequence again (needsInit = true since .git was removed)
           .mockResolvedValueOnce(gitResult(false))                   // rev-parse --git-dir (no .git)
           .mockResolvedValueOnce(gitResult(true))                    // git init
           .mockResolvedValueOnce(gitResult(true))                    // git config user.email
           .mockResolvedValueOnce(gitResult(true))                    // git config user.name
+          .mockResolvedValueOnce(gitResult(true))                    // git config moss.managed true
           .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
           .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
           .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
@@ -1931,6 +2032,54 @@ describe("github-deploy", () => {
         expect(rmCalls).toHaveLength(0);
       });
 
+      it("does not wipe or retry when a corrupt-looking error hits a repo moss does not manage", async () => {
+        const corruptError = "error: Could not read abc123\nfatal: Failed to traverse parents of commit def456";
+
+        // Origin already matches the deploy target, so the repo is used as-is
+        // (no early refusal) — but it carries no moss.managed marker and no
+        // legacy moss user.email, so it is still not moss's to recover.
+        mockExecuteBinary
+          .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir
+          .mockResolvedValueOnce(gitResult(true, REPO_MARKER + "\n"))  // remote get-url origin (matches target)
+          .mockResolvedValueOnce(gitResult(true))                    // git fetch --depth=1 origin
+          .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
+          .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
+          .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
+          // Site-only staging:
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
+          .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
+          .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
+          .mockResolvedValueOnce(gitResult(false))                   // rev-parse refs/remotes/origin/gh-pages (no prev)
+          .mockResolvedValueOnce(gitResult(true, "orphan1\n"))       // commit-tree
+          .mockResolvedValueOnce(gitResult(false, "", corruptError)) // push gh-pages FAILS (looks corrupt)
+          // Corrupt-recovery gate: neither managed signal is present.
+          .mockResolvedValueOnce(gitResult(false))                   // git config --get moss.managed (not set)
+          .mockResolvedValueOnce(gitResult(true, "someone@example.com\n"));  // git config --get user.email (not moss's)
+
+        const onProgress = vi.fn();
+
+        await expect(
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        ).rejects.toThrow(expect.objectContaining({
+          message: expect.stringContaining("Could not read"),
+        }));
+
+        // The original error propagates untouched, and the repo is never
+        // wiped or retried.
+        const rmCalls = mockExecuteBinary.mock.calls.filter(
+          (call) => call[0].binaryPath === "rm" && call[0].args.includes("-rf") && call[0].args.includes(".git")
+        );
+        expect(rmCalls).toHaveLength(0);
+        const initCalls = mockExecuteBinary.mock.calls.filter(
+          (call) => call[0].binaryPath === "git" && call[0].args[0] === "init"
+        );
+        expect(initCalls).toHaveLength(0);
+      });
+
       it("throws if retry also fails", async () => {
         const corruptError = "error: Could not read abc123\nfatal: Failed to traverse parents of commit def456";
 
@@ -1954,12 +2103,14 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true, "orphan1\n"))       // commit-tree
           .mockResolvedValueOnce(gitResult(false, "", corruptError)) // push gh-pages FAILS (corrupt)
           // Recovery: rm -rf .git
+          .mockResolvedValueOnce(gitResult(true, "true\n"))          // git config --get moss.managed (managed → wipe allowed)
           .mockResolvedValueOnce(gitResult(true))                    // rm -rf .git
           // Retry: also fails
           .mockResolvedValueOnce(gitResult(false))                   // rev-parse --git-dir (no .git)
           .mockResolvedValueOnce(gitResult(true))                    // git init
           .mockResolvedValueOnce(gitResult(true))                    // git config user.email
           .mockResolvedValueOnce(gitResult(true))                    // git config user.name
+          .mockResolvedValueOnce(gitResult(true))                    // git config moss.managed true
           .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
           .mockResolvedValueOnce(gitResult(false))                   // git fetch (fails, first deploy)
           .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
@@ -2061,6 +2212,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // git init
         .mockResolvedValueOnce(gitResult(true))                    // git config user.email
         .mockResolvedValueOnce(gitResult(true))                    // git config user.name
+        .mockResolvedValueOnce(gitResult(true))                    // git config moss.managed true
         .mockResolvedValueOnce(gitResult(true))                    // git remote add origin
         .mockResolvedValueOnce(gitResult(false))                   // git fetch fails (no remote yet)
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
