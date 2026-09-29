@@ -193,34 +193,29 @@ beforeEach(() => {
 // ============================================================================
 
 describe("process hook auth routing", () => {
-  it("expired + background + userName → public fallback, no login window, nudge toast", async () => {
+  it("expired + background + userName → public fallback, no login window, NO toast (background must not interrupt)", async () => {
+    // open-feedback-design (2026-09-15): a background rebuild's expired
+    // session must not toast — the report was exactly this, a "login
+    // expired" toast popping while the app was still on the post-open
+    // waiting screen. notifySessionExpired still logs (console.warn) and
+    // the receipt stays honest; only the TOAST is gated on isUserPresent.
     mockGetSessionState.mockResolvedValue("expired");
     await processHook(makeContext("background"));
     expect(mockOpenBrowser).not.toHaveBeenCalled();
     expect(mockApiConfig.queryMode).toBe("user");
     expect(mockApiConfig.testUserName).toBe("guo");
-    expect(mockShowToast).toHaveBeenCalledTimes(1);
-    expect(mockShowToast.mock.calls[0][0].message).toContain("session expired");
-    expect(mockShowToast.mock.calls[0][0].message).not.toContain("—");
-    // Law 2: the session-expired toast must persist — it is a blocking auth
-    // state and must not auto-dismiss (commit a084a436e made it persistent).
-    expect(mockShowToast.mock.calls[0][0].persistent).toBe(true);
+    expect(mockShowToast).not.toHaveBeenCalled();
+    // The receipt (not a toast) still tells the truth about the session.
     expect(String(mockTaskSucceeded.mock.calls[0][0])).toContain(". Matters session expired");
   });
 
-  it("nudge toast suppressed when the persisted throttle says no (logs only)", async () => {
-    mockGetSessionState.mockResolvedValue("expired");
-    mockShouldNudge.mockResolvedValue(false);
-    await processHook(makeContext("background"));
-    expect(mockShowToast).not.toHaveBeenCalled();
-    expect(String(mockTaskSucceeded.mock.calls[0][0])).toContain("log in to resume"); // receipt still honest
-  });
-
-  it("expired + background + NO userName → silent success (no error badge on background rebuild)", async () => {
+  it("expired + background + NO userName → silent success (no error badge, no toast, on background rebuild)", async () => {
     // Phase 4a B2: soft_fail on a background build should NOT show an error
     // badge — it would recur on every rebuild for unlogged-but-Matters-installed
     // folders. The standalone connect_account command + the Phase 4b auto-open
-    // trigger carry the actual prompt; background builds exit quietly.
+    // trigger carry the actual prompt; background builds exit quietly — and
+    // (2026-09-15) that now includes the session-expired toast too: soft_fail
+    // is only ever reached on a non-user-present trigger.
     mockGetConfig.mockResolvedValue({ ...BOUND_CONFIG, userName: undefined });
     mockGetSessionState.mockResolvedValue("expired");
     const result = await processHook(makeContext("background"));
@@ -229,8 +224,7 @@ describe("process hook auth routing", () => {
     expect(mockTaskFailed).not.toHaveBeenCalled();
     expect(mockTaskSucceeded).toHaveBeenCalled();
     expect(String(mockTaskSucceeded.mock.calls[0][0])).toBe("not connected");
-    // Session-expired nudge toast still fires (it's a toast, not a badge).
-    expect(mockShowToast).toHaveBeenCalled();
+    expect(mockShowToast).not.toHaveBeenCalled();
     expect(mockOpenBrowser).not.toHaveBeenCalled();
   });
 
@@ -312,8 +306,9 @@ describe("mid-sync auth failure (process)", () => {
     mockGetSessionState.mockResolvedValue("valid"); // passes pre-flight...
   });
 
-  it("MattersAuthError during fetch → clean session-expired failure, no Error: nesting", async () => {
-    // ...then the server revokes mid-run:
+  it("MattersAuthError during fetch, background trigger → clean session-expired failure, NO toast", async () => {
+    // ...then the server revokes mid-run, on an ordinary background rebuild —
+    // this must not interrupt with a toast (open-feedback-design, 2026-09-15).
     mockFetchAllArticlesSince.mockRejectedValueOnce(
       new MattersAuthError("TOKEN_INVALID", "Matters rejected the session (TOKEN_INVALID)")
     );
@@ -323,7 +318,36 @@ describe("mid-sync auth failure (process)", () => {
     expect(failedMsg).toContain("session expired");
     expect(failedMsg).not.toContain("Error:");
     expect(failedMsg).not.toContain("500");
-    expect(mockShowToast).toHaveBeenCalledTimes(1); // nudge
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it("MattersAuthError during fetch, settings_manual trigger → the user IS present, toast surfaces", async () => {
+    // Mid-run revocation is not gated by resolveAuthRoute (unlike
+    // public_fallback/soft_fail, which can only ever be background here) —
+    // this is the one process()-hook path where a user-present trigger can
+    // actually reach notifySessionExpired, so it's the one that proves the
+    // "surfaces when the user acts on Matters" half of the fix.
+    mockFetchAllArticlesSince.mockRejectedValueOnce(
+      new MattersAuthError("TOKEN_INVALID", "Matters rejected the session (TOKEN_INVALID)")
+    );
+    const result = await processHook(makeContext("settings_manual"));
+    expect(result.success).toBe(false);
+    expect(mockShowToast).toHaveBeenCalledTimes(1);
+    expect(mockShowToast.mock.calls[0][0].message).toContain("session expired");
+    expect(mockShowToast.mock.calls[0][0].persistent).toBe(true);
+  });
+
+  it("MattersAuthError during fetch, settings_manual trigger, throttle says no → still no toast (logs only)", async () => {
+    // The per-expiry-event throttle is a second, independent gate: even a
+    // user-present trigger stays quiet once the nudge has already fired for
+    // this expiry.
+    mockShouldNudge.mockResolvedValue(false);
+    mockFetchAllArticlesSince.mockRejectedValueOnce(
+      new MattersAuthError("TOKEN_INVALID", "Matters rejected the session (TOKEN_INVALID)")
+    );
+    const result = await processHook(makeContext("settings_manual"));
+    expect(result.success).toBe(false);
+    expect(mockShowToast).not.toHaveBeenCalled();
   });
 
   it("non-auth error during fetch keeps the cause, de-nested (no 'Error:' prefix)", async () => {
@@ -356,6 +380,9 @@ describe("syndicate session gate", () => {
     ],
     config: {},
     project_info: { folder_name: "test", homepage_file: null, lang: "en" },
+    // syndicate_to_platforms' one production caller (Publish click) always
+    // stamps this — mirror that shape rather than leaving it undefined.
+    trigger: "manual_one",
   } as never;
 
   it("expired session → prompts login before syndicating", async () => {
@@ -399,7 +426,7 @@ describe("syndicate session gate", () => {
     expect(startingToast).toBeUndefined();
   });
 
-  it("MattersAuthError outside the loop → session-expired publish copy", async () => {
+  it("MattersAuthError outside the loop → session-expired publish copy, AND a toast (syndicate is always user-initiated)", async () => {
     mockGetSessionState.mockResolvedValue("valid");
     mockGetConfig.mockResolvedValue({ ...BOUND_CONFIG, userName: undefined }); // forces fetchUserProfile
     mockFetchUserProfile.mockRejectedValueOnce(
@@ -408,6 +435,13 @@ describe("syndicate session gate", () => {
     const result = await syndicate(SYNDICATE_CONTEXT);
     expect(result.success).toBe(false);
     expect(result.message).toContain("session expired, log in again to publish.");
+    // Publish counts as user-present (trigger: "manual_one") — unlike a
+    // background rebuild's expired session, this one surfaces.
+    expect(mockShowToast).toHaveBeenCalled();
+    const nudge = mockShowToast.mock.calls.find(
+      ([opts]: [{ message: string }]) => opts.message?.includes("session expired"),
+    );
+    expect(nudge).toBeDefined();
   });
 
   // Task 2 watchdog fix: task.awaiting() must be called BEFORE promptLogin()

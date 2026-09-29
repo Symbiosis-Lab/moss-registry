@@ -259,8 +259,13 @@ export async function saveSocialData(data: MattersSocialData): Promise<void> {
     const result = await writeFile(SOCIAL_FILE_PATH, content);
     console.log(`[matters] saveSocialData: writeFile returned:`, result);
   } catch (error) {
-    // Log the error with context for debugging
-    console.error(`[matters] saveSocialData: FAILED to write to ${SOCIAL_FILE_PATH}:`, error);
+    // This can be called once per article in a sync (main.ts saves after
+    // each fetch), so a failure here is not rare-and-worth-shouting: it can
+    // repeat dozens of times in one build. Log at warn for local debugging
+    // context; the per-article caller in main.ts counts these and reports
+    // one aggregated error after the loop, so the build log gets exactly
+    // one ERROR line per build instead of one per article.
+    console.warn(`[matters] saveSocialData: FAILED to write to ${SOCIAL_FILE_PATH}:`, error);
     throw error; // Re-throw to propagate to caller
   }
 }

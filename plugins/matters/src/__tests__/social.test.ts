@@ -20,7 +20,12 @@ describe("Social Module", () => {
   let ctx: MockTauriContext;
 
   beforeEach(() => {
-    ctx = setupMockTauri({ pluginName: "matters-syndicator" });
+    // Must match manifest.json's "name" ("matters") — ctx.plugin_name is what
+    // flows into the write_project_file/read_project_file plugin-id binding,
+    // so a mismatched mock name here would make every real
+    // .moss/data/social/matters.json access fail exactly as it would in
+    // production for a plugin whose manifest name changed out from under it.
+    ctx = setupMockTauri({ pluginName: "matters" });
   });
 
   afterEach(() => {

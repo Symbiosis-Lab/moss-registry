@@ -5,24 +5,51 @@
  */
 
 /**
- * Extract GitHub owner and repo from remote URL
+ * Extract GitHub owner and repo from remote URL.
+ *
+ * Recognizes every common spelling of a GitHub remote: HTTPS, the scp-like
+ * SSH shorthand, and explicit ssh:// — with or without the ".git" suffix.
  */
 export function parseGitHubUrl(remoteUrl: string): { owner: string; repo: string } | null {
-  // Parse HTTPS URLs: https://github.com/user/repo.git
+  const url = remoteUrl.trim();
+
+  // https://github.com/owner/repo(.git)?
   // Allows dots in repo name (e.g., username.github.io) but not slashes
-  const httpsMatch = remoteUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
+  const httpsMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
   if (httpsMatch) {
     return { owner: httpsMatch[1], repo: httpsMatch[2] };
   }
 
-  // Parse SSH URLs: git@github.com:user/repo.git
-  // Allows dots in repo name (e.g., username.github.io) but not slashes
-  const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
+  // ssh://git@github.com/owner/repo(.git)?
+  const sshUrlMatch = url.match(/^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
+  if (sshUrlMatch) {
+    return { owner: sshUrlMatch[1], repo: sshUrlMatch[2] };
+  }
+
+  // git@github.com:owner/repo(.git)? (scp-like SSH shorthand)
+  const sshMatch = url.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
   if (sshMatch) {
     return { owner: sshMatch[1], repo: sshMatch[2] };
   }
 
   return null;
+}
+
+/**
+ * True if two git remote URLs name the same GitHub {owner}/{repo} — the
+ * same repository can be spelled as HTTPS, SSH shorthand, or ssh://, and
+ * GitHub treats owner/repo names case-insensitively. Used to decide
+ * whether an existing repo's origin already matches a deploy target,
+ * before ever touching that repo's git state (see github-deploy.ts).
+ */
+export function isSameGitHubRepo(urlA: string, urlB: string): boolean {
+  const a = parseGitHubUrl(urlA);
+  const b = parseGitHubUrl(urlB);
+  if (!a || !b) return false;
+  return (
+    a.owner.toLowerCase() === b.owner.toLowerCase() &&
+    a.repo.toLowerCase() === b.repo.toLowerCase()
+  );
 }
 
 /**

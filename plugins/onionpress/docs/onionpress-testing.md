@@ -80,9 +80,10 @@ bundled), and because OnionPress is a stack channel, moss kicks off
 `install_channel_stack` — the machine-scoped acquisition in
 `src-tauri/src/system/stack_install.rs`:
 
-1. Reads the pinned release from `plugins/onionpress/stack-manifest.json`
-   (currently **v2.4.107-moss.7**) and downloads that DMG, resumably, verifying
-   its **sha256** before using it. A hash mismatch means no install.
+1. Reads the pinned release from the plugin's own manifest
+   (`contributes.stack`, currently **v2.4.110-moss.2**) and downloads that
+   DMG, resumably, verifying its **sha256** before using it. A hash mismatch
+   means no install.
 2. Mounts the image, copies `OnionPress.app` to a scratch sibling path, and
    renames it into `~/.moss/stacks/onionpress/OnionPress.app` — so the app path
    only ever holds a complete bundle.
@@ -287,9 +288,7 @@ the staged bundle.
 keeps the cached DMG on failure so a retry costs no network; delete
 `~/.moss/stacks/.cache/onionpress-<version>.dmg` to force a re-download.
 
-**"stack-manifest.json has a placeholder sha256 …"** — you are on a checkout
-whose manifest isn't pinned to a real release. Use
-`MOSS_ONIONPRESS_LOCAL_DMG`.
+**"the OnionPress plugin declares a placeholder sha256 …"** — you are on a checkout whose manifest isn't pinned to a real release. Use `MOSS_ONIONPRESS_LOCAL_DMG`.
 
 **"OnionPress quit (…) but its publish receiver is still answering"** — an
 uninstall or bundle replacement refused to proceed rather than strand a running

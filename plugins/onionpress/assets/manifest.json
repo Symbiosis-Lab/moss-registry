@@ -9,5 +9,28 @@
   "icon": "icon.svg",
   "requires": ["execute_binary:curl", "execute_binary:tar", "execute_binary:rm"],
   "requires_stack": true,
-  "preview": true
+  "preview": true,
+  "contributes": {
+    "stack": {
+      "id": "onionpress",
+      "display_name": "OnionPress",
+      "version": "v2.4.110-moss.2",
+      "sources": [
+        {
+          "kind": "download",
+          "platform": "darwin-arm64",
+          "url": "https://github.com/guoliu/onionpress/releases/download/v2.4.110-moss.2/onionpress.dmg",
+          "sha256": "68e46954f802495844cbd69f42c64571d03bb2ba2797bdd7f90885cd0ac94c88",
+          "archive_format": "dmg",
+          "executable": "OnionPress.app/Contents/MacOS/onionpress"
+        }
+      ],
+      "start": ["start"],
+      "stop": ["quit"],
+      "recover": [["start"], ["quit", "start"]],
+      "self_heal_grace_secs": 900,
+      "preserve_on_uninstall": [".credentials"],
+      "hooks": { "health": true, "provision": true }
+    }
+  }
 }

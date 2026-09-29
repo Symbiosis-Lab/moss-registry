@@ -233,12 +233,18 @@ function mattersLoginSuccessMessage(userName: string, language?: string): string
 }
 
 /**
- * Session-expired nudge. Throttled once per expiry event via a nudgedAt
- * stamp in auth.json (engine-independent: module state may reset per build
- * under the off-webview runtime). Every suppressed occurrence still logs.
+ * Session-expired nudge. Always logs — every trigger gets the diagnostic
+ * line — but the TOAST only surfaces when a user is actually present to
+ * read it (`isUserPresent(trigger)`): a background rebuild's expired
+ * session must not interrupt the user with a toast while they're not even
+ * looking at Matters (moss#open-feedback-design, 2026-09-15). Throttled
+ * once per expiry event via a nudgedAt stamp in auth.json (engine-
+ * independent: module state may reset per build under the off-webview
+ * runtime). Every suppressed occurrence still logs.
  */
-async function notifySessionExpired(): Promise<void> {
+async function notifySessionExpired(trigger: string | undefined): Promise<void> {
   console.warn("⚠️ Matters session expired; drafts and syndication paused until re-login");
+  if (!isUserPresent(trigger)) return;
   if (await shouldNudgeSessionExpired()) {
     await showToast({
       message: "Matters session expired. Log in to resume drafts and syndication.",
@@ -702,7 +708,7 @@ export async function process(context: ProcessContext): Promise<HookResult> {
         apiConfig.testUserName = authConfig.userName!;
         usingUnauthenticatedMode = true;
         isAuthenticated = false;
-        if (sessionState === "expired") await notifySessionExpired();
+        if (sessionState === "expired") await notifySessionExpired(context.trigger);
         await task.progress(overallProgress("authentication", 1, 1) / 100, `Using saved user: @${authConfig.userName}`);
         break;
 
@@ -739,13 +745,15 @@ export async function process(context: ProcessContext): Promise<HookResult> {
         // is no badge. The auto-open trigger (Phase 4b) and the settings
         // "Connect to Matters" affordance (Phase 4b) carry the actual prompt.
         //
-        // 'expired' still nudges (a toast, not a badge) so the user sees the
-        // notification, but the overall task is succeeded — not failed.
+        // 'expired' still logs (notifySessionExpired), but on this
+        // background-only branch isUserPresent(trigger) is always false, so
+        // the toast itself stays quiet too — the overall task is succeeded,
+        // not failed.
         const message =
           sessionState === "expired"
             ? "session expired, log in again to import."
             : "not connected — log in to import.";
-        if (sessionState === "expired") await notifySessionExpired();
+        if (sessionState === "expired") await notifySessionExpired(context.trigger);
         // Phase 4a B2: background "needs connection" → silent success (no
         // error badge on every rebuild). NOT task.failed().
         await task.succeeded("not connected");
@@ -929,6 +937,13 @@ export async function process(context: ProcessContext): Promise<HookResult> {
       let totalComments = 0;
       let fetched = 0;
       let skipped = 0;
+      // saveSocialData runs once per article (see the comment at the call
+      // site below); a single bad run can fail every one of those saves, and
+      // logging each at ERROR floods the build log without adding
+      // information after the first. Count failures here and report once,
+      // after the loop, with the last error as the representative sample.
+      let socialSaveFailures = 0;
+      let lastSocialSaveError: unknown;
 
       for (let i = 0; i < articlesForSocialFetch.length; i++) {
         const article = articlesForSocialFetch[i];
@@ -967,8 +982,15 @@ export async function process(context: ProcessContext): Promise<HookResult> {
           totalComments += comments.length;
           fetched++;
 
-          // Save after each article to avoid losing data if later fetches hang
-          await saveSocialData(socialData);
+          // Save after each article to avoid losing data if later fetches hang.
+          // Its own failure is tracked separately from a fetch failure (below)
+          // so it can be reported once, after the loop, instead of per article.
+          try {
+            await saveSocialData(socialData);
+          } catch (saveError) {
+            socialSaveFailures++;
+            lastSocialSaveError = saveError;
+          }
         } catch (error) {
           console.warn(`   Failed to fetch social data for ${article.title}: ${error}`);
         }
@@ -981,6 +1003,11 @@ export async function process(context: ProcessContext): Promise<HookResult> {
         socialSummary = `, ${totalComments} new comment${totalComments === 1 ? "" : "s"}`;
       }
       console.log(`✅ Social data: ${fetched} fetched, ${skipped} skipped (no change), ${totalComments} new comments`);
+      if (socialSaveFailures > 0) {
+        console.error(
+          `[matters] saveSocialData failed ${socialSaveFailures}/${fetched} time(s) this build — comments were fetched but not persisted. Last error: ${lastSocialSaveError}`
+        );
+      }
     }
 
     // Phase 9: Update lastSyncedAt timestamp
@@ -1040,7 +1067,7 @@ export async function process(context: ProcessContext): Promise<HookResult> {
       // graphqlQuery already stamped invalidatedAt, so the NEXT run routes
       // through the expired-session table; here we fail with honest copy.
       const message = "session expired, log in again to import.";
-      await notifySessionExpired();
+      await notifySessionExpired(context.trigger);
       await task.failed(message, true);
       await persistSyncError(message);
       console.error("❌ Matters: sync aborted, session rejected by server");
@@ -1079,13 +1106,13 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
   // ("Syndicated" · "posts"); moss normalizes the verb (R13) and renders the
   // receipt "Syndicated · N posts". A partial failure is PROPOSED as an
   // advisory via `task.advise(...)`; moss holds the severity gavel.
-  // Syndication runs after deploy (no onboarding gesture), so the trigger is
-  // "background" — the quiet Workspace+Ambient surface. moss does not stamp a
-  // `trigger` on SyndicateContext (unlike ProcessContext), so we choose the
-  // safe quiet default directly rather than reading a field that isn't there.
+  // Syndication has exactly one production caller — the user's Publish
+  // click — so moss stamps `context.trigger` "manual_one" (ADR-015), the
+  // ActionPanel+Inline surface a one-off user-triggered run gets; "background"
+  // only as a fallback for an older moss build that predates the field.
   const task = await startTask("Syndicate", {
     hook: "syndicate",
-    trigger: "background",
+    trigger: context.trigger ?? "background",
     hasProgress: true,
     cancellable: false,
     // Reference the manifest's `contributes.jobs.syndicate` descriptor
@@ -1275,7 +1302,7 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
       // token mid-run; fail the task with honest copy (recoverable=true —
       // a re-login fixes it) and nudge the session-expired surface.
       const message = "session expired, log in again to publish.";
-      await notifySessionExpired();
+      await notifySessionExpired(context.trigger);
       await task.failed(message, true);
       console.error("❌ Matters: syndication aborted, session rejected by server");
       return { success: false, message };

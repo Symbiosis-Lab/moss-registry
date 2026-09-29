@@ -10,6 +10,7 @@
 import { GITHUB_API_BASE, GITHUB_API_HEADERS } from "./github-api";
 import { executeBinary, listSiteFilesWithSizes, type ExecuteResult } from "@symbiosis-lab/moss-api";
 import { showToast } from "./utils";
+import { parseGitHubUrl, isSameGitHubRepo } from "./git";
 
 // ============================================================================
 // Types
@@ -138,17 +139,7 @@ export async function getOriginOwnerRepo(gitPath: string = "git"): Promise<{ own
 
   if (!result.success) return null;
 
-  const url = result.stdout.trim();
-
-  // Parse HTTPS: https://github.com/{owner}/{repo}.git
-  const httpsMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (httpsMatch) return { owner: httpsMatch[1], repo: httpsMatch[2] };
-
-  // Parse SSH: git@github.com:{owner}/{repo}.git
-  const sshMatch = url.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (sshMatch) return { owner: sshMatch[1], repo: sshMatch[2] };
-
-  return null;
+  return parseGitHubUrl(result.stdout.trim());
 }
 
 // ============================================================================
@@ -201,6 +192,30 @@ export interface DeployViaGitPushOptions {
  */
 function sanitize(text: string, token: string): string {
   return text.replaceAll(token, "***");
+}
+
+/**
+ * Build the user-facing refusal for a git repo moss did not create whose
+ * origin doesn't match the deploy target. Named so the user can act on it:
+ * change the deploy target, or repoint the folder's origin. moss never
+ * wipes or repoints a repo it doesn't own — see the `moss.managed` check
+ * in attemptDeploy below.
+ */
+function describeOriginMismatch(currentOrigin: string | null, owner: string, repo: string): string {
+  const target = `${owner}/${repo}`;
+  const targetUrl = `https://github.com/${owner}/${repo}.git`;
+  if (currentOrigin === null) {
+    return (
+      `This folder's git repository has no "origin" remote, so moss cannot confirm it is "${target}", the configured deploy target. ` +
+      `moss will not touch a git repository it did not create. ` +
+      `Run "git remote add origin ${targetUrl}", or change the deploy target to match this repository.`
+    );
+  }
+  return (
+    `This folder's git repository is not managed by moss, and its "origin" remote (${currentOrigin}) does not match the deploy target ("${target}"). ` +
+    `moss will not touch a git repository it did not create. ` +
+    `Change the deploy target to match ${currentOrigin}, or run "git remote set-url origin ${targetUrl}".`
+  );
 }
 
 /**
@@ -314,6 +329,22 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     });
   }
 
+  /**
+   * True if this .git was created by moss: either it carries the
+   * `moss.managed` marker (set at every init going forward), or its
+   * user.email matches the exact value every moss init has ever set — the
+   * legacy signal for a repo moss created before the marker existed. Without
+   * this, the first target change after upgrading would refuse a repo moss
+   * itself made, on the grounds that it isn't "managed".
+   */
+  async function isMossManagedRepo(): Promise<boolean> {
+    const managed = await git(["config", "--get", "moss.managed"]);
+    if (managed.success && managed.stdout.trim() === "true") return true;
+
+    const legacyEmail = await git(["config", "--get", "user.email"]);
+    return legacyEmail.success && legacyEmail.stdout.trim() === "moss@symbiosis-lab.com";
+  }
+
   // ── Pre-flight: Check site files for 100MB limit ──────────────────────
   onProgress(0, "Preparing deploy...");
 
@@ -332,22 +363,41 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
   // Inner function containing the full init → add → commit → push sequence.
   // Extracted so we can retry once on corrupt git state.
   async function attemptDeploy(): Promise<DeployResult> {
-    // ── 1. Init git repo if needed, reinit if target repo changed ────────
-    // IDEMPOTENT: detect repo change and reinitialize .git so switching
-    // deploy targets doesn't push to the wrong remote.
+    // ── 1. Init git repo if needed, repoint origin if moss's own target ──
+    //      changed. A .git moss did not create is NEVER wiped or repointed:
+    // only a repo carrying the `moss.managed` marker (set below, at init)
+    // may be reinitialized here or by the corrupt-git recovery further down.
+    // Recognize every common spelling of the same GitHub repo (HTTPS, SSH
+    // shorthand, ssh://, case-insensitive) before deciding origin is foreign.
     const check = await git(["rev-parse", "--git-dir"]);
     let needsInit = !check.success;
 
     if (check.success) {
       const originUrl = await git(["remote", "get-url", "origin"]);
-      if (!originUrl.success || originUrl.stdout.trim() !== repoMarker) {
-        // Origin missing or pointing at a different repo — wipe and reinit
-        const rm = await executeBinary({
-          binaryPath: "rm", args: ["-rf", ".git"],
-          workingDir: ".", timeoutMs: 10_000, env: {},
-        });
-        if (!rm.success) throw new Error(`Failed to remove stale .git: ${rm.stderr}`);
-        needsInit = true;
+      const currentOrigin = originUrl.success ? originUrl.stdout.trim() : null;
+      const matchesTarget = currentOrigin !== null && isSameGitHubRepo(currentOrigin, repoMarker);
+
+      if (!matchesTarget) {
+        const isMossManaged = await isMossManagedRepo();
+
+        if (!isMossManaged) {
+          // Foreign repo — no moss.managed marker and no legacy moss init
+          // signature. Refuse before any git write (fetch, add, gitignore
+          // edit) touches the user's repo.
+          throw new Error(describeOriginMismatch(currentOrigin, owner, repo));
+        }
+
+        // moss created this repo and the deploy target changed — repoint
+        // origin instead of discarding history. Every push below is
+        // explicit-URL and (for gh-pages) force, so nothing depends on the
+        // old remote's ref state.
+        if (currentOrigin !== null) {
+          const setUrl = await git(["remote", "set-url", "origin", repoMarker]);
+          if (!setUrl.success) throw new Error(`Failed to update origin remote: ${sanitize(setUrl.stderr, token)}`);
+        } else {
+          const addOrigin = await git(["remote", "add", "origin", repoMarker]);
+          if (!addOrigin.success) throw new Error(`Failed to add origin remote: ${sanitize(addOrigin.stderr, token)}`);
+        }
       }
     }
 
@@ -355,6 +405,7 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
       await git(["init"]);
       await git(["config", "user.email", "moss@symbiosis-lab.com"]);
       await git(["config", "user.name", "moss"]);
+      await git(["config", "moss.managed", "true"]);
       await git(["remote", "add", "origin", repoMarker]);
     }
 
@@ -574,13 +625,18 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
   // ── Execute with corrupt-git recovery ──────────────────────────────────
   // If the deploy fails due to corrupt local git objects (common with iCloud
   // sync), wipe .git and retry once. Since we force-push, no history is needed.
+  // Gated the same way as the reinit above: a .git moss did not create is
+  // never wiped, even when it looks corrupt — that repository is the user's
+  // to recover, not moss's to discard.
   try {
     return await attemptDeploy();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (!looksLikeCorruptGit(msg)) throw err;
 
-    // Corrupt git state detected — wipe and retry once
+    if (!(await isMossManagedRepo())) throw err;
+
+    // Corrupt git state detected in a moss-managed repo — wipe and retry once
     onProgress(0, "Recovering from corrupt git state...");
     console.warn("Corrupt git detected, reinitializing .git");
     await executeBinary({

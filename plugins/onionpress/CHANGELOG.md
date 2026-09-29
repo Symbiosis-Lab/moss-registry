@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Changed (in moss, no plugin release): a fix to which OnionPress version gets installed can now ship as an ordinary plugin update, instead of waiting for the next moss release. The plugin's manifest carries its own stack pin — version, download url and checksum — rather than moss compiling that pin into the app.
+
 ## [0.4.1] - 2026-08-30
 
 - Publishing reports each step once, when it starts, instead of repeating the same line every ten seconds. The repetition existed to convince moss the plugin was still alive during a long upload; moss now counts the upload itself as being alive.
