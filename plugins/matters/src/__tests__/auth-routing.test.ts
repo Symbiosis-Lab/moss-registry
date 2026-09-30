@@ -3,8 +3,11 @@
  * the syndicate session gate + mid-sync auth failure handling).
  *
  * Mock prelude copied from binding-guard.test.ts with the deltas the full
- * pipeline needs (binding-guard's tests use sync_on_build: false and return
- * early; these run the whole import path).
+ * pipeline needs. Both files now run sync_on_build: true — the setting only
+ * ever short-circuits at the very top of process(), before any task exists
+ * (see the "sync_on_build" describe block below) — so binding-guard.test.ts
+ * carries the same full-pipeline mocks for the tests that fall through past
+ * its binding guard.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -38,6 +41,11 @@ const mockApiConfig = vi.hoisted(() => ({
 // Hoisted so it's accessible inside vi.mock AND in test assertions.
 // Task 2 watchdog fix: verify task.awaiting() is called BEFORE promptLogin().
 const mockTaskAwaiting = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockTaskCancelled = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+// Hoisted so "no task was ever created" (auto-import-off, no-articles-to-
+// syndicate) is assertable directly, not just inferred from the terminal
+// mocks staying uncalled.
+const mockStartTask = vi.hoisted(() => vi.fn());
 
 vi.mock("@symbiosis-lab/moss-api", () => ({
   getPluginCookie: vi.fn(),
@@ -59,17 +67,12 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   // clearPluginCookies — called by promptLogin() before opening the browser.
   clearPluginCookies: vi.fn().mockResolvedValue(undefined),
   // startTask mock — returns a TaskHandle whose terminal transitions are
-  // captured so tests can assert on the receipt copy.
+  // captured so tests can assert on the receipt copy. Routed through the
+  // hoisted mockStartTask so tests can also assert a task was never created
+  // (auto-import-off, no-articles-to-syndicate — deletion-shaped: no task,
+  // no receipt).
   // mockTaskAwaiting is hoisted so tests can assert call-order vs openBrowser.
-  startTask: vi.fn().mockResolvedValue({
-    id: "0",
-    progress: vi.fn().mockResolvedValue(undefined),
-    awaiting: (...args: unknown[]) => mockTaskAwaiting(...args),
-    advise: vi.fn().mockResolvedValue(undefined),
-    succeeded: (...args: unknown[]) => mockTaskSucceeded(...args),
-    failed: (...args: unknown[]) => mockTaskFailed(...args),
-    cancelled: vi.fn().mockResolvedValue(undefined),
-  }),
+  startTask: (...args: unknown[]) => mockStartTask(...args),
 }));
 
 vi.mock("../config", () => ({
@@ -160,6 +163,10 @@ import { process as processHook, syndicate, login as loginHook } from "../main";
 // Resolves to the class in our ../api mock, so instanceof matches what
 // main.ts (which imports from the same mocked module) catches.
 import { MattersAuthError } from "../api";
+// The ../domain mock's isMattersUrl is a bare vi.fn() (undefined by default,
+// i.e. "not yet syndicated") — the no-op syndicate tests below need to flip
+// it per case.
+import { isMattersUrl } from "../domain";
 
 // ============================================================================
 // Fixtures
@@ -186,6 +193,17 @@ beforeEach(() => {
   mockFetchUserProfile.mockResolvedValue({ userName: "guo", displayName: "Guo", language: "en" });
   // Restore awaiting behavior after clearAllMocks (Task 2 watchdog fix).
   mockTaskAwaiting.mockResolvedValue(undefined);
+  mockTaskCancelled.mockResolvedValue(undefined);
+  // Restore startTask's resolved TaskHandle after clearAllMocks.
+  mockStartTask.mockResolvedValue({
+    id: "0",
+    progress: vi.fn().mockResolvedValue(undefined),
+    awaiting: (...args: unknown[]) => mockTaskAwaiting(...args),
+    advise: vi.fn().mockResolvedValue(undefined),
+    succeeded: (...args: unknown[]) => mockTaskSucceeded(...args),
+    failed: (...args: unknown[]) => mockTaskFailed(...args),
+    cancelled: (...args: unknown[]) => mockTaskCancelled(...args),
+  });
 });
 
 // ============================================================================
@@ -223,7 +241,24 @@ describe("process hook auth routing", () => {
     expect(result.success).toBe(true);
     expect(mockTaskFailed).not.toHaveBeenCalled();
     expect(mockTaskSucceeded).toHaveBeenCalled();
-    expect(String(mockTaskSucceeded.mock.calls[0][0])).toBe("not connected");
+    // The receipt is shown bare in the panel (no plugin-name prefix, see the
+    // sync_on_build:false test above) and must say WHICH state this is — an
+    // expired session is a different fact from never having connected.
+    expect(String(mockTaskSucceeded.mock.calls[0][0])).toBe("Matters session expired");
+    expect(mockShowToast).not.toHaveBeenCalled();
+    expect(mockOpenBrowser).not.toHaveBeenCalled();
+  });
+
+  it("none + background + NO userName → silent success with a 'not connected' receipt naming Matters", async () => {
+    // The other soft_fail state (never logged in, as opposed to expired
+    // above) — pins that the receipt text tracks sessionState instead of
+    // being hardcoded to one string regardless of which state was reached.
+    mockGetConfig.mockResolvedValue({ ...BOUND_CONFIG, userName: undefined });
+    mockGetSessionState.mockResolvedValue("none");
+    const result = await processHook(makeContext("background"));
+    expect(result.success).toBe(true);
+    expect(mockTaskFailed).not.toHaveBeenCalled();
+    expect(String(mockTaskSucceeded.mock.calls[0][0])).toBe("Matters not connected");
     expect(mockShowToast).not.toHaveBeenCalled();
     expect(mockOpenBrowser).not.toHaveBeenCalled();
   });
@@ -269,7 +304,13 @@ describe("process hook auth routing", () => {
     expect(mockApiConfig.queryMode).toBe("viewer");
   });
 
-  it("sync_on_build:false on a fallback route does not claim 'Authenticated'", async () => {
+  it("sync_on_build:false → no task, no receipt, regardless of session state (expired)", async () => {
+    // Before the fix, an expired-session background rebuild still reached
+    // the auth switch and stamped route-dependent copy into a receipt
+    // ("Matters auto-import off" here vs. "Authenticated (…)" below) before
+    // finally noticing sync_on_build was false. The setting is now checked
+    // before any of that runs: no startTask, no getSessionState call, no
+    // panel row at all — a setting the user chose is not a build event.
     mockGetSessionState.mockResolvedValue("expired");
     const ctx = {
       trigger: "background",
@@ -277,8 +318,27 @@ describe("process hook auth routing", () => {
       project_info: { folder_name: "test", homepage_file: null, lang: "en" },
     } as never;
     const result = await processHook(ctx);
-    expect(result.success).toBe(true);
-    expect(result.message).not.toContain("Authenticated");
+    expect(result).toEqual({ success: true, message: "Matters auto-import off" });
+    expect(mockStartTask).not.toHaveBeenCalled();
+    expect(mockTaskSucceeded).not.toHaveBeenCalled();
+    expect(mockGetSessionState).not.toHaveBeenCalled();
+  });
+
+  it("sync_on_build:false → same silent no-op on a valid session (proceed route)", async () => {
+    // Pins that the outcome no longer depends on the auth route at all —
+    // the old "Authenticated (Matters auto-import off)" route-aware message
+    // is gone because auth routing never runs when the setting is off.
+    mockGetSessionState.mockResolvedValue("valid");
+    const ctx = {
+      trigger: "background",
+      config: { sync_on_build: false },
+      project_info: { folder_name: "test", homepage_file: null, lang: "en" },
+    } as never;
+    const result = await processHook(ctx);
+    expect(result).toEqual({ success: true, message: "Matters auto-import off" });
+    expect(mockStartTask).not.toHaveBeenCalled();
+    expect(mockTaskSucceeded).not.toHaveBeenCalled();
+    expect(mockGetSessionState).not.toHaveBeenCalled();
   });
 });
 
@@ -465,6 +525,77 @@ describe("syndicate session gate", () => {
     const awaitingOrder = mockTaskAwaiting.mock.invocationCallOrder[0];
     const openBrowserOrder = mockOpenBrowser.mock.invocationCallOrder[0];
     expect(awaitingOrder).toBeLessThan(openBrowserOrder);
+  });
+});
+
+describe("syndicate: no-op runs", () => {
+  // Same rubric as the auto-import-off fix in process(): a publish that
+  // tells Matters nothing new is not an event of this run. When the plugin
+  // can tell there's nothing to do before creating the task (every article
+  // already syndicated), it doesn't. When it can't tell until after the
+  // task exists and the loop has run, it still reports the honest count via
+  // succeeded() — row suppression for a real, honest zero is
+  // progress-panel.ts's job (progress-panel-job.test.ts), not this hook's.
+  const baseArticle = {
+    title: "A post",
+    content: "body",
+    url_path: "posts/a-post.html",
+    tags: [],
+  };
+
+  it("every article already syndicated → no task, no receipt (nothing to create)", async () => {
+    vi.mocked(isMattersUrl).mockReturnValue(true);
+    const ctx = {
+      deployment: { url: "https://example.com", deployed_at: "2026-06-10T00:00:00Z" },
+      articles: [
+        { ...baseArticle, frontmatter: { syndicated: ["https://matters.town/@guo/a-post-abc123"] } },
+      ],
+      config: {},
+      project_info: { folder_name: "test", homepage_file: null, lang: "en" },
+      trigger: "manual_one",
+    } as never;
+
+    const result = await syndicate(ctx);
+
+    expect(result).toEqual({ success: true, message: "No new articles to syndicate" });
+    expect(mockStartTask).not.toHaveBeenCalled();
+    expect(mockTaskSucceeded).not.toHaveBeenCalled();
+    expect(mockGetSessionState).not.toHaveBeenCalled();
+  });
+
+  it("candidate article not live yet → task is created (can't be avoided) but succeeds honestly with amount 0", async () => {
+    // The task already exists by the time the run's outcome is known (the
+    // per-article loop needs it for progress), so "don't create it" isn't
+    // available here — unlike the case above. isArticleLive HEADs the
+    // deployed URL via the global fetch; stub it not-OK so the article is
+    // skipped, landing on published=0/draftsCreated=0/errors=0. Whether that
+    // paints a panel row is progress-panel.ts's call (a Job with amount 0
+    // and no advisory renders nothing); this hook's job is just to report
+    // the real count via succeeded(), never cancelled() — cancelled() would
+    // silently drop any advisory riding the same terminal call (moss-api:
+    // advise() flushes on succeeded()/failed() only).
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 } as unknown as Response));
+    vi.mocked(isMattersUrl).mockReturnValue(false);
+    mockGetSessionState.mockResolvedValue("valid");
+    const ctx = {
+      deployment: { url: "https://example.com", deployed_at: "2026-06-10T00:00:00Z" },
+      articles: [{ ...baseArticle, frontmatter: {} }],
+      config: {},
+      project_info: { folder_name: "test", homepage_file: null, lang: "en" },
+      trigger: "manual_one",
+    } as never;
+
+    try {
+      const result = await syndicate(ctx);
+
+      expect(result.success).toBe(true);
+      expect(mockStartTask).toHaveBeenCalled();
+      expect(mockTaskSucceeded).toHaveBeenCalledWith(undefined, 0);
+      expect(mockTaskCancelled).not.toHaveBeenCalled();
+      expect(mockShowToast).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

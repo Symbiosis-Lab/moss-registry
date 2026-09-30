@@ -98,8 +98,10 @@ vi.mock("../sync", () => ({
   syncToLocalFiles: vi.fn().mockResolvedValue({
     result: { created: 0, updated: 0, skipped: 0, errors: [] },
     articlePathMap: new Map(),
+    syncedCollectionIds: [],
   }),
   scanLocalArticles: vi.fn().mockResolvedValue([]),
+  nextKnownCollectionIds: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../api", () => ({
@@ -193,7 +195,7 @@ describe("force-fresh login", () => {
 
     await processHook({
       trigger: "onboarding_flow",
-      config: { sync_on_build: false },
+      config: { sync_on_build: true },
       project_info: { folder_name: "test", homepage_file: null, lang: "en" },
     } as never);
 
@@ -222,7 +224,7 @@ describe("force-fresh login", () => {
 
     await processHook({
       trigger: "settings_manual",
-      config: { sync_on_build: false },
+      config: { sync_on_build: true },
       project_info: { folder_name: "test", homepage_file: null, lang: "en" },
     } as never);
 

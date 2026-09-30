@@ -62,6 +62,7 @@ vi.mock("../sync", () => ({
   detectBoundUser: (...args: unknown[]) => mockDetectBoundUser(...args),
   syncToLocalFiles: (...args: unknown[]) => mockSyncToLocalFiles(...args),
   scanLocalArticles: vi.fn().mockResolvedValue([]),
+  nextKnownCollectionIds: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../credential", () => ({
@@ -95,13 +96,14 @@ vi.mock("../api", async () => {
 
 vi.mock("../downloader", () => ({
   downloadMediaAndUpdate: vi.fn().mockResolvedValue({ downloads: 0, updates: 0 }),
-  rewriteAllInternalLinks: vi.fn().mockResolvedValue(0),
+  rewriteAllInternalLinks: vi.fn().mockResolvedValue({ linksRewritten: 0 }),
 }));
 
 vi.mock("../social", () => ({
   loadSocialData: vi.fn().mockResolvedValue({ articles: [] }),
   saveSocialData: vi.fn().mockResolvedValue(undefined),
   mergeSocialData: vi.fn().mockReturnValue({ articles: [] }),
+  reconcileLegacySocialData: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("../domain", async () => {
@@ -120,6 +122,15 @@ describe("MOSS_MATTERS_TEST_PROFILE escape hatch", () => {
     // Ensure auth-check route reads as "unauth + saved userName" so the
     // process hook progresses past Phase 1 without prompting login again.
     mockDetectBoundUser.mockResolvedValue(null);
+    // sync_on_build:true (below) now means process() runs the full import
+    // pipeline instead of exiting at the old sync_on_build:false check —
+    // give syncToLocalFiles/fetchUserProfile default resolutions so it does.
+    mockSyncToLocalFiles.mockResolvedValue({
+      result: { created: 0, updated: 0, skipped: 0, errors: [] },
+      articlePathMap: new Map(),
+      syncedCollectionIds: [],
+    });
+    mockFetchUserProfile.mockResolvedValue({ userName: "guo", displayName: "Guo", language: "en" });
     // apiConfig is a module singleton — reset its escape-hatch fields so
     // a prior test that flipped queryMode doesn't leak into the next.
     const { apiConfig } = await import("../api");
@@ -138,7 +149,7 @@ describe("MOSS_MATTERS_TEST_PROFILE escape hatch", () => {
     expect(apiConfig.queryMode).toBe("viewer");
 
     // Trigger the process hook
-    const ctx = { config: { sync_on_build: false } } as Parameters<typeof main.process>[0];
+    const ctx = { config: { sync_on_build: true } } as Parameters<typeof main.process>[0];
     await main.process(ctx);
 
     // Post-state: user mode, profile bound
@@ -150,7 +161,7 @@ describe("MOSS_MATTERS_TEST_PROFILE escape hatch", () => {
     mockGetPluginEnvVar.mockResolvedValue("@guo");
     const main = await import("../main");
     const { apiConfig } = await import("../api");
-    await main.process({ config: { sync_on_build: false } } as Parameters<typeof main.process>[0]);
+    await main.process({ config: { sync_on_build: true } } as Parameters<typeof main.process>[0]);
     expect(apiConfig.testUserName).toBe("guo");
   });
 
@@ -158,28 +169,29 @@ describe("MOSS_MATTERS_TEST_PROFILE escape hatch", () => {
     mockGetPluginEnvVar.mockResolvedValue("matty");
     const main = await import("../main");
     const { apiConfig } = await import("../api");
-    await main.process({ config: { sync_on_build: false } } as Parameters<typeof main.process>[0]);
+    await main.process({ config: { sync_on_build: true } } as Parameters<typeof main.process>[0]);
     expect(apiConfig.testUserName).toBe("matty");
   });
 
   it("UI layer: skips openBrowser when env var is set", async () => {
     mockGetPluginEnvVar.mockResolvedValue("@guo");
     const main = await import("../main");
-    await main.process({ config: { sync_on_build: false } } as Parameters<typeof main.process>[0]);
+    await main.process({ config: { sync_on_build: true } } as Parameters<typeof main.process>[0]);
     expect(mockOpenBrowser).not.toHaveBeenCalled();
   });
 
   it("UI layer: auto-binds project to test profile", async () => {
     mockGetPluginEnvVar.mockResolvedValue("@guo");
     const main = await import("../main");
-    await main.process({ config: { sync_on_build: false } } as Parameters<typeof main.process>[0]);
+    await main.process({ config: { sync_on_build: true } } as Parameters<typeof main.process>[0]);
 
-    // saveConfig is called with boundUserName + userName = "guo"
-    const lastCall = mockSaveConfig.mock.calls[mockSaveConfig.mock.calls.length - 1];
-    expect(lastCall?.[0]).toMatchObject({
-      boundUserName: "guo",
-      userName: "guo",
-    });
+    // saveConfig is called with boundUserName + userName = "guo" at some
+    // point in the run (not necessarily the LAST call — sync_on_build:true
+    // means the pipeline now runs to completion, and Phase 9's lastSyncedAt
+    // save follows the binding save).
+    expect(mockSaveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ boundUserName: "guo", userName: "guo" })
+    );
   });
 
   it("production path: env var unset → apiConfig stays in 'viewer' mode", async () => {
@@ -189,7 +201,7 @@ describe("MOSS_MATTERS_TEST_PROFILE escape hatch", () => {
 
     const main = await import("../main");
     const { apiConfig } = await import("../api");
-    await main.process({ config: { sync_on_build: false } } as Parameters<typeof main.process>[0]);
+    await main.process({ config: { sync_on_build: true } } as Parameters<typeof main.process>[0]);
 
     // queryMode might be flipped by the saved-username unauthenticated
     // fallback (matters' legacy code path) — what we care about is that

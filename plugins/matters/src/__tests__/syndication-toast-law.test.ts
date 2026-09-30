@@ -421,9 +421,15 @@ describe("Law 2 — draft-timeout becomes a NeedsAction advisory with a link (no
       expect.objectContaining({ message: expect.stringMatching(/Syndicated \d+ article/) }),
     );
     // task.succeeded is still called (the run itself succeeded), but MUST
-    // receive 0 — not the draftsCreated count. Calling with (undefined, 0)
-    // means "completed with zero syndicated", which is correct.
+    // receive 0 — not the draftsCreated count. It's the only terminal call
+    // that flushes advise()'d advisories (the NeedsAction "Draft saved"
+    // proposal filed above rides this same call) — cancelled() never
+    // flushes them, so it can't be used here regardless of the count.
+    // Whether a 0-count succeeded() paints a panel row is progress-panel.ts's
+    // decision (it doesn't, when there's no advisory to anchor); this plugin
+    // hook's contract is just "call succeeded with the real count."
     expect(mockTaskSucceeded).toHaveBeenCalledWith(undefined, 0);
+    expect(mockTaskCancelled).not.toHaveBeenCalled();
     // The NeedsAction advisory IS still filed (existing Law 2 assertions above cover this).
   });
 
