@@ -587,6 +587,21 @@ export async function login(context: ProcessContext): Promise<HookResult> {
  */
 export async function process(context: ProcessContext): Promise<HookResult> {
   setCurrentHookName("process");
+
+  // Auto-Import Posts off: this build has no reason to touch Matters at
+  // all — no binding check, no auth routing, no task. A setting the user
+  // chose is not an event of this build, so it gets no panel row (not even
+  // a bare "Matters auto-import off" line next to "Publish failed").
+  // Checked before any of clearTokenCache/initializeDomain/startTask so the
+  // deletion is real: no task means no receipt to word carefully. The
+  // standalone `login()` export (Connect to Matters in Settings) and the
+  // `syndicate()` hook are unaffected — neither reads this setting.
+  const syncOnBuild = context.config?.sync_on_build ?? true;
+  if (!syncOnBuild) {
+    console.log("ℹ️  Sync on build is disabled, skipping...");
+    return { success: true, message: "Matters auto-import off" };
+  }
+
   clearTokenCache();
   await initializeDomain();
 
@@ -741,8 +756,9 @@ export async function process(context: ProcessContext): Promise<HookResult> {
         // soft_fail is ONLY reached on background/non-user-present triggers
         // (resolveAuthRoute returns soft_fail only when !isUserPresent). A
         // background build showing a persistent error badge on every preview
-        // rebuild would be noise. Report as success ("not connected") so there
-        // is no badge. The auto-open trigger (Phase 4b) and the settings
+        // rebuild would be noise. Report as success (a quiet "not connected"
+        // / "session expired" receipt) so there is no badge. The auto-open
+        // trigger (Phase 4b) and the settings
         // "Connect to Matters" affordance (Phase 4b) carry the actual prompt.
         //
         // 'expired' still logs (notifySessionExpired), but on this
@@ -756,24 +772,17 @@ export async function process(context: ProcessContext): Promise<HookResult> {
         if (sessionState === "expired") await notifySessionExpired(context.trigger);
         // Phase 4a B2: background "needs connection" → silent success (no
         // error badge on every rebuild). NOT task.failed().
-        await task.succeeded("not connected");
+        // The receipt renders bare in the panel — it must name Matters, and
+        // it must reflect the real session state rather than always reading
+        // "not connected": an expired login and a never-connected one are
+        // different facts. This receipt is reachable only when Auto-Import
+        // Posts is on (the setting is checked at the top of the hook,
+        // before this whole auth phase runs) — it fires on every background
+        // rebuild for a bound-but-unauthenticated project until the user
+        // connects.
+        await task.succeeded(sessionState === "expired" ? "Matters session expired" : "Matters not connected");
         return { success: true, message };
       }
-    }
-
-    // Check if sync is enabled
-    const syncOnBuild = context.config?.sync_on_build ?? true;
-    if (!syncOnBuild) {
-      console.log("ℹ️  Sync on build is disabled, skipping...");
-      // Terminate the task before returning (else it leaks as Running).
-      // Sync intentionally off ⇒ a clean success, but only claim
-      // "Authenticated" when the route actually proceeded with a usable
-      // session; fallback/expired routes get the plain message.
-      await task.succeeded("Sync disabled");
-      return {
-        success: true,
-        message: route === "proceed" ? "Authenticated (sync disabled)" : "Sync disabled",
-      };
     }
 
     // Get config for incremental sync
@@ -1099,6 +1108,22 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
   clearTokenCache();
   await initializeDomain();
 
+  // Filter to only articles that don't already have a Matters syndication
+  // URL. Computed before the task exists (isMattersUrl needs the domain
+  // initializeDomain() just loaded, so it can't move earlier than this):
+  // when every article is already syndicated, this publish has nothing new
+  // to tell Matters about — that's not an event of this run, so no task, no
+  // panel row (same rubric as the auto-import-off fix in process()).
+  const articlesToSyndicate = context.articles.filter((article) => {
+    const syndicated = (article.frontmatter.syndicated as string[] | undefined) || [];
+    return !syndicated.some((url: string) => isMattersUrl(url));
+  });
+
+  if (articlesToSyndicate.length === 0) {
+    console.log("ℹ️  No new articles to syndicate (all already syndicated to Matters)");
+    return { success: true, message: "No new articles to syndicate" };
+  }
+
   console.log("📡 Matters: Starting syndication...");
 
   // Drive a moss Job for the syndication run (Step 3 Phase 5 Task 5.3).
@@ -1132,22 +1157,6 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
     }
 
     const { url: siteUrl, deployed_at } = context.deployment;
-    const { articles } = context;
-
-    // Filter to only articles that don't already have a Matters syndication URL
-    const articlesToSyndicate = articles.filter((article) => {
-      const syndicated = (article.frontmatter.syndicated as string[] | undefined) || [];
-      return !syndicated.some((url: string) => isMattersUrl(url));
-    });
-
-    if (articlesToSyndicate.length === 0) {
-      console.log("ℹ️  No new articles to syndicate (all already syndicated to Matters)");
-      await task.succeeded("No new articles to syndicate");
-      return {
-        success: true,
-        message: "No new articles to syndicate",
-      };
-    }
 
     console.log(`📡 Syndicating ${articlesToSyndicate.length} article(s) to Matters.town`);
     console.log(`🌐 Deployed site: ${siteUrl}`);
@@ -1272,8 +1281,15 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
     if (errors.length > 0) {
       console.warn(`⚠️  Syndication complete: ${summary}`);
     } else {
-      console.log(`✅ Syndication complete: ${summary}`);
+      console.log(`✅ Syndication complete: ${summary || "nothing new (not yet live, or draft-only)"}`);
     }
+
+    // task.succeeded() is the only terminal call that flushes advise()'d
+    // advisories (a draft-timeout above files a NeedsAction one even when
+    // syndicatedCount is 0) — cancelled() does not, so it can never stand in
+    // here regardless of the count. The panel deciding whether a 0-count,
+    // no-advisory success still paints a row is progress-panel.ts's job, not
+    // this hook's (see its "success makes no sound" handling).
     await task.succeeded(undefined, syndicatedCount);
 
     // One terminal L3 shelf ack — the durable positive result (Law 3).
@@ -1294,7 +1310,7 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
 
     return {
       success: true,
-      message: `Syndication: ${summary}`,
+      message: `Syndication: ${summary || "nothing new"}`,
     };
   } catch (error) {
     if (error instanceof MattersAuthError) {

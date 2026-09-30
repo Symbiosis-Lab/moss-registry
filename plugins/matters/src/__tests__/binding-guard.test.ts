@@ -65,8 +65,13 @@ vi.mock("../config", () => ({
 
 vi.mock("../sync", () => ({
   detectBoundUser: (...args: unknown[]) => mockDetectBoundUser(...args),
-  syncToLocalFiles: vi.fn().mockResolvedValue({ result: { created: 0, updated: 0, skipped: 0 }, articlePathMap: new Map() }),
+  syncToLocalFiles: vi.fn().mockResolvedValue({
+    result: { created: 0, updated: 0, skipped: 0, errors: [] },
+    articlePathMap: new Map(),
+    syncedCollectionIds: [],
+  }),
   scanLocalArticles: vi.fn().mockResolvedValue([]),
+  nextKnownCollectionIds: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock("../credential", () => ({
@@ -111,6 +116,10 @@ vi.mock("../utils", () => ({
   reportError: vi.fn().mockResolvedValue(undefined),
   setCurrentHookName: vi.fn(),
   sleep: vi.fn().mockResolvedValue(undefined),
+  // Pure receipt formatter — stubbed (these tests assert binding-guard
+  // routing, not the summary text). See auth-routing.test.ts's identical
+  // stub for why the real impl isn't imported here.
+  formatArticleSyncSummary: vi.fn(() => "articles synced"),
 }));
 
 vi.mock("../progress", () => ({
@@ -123,14 +132,15 @@ vi.mock("../converter", () => ({
 }));
 
 vi.mock("../downloader", () => ({
-  downloadMediaAndUpdate: vi.fn().mockResolvedValue(undefined),
-  rewriteAllInternalLinks: vi.fn().mockResolvedValue(undefined),
+  downloadMediaAndUpdate: vi.fn().mockResolvedValue({ imagesDownloaded: 0, imagesSkipped: 0, errors: [] }),
+  rewriteAllInternalLinks: vi.fn().mockResolvedValue({ linksRewritten: 0 }),
 }));
 
 vi.mock("../social", () => ({
   loadSocialData: vi.fn().mockResolvedValue({}),
   saveSocialData: vi.fn().mockResolvedValue(undefined),
   mergeSocialData: vi.fn().mockReturnValue({}),
+  reconcileLegacySocialData: vi.fn().mockResolvedValue(false),
 }));
 
 import { process } from "../main";
@@ -140,12 +150,16 @@ import { process } from "../main";
 // ============================================================================
 
 describe("process hook binding guard", () => {
-  // sync_on_build: false so process() returns early after auth, letting us test
-  // only the binding guard logic without needing full sync mocking
+  // sync_on_build must be true here: since the auto-import-off fix, process()
+  // returns before the binding guard even runs when it's false (no task, no
+  // receipt — see auth-routing.test.ts's sync_on_build:false tests for that
+  // path). These tests exercise the binding guard itself, so the setting has
+  // to be on; the mocks above (../sync, ../downloader, ../social, ../utils)
+  // exist so the full import pipeline that follows binding completes cleanly.
   const baseContext = {
     project_path: "/test-project",
     moss_dir: "/test-project/.moss",
-    config: { sync_on_build: false },
+    config: { sync_on_build: true },
     project_info: { homepage_file: null, lang: "en" },
   };
 
