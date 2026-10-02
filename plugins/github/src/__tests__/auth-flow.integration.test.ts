@@ -91,6 +91,9 @@ describe("GitHub OAuth Device Flow", () => {
     global.fetch = originalFetch;
   });
 
+  // ==========================================================================
+  // Device Code Request Tests
+  // ==========================================================================
   // Uses ctx.urlConfig.setResponse() to mock httpPost Tauri IPC calls
 
   describe("requestDeviceCode", () => {
@@ -144,6 +147,9 @@ describe("GitHub OAuth Device Flow", () => {
     });
   });
 
+  // ==========================================================================
+  // Token Polling Tests
+  // ==========================================================================
   // Uses ctx.urlConfig.setResponse() to mock httpPost Tauri IPC calls
 
   describe("pollForToken", () => {
@@ -237,6 +243,10 @@ describe("GitHub OAuth Device Flow", () => {
       );
     });
   });
+
+  // ==========================================================================
+  // Token Validation Tests
+  // ==========================================================================
 
   describe("validateToken", () => {
     it("validates token and returns user info", async () => {
@@ -403,6 +413,10 @@ describe("GitHub OAuth Device Flow", () => {
     });
   });
 
+  // ==========================================================================
+  // Check Authentication Tests
+  // ==========================================================================
+
   describe("checkAuthentication", () => {
     it("returns authenticated state when valid token exists", async () => {
       // Setup: Token exists in plugin cookie storage
@@ -470,6 +484,10 @@ describe("GitHub OAuth Device Flow", () => {
       expect(result.isAuthenticated).toBe(false);
     });
   });
+
+  // ==========================================================================
+  // Full Login Flow Tests
+  // ==========================================================================
 
   describe("promptLogin", () => {
     // Requires moss-api >= 0.5.4 with browser tracking setters
@@ -716,6 +734,9 @@ describe("GitHub OAuth Device Flow", () => {
 
   });
 
+  // ==========================================================================
+  // Bug 8: Git credential helper integration
+  // ==========================================================================
   describe("checkAuthentication with git credentials (Bug 8)", () => {
     it("checks git credential helper when no plugin cookie exists", async () => {
       // Setup: No token in cookie storage (default empty state)

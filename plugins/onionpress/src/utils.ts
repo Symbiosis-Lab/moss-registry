@@ -11,6 +11,10 @@ import {
   reportError as sdkReportError,
 } from "@symbiosis-lab/moss-api";
 
+// ============================================================================
+// Plugin Configuration
+// ============================================================================
+
 const PLUGIN_NAME = "onionpress";
 
 // Initialize message context on load

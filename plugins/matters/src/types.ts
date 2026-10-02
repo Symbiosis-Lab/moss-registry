@@ -215,6 +215,10 @@ export interface ViewerProfileResponse {
   };
 }
 
+// ============================================================================
+// Frontmatter Data Types
+// ============================================================================
+
 export interface FrontmatterData {
   title: string;
   /** Marks this file as its folder's home page (moss `home: true` marker). */

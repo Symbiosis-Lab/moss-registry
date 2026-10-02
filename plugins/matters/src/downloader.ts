@@ -24,6 +24,10 @@ import {
   type FailedMediaEntry,
 } from "./failed-media";
 
+// ============================================================================
+// Constants
+// ============================================================================
+
 const MAX_RETRIES = 3;
 // Note: Concurrency is now handled by Rust-side Semaphore (DOWNLOAD_CONCURRENCY_LIMIT=5)
 // Timeout is handled by Rust-side tokio::time::timeout (default 30s)
@@ -282,6 +286,10 @@ interface FileState {
   body: string;
   mediaUrls: MediaUrl[];
 }
+
+// ============================================================================
+// Main Function: downloadMediaAndUpdate
+// ============================================================================
 
 /**
  * Download all media for all markdown files in a project and update references.

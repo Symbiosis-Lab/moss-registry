@@ -470,6 +470,10 @@ describe("Social Module", () => {
     });
   });
 
+  // ============================================================================
+  // reconcileLegacySocialData
+  // ============================================================================
+
   describe("reconcileLegacySocialData", () => {
     const makeComment = (id: string): MattersComment => ({
       id,
@@ -740,6 +744,10 @@ describe("Social Module", () => {
       expect(current2.articles[uid].comments).toHaveLength(1);
     });
   });
+
+  // ============================================================================
+  // mergeCommentsDeduped (unit)
+  // ============================================================================
 
   describe("mergeCommentsDeduped", () => {
     const makeComment = (id: string): MattersComment => ({

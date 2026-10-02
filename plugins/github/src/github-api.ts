@@ -566,6 +566,10 @@ export async function ensurePagesSource(
   }
 }
 
+// ============================================================================
+// Validation Helpers
+// ============================================================================
+
 /**
  * Check if a repository name is valid
  *

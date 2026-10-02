@@ -9,6 +9,10 @@ import {
   type MockTauriContext,
 } from "@symbiosis-lab/moss-api/testing";
 
+// ============================================================================
+// Worker Pool Feature
+// ============================================================================
+
 const workerPoolFeature = await loadFeature(
   "features/download/worker-pool.feature"
 );
@@ -214,6 +218,10 @@ ${allUrls.map((url) => `![](${url})`).join("\n")}
     });
   });
 });
+
+// ============================================================================
+// Retry Logic Feature
+// ============================================================================
 
 const retryFeature = await loadFeature("features/download/retry-logic.feature");
 

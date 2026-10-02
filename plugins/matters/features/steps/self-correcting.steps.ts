@@ -25,6 +25,9 @@ describeFeature(feature, ({ Scenario }) => {
   const uuid1 = "82ba1757-adc9-4a37-b097-8edbf38e9b9f";
   const uuid2 = "12345678-1234-1234-1234-123456789abc";
 
+  // ============================================================================
+  // Scenario: Updates references when assets already exist
+  // ============================================================================
   Scenario("Updates references when assets already exist", ({ Given, When, Then, And }) => {
     Given("a mock Tauri environment", () => {
       ctx = setupMockTauri();
@@ -77,6 +80,9 @@ Some text here.
     });
   });
 
+  // ============================================================================
+  // Scenario: Downloads and updates in single pass
+  // ============================================================================
   Scenario("Downloads and updates in single pass", ({ Given, When, Then, And }) => {
     Given("a mock Tauri environment", () => {
       ctx = setupMockTauri();
@@ -131,6 +137,9 @@ title: "Test Article"
     });
   });
 
+  // ============================================================================
+  // Scenario: Resumes correctly after interruption
+  // ============================================================================
   Scenario("Resumes correctly after interruption", ({ Given, When, Then, And }) => {
     Given("a mock Tauri environment", () => {
       ctx = setupMockTauri();
@@ -189,6 +198,9 @@ title: "Test Article"
     });
   });
 
+  // ============================================================================
+  // Scenario: Handles cross-CDN URLs with same UUID
+  // ============================================================================
   Scenario("Handles cross-CDN URLs with same UUID", ({ Given, When, Then, And }) => {
     Given("a mock Tauri environment", () => {
       ctx = setupMockTauri();
@@ -254,6 +266,9 @@ cover: "https://imagedelivery.net/kDRCweMmqLnTPNlbum-pYA/prod/embed/${uuid1}/ima
     });
   });
 
+  // ============================================================================
+  // Scenario: Idempotent operation
+  // ============================================================================
   Scenario("Idempotent operation", ({ Given, When, Then, And }) => {
     let originalContent: string;
 
@@ -309,6 +324,9 @@ cover: "${uuid1}.jpg"
   // Additional UUIDs for multi-file tests
   const uuid3 = "33333333-3333-3333-3333-333333333333";
 
+  // ============================================================================
+  // Scenario: Files are written immediately after processing (not batched)
+  // ============================================================================
   Scenario("Files are written immediately after processing (not batched)", ({ Given, When, Then, And }) => {
     Given("a mock Tauri environment", () => {
       ctx = setupMockTauri();
@@ -384,6 +402,9 @@ title: "File 3"
     });
   });
 
+  // ============================================================================
+  // Scenario: Early files are saved when later downloads fail
+  // ============================================================================
   Scenario("Early files are saved when later downloads fail", ({ Given, When, Then, And }) => {
     Given("a mock Tauri environment", () => {
       ctx = setupMockTauri();
@@ -460,6 +481,9 @@ title: "File 3"
     });
   });
 
+  // ============================================================================
+  // Scenario: Write happens per-file not per-image
+  // ============================================================================
   Scenario("Write happens per-file not per-image", ({ Given, When, Then, And }) => {
     let writeCount = 0;
 

@@ -1204,6 +1204,10 @@ export async function fetchArticleAppreciations(shortHash: string): Promise<Matt
   return allAppreciations;
 }
 
+// ============================================================================
+// Incremental Sync Functions
+// ============================================================================
+
 /**
  * Fetch articles created since a given timestamp
  *

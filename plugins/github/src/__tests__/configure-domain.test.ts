@@ -98,6 +98,10 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
 import { configure_domain } from "../main";
 import type { ConfigureDomainContext } from "../types";
 
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
 function makeContext(domain: string): ConfigureDomainContext {
   return {
     domain,
@@ -115,6 +119,10 @@ function makeContext(domain: string): ConfigureDomainContext {
   };
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 describe("configure_domain (idempotent)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,6 +130,9 @@ describe("configure_domain (idempotent)", () => {
     mockSetCustomDomain.mockResolvedValue(true);
   });
 
+  // --------------------------------------------------------------------------
+  // 1. Pages not enabled
+  // --------------------------------------------------------------------------
   it("returns failure when GitHub Pages is not enabled", async () => {
     mockGetPages.mockResolvedValue(null);
 
@@ -133,6 +144,9 @@ describe("configure_domain (idempotent)", () => {
     expect(mockEnforceHttps).not.toHaveBeenCalled();
   });
 
+  // --------------------------------------------------------------------------
+  // 2. CNAME not set
+  // --------------------------------------------------------------------------
   it("sets CNAME when pages exist but cname is null", async () => {
     mockGetPages.mockResolvedValue({ cname: null, https_enforced: false });
 
@@ -144,6 +158,9 @@ describe("configure_domain (idempotent)", () => {
     expect(result.message).toContain("example.com");
   });
 
+  // --------------------------------------------------------------------------
+  // 3. CNAME wrong
+  // --------------------------------------------------------------------------
   it("sets CNAME when current cname differs from requested domain", async () => {
     mockGetPages.mockResolvedValue({ cname: "old.com", https_enforced: false });
 
@@ -154,6 +171,9 @@ describe("configure_domain (idempotent)", () => {
     expect(mockEnforceHttps).not.toHaveBeenCalled();
   });
 
+  // --------------------------------------------------------------------------
+  // 4. CNAME set, HTTPS not enforced, enforce succeeds
+  // --------------------------------------------------------------------------
   it("enforces HTTPS when CNAME is set but HTTPS is not enforced", async () => {
     mockGetPages.mockResolvedValue({ cname: "example.com", https_enforced: false });
     mockEnforceHttps.mockResolvedValue(true);
@@ -166,6 +186,9 @@ describe("configure_domain (idempotent)", () => {
     expect(mockEnforceHttps).toHaveBeenCalledWith("testuser", "testrepo", "test-token-123");
   });
 
+  // --------------------------------------------------------------------------
+  // 5. CNAME set, HTTPS not enforced, enforce fails (cert pending)
+  // --------------------------------------------------------------------------
   it("returns success with pending message when HTTPS enforcement fails (cert not ready)", async () => {
     mockGetPages.mockResolvedValue({ cname: "example.com", https_enforced: false });
     mockEnforceHttps.mockResolvedValue(false);
@@ -179,6 +202,9 @@ describe("configure_domain (idempotent)", () => {
     expect(mockEnforceHttps).toHaveBeenCalled();
   });
 
+  // --------------------------------------------------------------------------
+  // 6. Fully configured — no-op
+  // --------------------------------------------------------------------------
   it("returns success without making API calls when fully configured", async () => {
     mockGetPages.mockResolvedValue({ cname: "example.com", https_enforced: true });
 
@@ -190,6 +216,9 @@ describe("configure_domain (idempotent)", () => {
     expect(mockEnforceHttps).not.toHaveBeenCalled();
   });
 
+  // --------------------------------------------------------------------------
+  // 7. Case-insensitive domain comparison
+  // --------------------------------------------------------------------------
   it("treats domain comparison as case-insensitive", async () => {
     mockGetPages.mockResolvedValue({ cname: "Example.COM", https_enforced: true });
 
@@ -202,6 +231,9 @@ describe("configure_domain (idempotent)", () => {
     expect(result.message).toContain("already configured");
   });
 
+  // --------------------------------------------------------------------------
+  // 8. setCustomDomain throws an error
+  // --------------------------------------------------------------------------
   it("returns failure when setCustomDomain throws", async () => {
     mockGetPages.mockResolvedValue({ cname: null, https_enforced: false });
     mockSetCustomDomain.mockRejectedValue(new Error("GitHub Pages API error (500): Internal Server Error"));
@@ -212,6 +244,9 @@ describe("configure_domain (idempotent)", () => {
     expect(result.message).toContain("GitHub Pages API error");
   });
 
+  // --------------------------------------------------------------------------
+  // 9. getPages throws a network error
+  // --------------------------------------------------------------------------
   it("returns failure when getPages throws a network error", async () => {
     mockGetPages.mockRejectedValue(new Error("fetch failed"));
 

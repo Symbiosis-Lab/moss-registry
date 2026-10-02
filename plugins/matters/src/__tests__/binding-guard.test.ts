@@ -145,6 +145,10 @@ vi.mock("../social", () => ({
 
 import { process } from "../main";
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 describe("process hook binding guard", () => {
   // sync_on_build must be true here: since the auto-import-off fix, process()
   // returns before the binding guard even runs when it's false (no task, no

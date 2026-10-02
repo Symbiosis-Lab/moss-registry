@@ -598,6 +598,9 @@ describe("on_deploy integration", () => {
     });
   });
 
+  // ==========================================================================
+  // Custom Domain Display URLs
+  // ==========================================================================
   describe("Custom domain display URLs", () => {
     it("uses custom domain in deployment.url when context.domain is set", async () => {
       setupDeployMocks(ctx, {
@@ -658,6 +661,9 @@ describe("on_deploy integration", () => {
     });
   });
 
+  // ==========================================================================
+  // HTTP Reachability Verification
+  // ==========================================================================
   describe("HTTP reachability verification", () => {
     it("reports isLive=true when site is reachable via HTTP", async () => {
       setupDeployMocks(ctx, {

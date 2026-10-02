@@ -480,6 +480,10 @@ async function findAvailableFilename(
   }
 }
 
+// ============================================================================
+// Main Sync Function
+// ============================================================================
+
 /**
  * Sync articles, drafts, and collections to local markdown files
  * Media is NOT downloaded here - use downloadMediaAndUpdate() after this

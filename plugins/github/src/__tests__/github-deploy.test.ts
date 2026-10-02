@@ -70,11 +70,18 @@ function mockErrorResponse(status: number, message: string): Partial<Response> {
   };
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 describe("github-deploy", () => {
   beforeEach(() => {
     mockFetch.mockReset();
   });
 
+  // ==========================================================================
+  // verifyRepoExists
+  // ==========================================================================
   describe("verifyRepoExists", () => {
     it("succeeds silently when repo exists (200)", async () => {
       mockFetch.mockResolvedValueOnce(mockResponse({ id: 123, name: "my-site" }));
@@ -140,6 +147,9 @@ describe("github-deploy", () => {
 
   });
 
+  // ==========================================================================
+  // getOriginOwnerRepo
+  // ==========================================================================
   describe("getOriginOwnerRepo", () => {
     const mockExecuteBinary = vi.mocked(executeBinary);
 
@@ -213,6 +223,9 @@ describe("github-deploy", () => {
     });
   });
 
+  // ==========================================================================
+  // resolveCurrentGenDir
+  // ==========================================================================
   describe("resolveCurrentGenDir", () => {
     const mockExecuteBinary = vi.mocked(executeBinary);
 
@@ -1246,6 +1259,9 @@ describe("github-deploy", () => {
       });
     });
 
+    // ========================================================================
+    // CNAME injection for custom domains
+    // ========================================================================
     describe("CNAME injection for custom domains", () => {
       it("injects CNAME file into gh-pages tree when domain is provided", async () => {
         const SITE_TREE = "aaa111bbb222";
@@ -1759,6 +1775,9 @@ describe("github-deploy", () => {
       });
     });
 
+    // ========================================================================
+    // Stale lock cleanup: both index.lock and shallow.lock
+    // ========================================================================
     describe("stale lock cleanup", () => {
       it("removes both index.lock and shallow.lock before staging", async () => {
         setupFullDeployMocks();
@@ -1806,6 +1825,9 @@ describe("github-deploy", () => {
       });
     });
 
+    // ========================================================================
+    // Source backup: push existing unpushed commits when working tree is clean
+    // ========================================================================
     describe("source backup push for unpushed commits", () => {
       it("pushes main when diff --cached --quiet succeeds but unpushed commits exist", async () => {
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
@@ -1897,6 +1919,9 @@ describe("github-deploy", () => {
       });
     });
 
+    // ========================================================================
+    // Corrupt git recovery (auto-reinitialize on corrupt .git)
+    // ========================================================================
     describe("corrupt git recovery", () => {
       it("retries deploy after wiping corrupt .git when push fails with 'Could not read' error", async () => {
         const corruptPushError = "error: Could not read 6077fdfa2120f56c44a1504a3d05deac53a83781\n" +
@@ -2504,6 +2529,9 @@ describe("github-deploy", () => {
     });
   });
 
+  // ==========================================================================
+  // looksLikeCorruptGit
+  // ==========================================================================
   describe("looksLikeCorruptGit", () => {
     it("detects 'Could not read' errors", () => {
       expect(looksLikeCorruptGit("error: Could not read 6077fdfa2120f56c44a1504a3d05deac53a83781")).toBe(true);
