@@ -60,10 +60,6 @@ function generateDnsTarget(owner: string): DnsTarget {
   return { records };
 }
 
-// ============================================================================
-// Pages Status Polling
-// ============================================================================
-
 /**
  * Poll GitHub Pages API until site is live (max 60s)
  *
@@ -137,10 +133,6 @@ async function waitForPagesLive(
   return { isLive: false, url: pagesUrl };
 }
 
-// ============================================================================
-// HTTP Reachability Check
-// ============================================================================
-
 /**
  * Check if a URL is reachable via HTTP GET.
  * Uses Rust-side fetchUrl (ureq) for reliable, CORS-free checks.
@@ -165,10 +157,6 @@ async function checkSiteReachable(
   }
   return false;
 }
-
-// ============================================================================
-// Hook Implementation
-// ============================================================================
 
 /**
  * deploy hook - Deploy to GitHub Pages via git push
@@ -483,10 +471,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
   }
 }
 
-// ============================================================================
-// configure_domain Hook Implementation
-// ============================================================================
-
 /**
  * configure_domain hook - Set custom domain on GitHub Pages via API
  *
@@ -580,10 +564,6 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
     };
   }
 }
-
-// ============================================================================
-// Plugin Export
-// ============================================================================
 
 /**
  * Plugin object exported as global for the moss plugin runtime

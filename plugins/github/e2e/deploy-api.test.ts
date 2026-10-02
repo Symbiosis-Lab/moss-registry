@@ -653,10 +653,6 @@ describe.skipIf(!RUN_E2E)("GitHub REST API Deploy E2E", () => {
     }, 30000);
   });
 
-  // ========================================================================
-  // Scenario 3: No-change deploy
-  // ========================================================================
-
   describe("Scenario 3: No-change deploy", () => {
     it("detects no changes via blob SHA idempotency", async () => {
       // The core insight: uploading identical content produces identical blob SHAs.
@@ -710,10 +706,6 @@ describe.skipIf(!RUN_E2E)("GitHub REST API Deploy E2E", () => {
       // (no new tree, commit, or ref update needed)
     }, 30000);
   });
-
-  // ========================================================================
-  // Scenario 4: Deploy with file deletions
-  // ========================================================================
 
   describe("Scenario 4: Deploy with file deletions", () => {
     it("removes about/index.html by setting sha to null", async () => {
@@ -783,10 +775,6 @@ describe.skipIf(!RUN_E2E)("GitHub REST API Deploy E2E", () => {
       ).toBeUndefined();
     }, 30000);
   });
-
-  // ========================================================================
-  // Scenario 5: Binary files (images)
-  // ========================================================================
 
   describe("Scenario 5: Binary files", () => {
     it("uploads a PNG file as base64 blob", async () => {

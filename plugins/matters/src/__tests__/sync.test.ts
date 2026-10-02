@@ -125,10 +125,6 @@ describe("syncToLocalFiles - language-derived article folder", () => {
   });
 });
 
-// ============================================================================
-// Homepage Grid Generation Tests
-// ============================================================================
-
 describe("syncToLocalFiles - homepage grid from pinned works", () => {
   let ctx: MockTauriContext;
 
@@ -342,10 +338,6 @@ describe("syncToLocalFiles - homepage grid from pinned works", () => {
   });
 });
 
-// ============================================================================
-// Homepage skip when moss detects existing home file
-// ============================================================================
-
 describe("syncToLocalFiles - skip homepage when homepageFile is set", () => {
   let ctx: MockTauriContext;
 
@@ -482,10 +474,6 @@ describe("syncToLocalFiles - self-named home with home:true marker", () => {
     expect(ctx.filesystem.getFile(`${ctx.projectPath}/刘果.md`)?.content).toContain("# Mine");
   });
 });
-
-// ============================================================================
-// Folder-mode Collection Order Tests
-// ============================================================================
 
 describe("syncToLocalFiles - folder-mode collection order", () => {
   let ctx: MockTauriContext;
@@ -898,10 +886,6 @@ Content`;
   });
 });
 
-// ============================================================================
-// Collection skip when folder already has a home file
-// ============================================================================
-
 describe("syncToLocalFiles - skip collection index when folder has home file", () => {
   let ctx: MockTauriContext;
 
@@ -996,10 +980,6 @@ describe("syncToLocalFiles - skip collection index when folder has home file", (
     expect(ctx.filesystem.getFile(`${ctx.projectPath}/articles/my-collection/index.md`)).toBeUndefined();
   });
 });
-
-// ============================================================================
-// scanLocalArticles Tests
-// ============================================================================
 
 describe("scanLocalArticles", () => {
   let ctx: MockTauriContext;
@@ -1195,10 +1175,6 @@ Content`;
     expect(withoutUid?.uid).toBeNull();
   });
 });
-
-// ============================================================================
-// detectBoundUser Tests
-// ============================================================================
 
 describe("detectBoundUser", () => {
   let ctx: MockTauriContext;

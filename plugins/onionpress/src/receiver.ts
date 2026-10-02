@@ -291,10 +291,6 @@ export async function packGeneration(
   return tarPath;
 }
 
-// ============================================================================
-// 3. Upload the tar
-// ============================================================================
-
 /**
  * `POST /generation?id=<genId>`, carrier chosen by the receiver's advertised
  * version (from `/status`, see {@link receiverSupportsMultipartUpload}):
@@ -386,10 +382,6 @@ export async function commitGeneration(baseUrl: string, genId: string): Promise<
 
   return { ok: true, url: body.url };
 }
-
-// ============================================================================
-// 5. Cleanup
-// ============================================================================
 
 /**
  * Remove the temporary tar. Best-effort: never throws — a leftover tar in /tmp

@@ -12,10 +12,6 @@ import {
   pluginFileExists,
 } from "@symbiosis-lab/moss-api";
 
-// ============================================================================
-// Types
-// ============================================================================
-
 /**
  * Plugin configuration stored in config.json
  */

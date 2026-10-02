@@ -80,9 +80,6 @@ describe("auth", () => {
     });
   });
 
-  // ==========================================================================
-  // Phase 1: Origin Header Tests
-  // ==========================================================================
   describe("OAuth requests include Origin header", () => {
     let ctx: MockTauriContext;
 

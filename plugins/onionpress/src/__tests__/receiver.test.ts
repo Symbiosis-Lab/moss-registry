@@ -70,10 +70,6 @@ describe("baseUrlFor", () => {
   });
 });
 
-// ============================================================================
-// Port discovery
-// ============================================================================
-
 describe("discoverReceiver", () => {
   it("returns the first port whose /status carries receiver_version", async () => {
     mockExecuteBinary.mockResolvedValueOnce(exec(true, statusBody()));
@@ -153,10 +149,6 @@ describe("discoverReceiver", () => {
     expect(urlArgOf(call)).toBe("http://127.0.0.1:8080/wp-json/onionpress/v1/status");
   });
 });
-
-// ============================================================================
-// Pack
-// ============================================================================
 
 describe("packGeneration", () => {
   it("tars the current-generation contents to /tmp/<genId>.tar and follows the symlink", async () => {
@@ -293,10 +285,6 @@ describe("receiverSupportsMultipartUpload", () => {
   });
 });
 
-// ============================================================================
-// Commit
-// ============================================================================
-
 describe("commitGeneration", () => {
   const BASE = "http://127.0.0.1:8080/wp-json/onionpress/v1";
 
@@ -328,10 +316,6 @@ describe("commitGeneration", () => {
     await expect(commitGeneration(BASE, "moss-42")).rejects.toThrow("did not confirm");
   });
 });
-
-// ============================================================================
-// Cleanup
-// ============================================================================
 
 describe("cleanupTar", () => {
   it("removes the tar with rm -f", async () => {

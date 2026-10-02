@@ -178,10 +178,6 @@ beforeEach(() => {
   mockPrepareWebviewAuth.mockResolvedValue(undefined);
 });
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 describe("force-fresh login", () => {
   it("calls beginFreshLogin BEFORE opening the login browser", async () => {
     // Unbound fresh folder — will reach promptLogin() via the binding-guard path.

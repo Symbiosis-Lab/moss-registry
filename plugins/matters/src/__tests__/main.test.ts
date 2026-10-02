@@ -242,10 +242,6 @@ const mockTask = {
   cancelled: vi.fn().mockResolvedValue(undefined),
 };
 
-// ============================================================================
-// Tests: syndicateArticle cover upload
-// ============================================================================
-
 describe("syndicateArticle - cover upload", () => {
   const siteUrl = "https://example.com";
   const userName = "testuser";
@@ -388,10 +384,6 @@ describe("syndicateArticle - cover upload", () => {
   });
 });
 
-// ============================================================================
-// Tests: SINGLE_FILE_UPLOAD_MUTATION shape (api.ts)
-// ============================================================================
-
 describe("SINGLE_FILE_UPLOAD_MUTATION", () => {
   it("contains the correct mutation name", () => {
     expect(SINGLE_FILE_UPLOAD_MUTATION).toContain("SingleFileUpload");
@@ -415,10 +407,6 @@ describe("SINGLE_FILE_UPLOAD_MUTATION", () => {
     expect(SINGLE_FILE_UPLOAD_MUTATION).toMatch(/\$input:\s*SingleFileUploadInput!/);
   });
 });
-
-// ============================================================================
-// Tests: stripArticleTitleH1
-// ============================================================================
 
 describe("stripArticleTitleH1", () => {
   it("strips moss-article-title h1 when text matches", () => {
@@ -462,10 +450,6 @@ describe("stripArticleTitleH1", () => {
     expect(stripArticleTitleH1(html, "My Title")).toBe('<p>x</p><h1>Also Title</h1>');
   });
 });
-
-// ============================================================================
-// Tests: absolutizeRelativeHrefs
-// ============================================================================
 
 describe("absolutizeRelativeHrefs", () => {
   const baseUrl = "https://example.com/posts/foo/";
@@ -551,10 +535,6 @@ describe("absolutizeRelativeHrefs", () => {
   });
 });
 
-// ============================================================================
-// Tests: normalizeHtmlForMatters — heading transformation
-// ============================================================================
-
 describe("normalizeHtmlForMatters - heading transformation", () => {
   it("downgrades h1 to h2", () => {
     const html = "<h1>Title</h1><p>Content</p>";
@@ -626,9 +606,6 @@ describe("normalizeHtmlForMatters - heading transformation", () => {
   });
 });
 
-// ============================================================================
-// Tests: wrapImagesForMatters
-// ============================================================================
 //
 // matters' server-side sanitizer requires images to be wrapped in
 // `<figure class="image"><img src="..."><figcaption>...</figcaption></figure>`.
@@ -1321,10 +1298,6 @@ describe("normalizeHtmlForMatters - image wrap (via pipeline)", () => {
   });
 });
 
-// ============================================================================
-// Tests: addCanonicalLinkToContent with lang parameter
-// ============================================================================
-
 describe("addCanonicalLinkToContent - lang parameter", () => {
   const url = "https://example.com/posts/test/";
 
@@ -1382,10 +1355,6 @@ describe("addCanonicalLinkToContent - lang parameter", () => {
     expect(result.startsWith(original)).toBe(true);
   });
 });
-
-// ============================================================================
-// Tests: syndicateArticle — summary and lang
-// ============================================================================
 
 describe("syndicateArticle - summary and lang", () => {
   const siteUrl = "https://example.com";
@@ -1508,10 +1477,6 @@ describe("syndicateArticle - summary and lang", () => {
   });
 });
 
-// ============================================================================
-// Tests: siteRelativePathFromSrc
-// ============================================================================
-
 describe("siteRelativePathFromSrc", () => {
   const base = "https://liu-guo.com/posts/foo/";
 
@@ -1556,10 +1521,6 @@ describe("siteRelativePathFromSrc", () => {
   });
 });
 
-// ============================================================================
-// Tests: imageMimeForPath
-// ============================================================================
-
 describe("imageMimeForPath", () => {
   it("maps .jpg to image/jpeg", () => {
     expect(imageMimeForPath("photo.jpg")).toBe("image/jpeg");
@@ -1594,10 +1555,6 @@ describe("imageMimeForPath", () => {
   });
 });
 
-// ============================================================================
-// Tests: audioMimeForPath
-// ============================================================================
-
 describe("audioMimeForPath", () => {
   it("maps .mp3 to audio/mpeg", () => {
     expect(audioMimeForPath("song.mp3")).toBe("audio/mpeg");
@@ -1627,10 +1584,6 @@ describe("audioMimeForPath", () => {
     expect(audioMimeForPath("file.aiff")).toBe("application/octet-stream");
   });
 });
-
-// ============================================================================
-// Tests: uploadAndReplaceLocalImages
-// ============================================================================
 
 describe("uploadAndReplaceLocalImages", () => {
   const baseUrl = "https://example.com/posts/foo/";
@@ -1796,10 +1749,6 @@ describe("uploadAndReplaceLocalImages", () => {
     expect(result).toContain('width="500"');
   });
 });
-
-// ============================================================================
-// Tests: uploadAndReplaceLocalAudio
-// ============================================================================
 
 describe("uploadAndReplaceLocalAudio", () => {
   // After wrapAudioForMatters, the <source src> is already an absolutized
@@ -2604,10 +2553,6 @@ describe("syndicateArticle - draft tracking integration", () => {
   });
 });
 
-// ============================================================================
-// Tests: Cover path decoding for non-ASCII paths
-// ============================================================================
-
 describe("syndicateArticle - cover path decoding", () => {
   const siteUrl = "https://example.com";
   const userName = "testuser";
@@ -2661,10 +2606,6 @@ describe("syndicateArticle - cover path decoding", () => {
     );
   });
 });
-
-// ============================================================================
-// Tests: uploadAndReplaceLocalImages — non-ASCII path decoding for readSiteFile
-// ============================================================================
 
 describe("uploadAndReplaceLocalImages - non-ASCII path decoding", () => {
   const baseUrl = "https://example.com/posts/foo/";
@@ -2790,10 +2731,6 @@ describe("syndicateArticle - browser close detection", () => {
     expect(written["posts/test.md"].draftId).toBe("draft-close-test");
   });
 });
-
-// ============================================================================
-// Tests: waitForPublishOrClose — no wall-clock ceiling
-// ============================================================================
 
 describe("waitForPublishOrClose - no wall-clock ceiling (resolves on publish or close only)", () => {
   beforeEach(async () => {

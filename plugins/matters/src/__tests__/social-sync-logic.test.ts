@@ -18,10 +18,6 @@
 import { describe, it, expect } from "vitest";
 import { shouldSkipSocialFetch, resolveSinceTimestamp } from "../main";
 
-// ============================================================================
-// Count-skip unlock tests
-// ============================================================================
-
 describe("shouldSkipSocialFetch — count-skip unlock (issue #793)", () => {
   it("does NOT skip when remoteCount=57, storedCount=57, existingComments=0 (poisoned entry)", () => {
     // This is the core regression: a poisoned entry where lastSyncedAt caused
@@ -60,10 +56,6 @@ describe("shouldSkipSocialFetch — count-skip unlock (issue #793)", () => {
     expect(shouldSkipSocialFetch(5, 5, 0)).toBe(false);
   });
 });
-
-// ============================================================================
-// First-fetch poisoning fix tests
-// ============================================================================
 
 describe("resolveSinceTimestamp — first-fetch poisoning fix (issue #793)", () => {
   const oldTimestamp = "2024-01-01T00:00:00.000Z";

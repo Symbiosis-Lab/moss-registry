@@ -2,10 +2,6 @@
  * Endpoints, gateways, and tuning constants for the IPFS Deployer Plugin.
  */
 
-// ---------------------------------------------------------------------------
-// Progress heartbeat
-// ---------------------------------------------------------------------------
-
 /**
  * Heartbeat interval (ms) used to keep the progress panel alive during long
  * uploads. Must be shorter than the panel's STALE_TIMEOUT_MS (15s).
@@ -54,10 +50,6 @@ export const KUBO_SUBDOMAIN_HOST = "localhost:8080";
 export const PUBLIC_GATEWAY_DWEB = "dweb.link";
 /** Secondary public gateway (subdomain form; does NOT resolve DNSLink). */
 export const PUBLIC_GATEWAY_W3S = "w3s.link";
-
-// ---------------------------------------------------------------------------
-// IPNS
-// ---------------------------------------------------------------------------
 
 /**
  * Prefix for the per-project Kubo keystore key backing the stable IPNS name.

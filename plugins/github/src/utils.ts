@@ -18,10 +18,6 @@ import {
 // Re-export ToastOptions type for convenience
 export type { ToastOptions };
 
-// ============================================================================
-// Plugin Configuration
-// ============================================================================
-
 const PLUGIN_NAME = "github";
 
 // Initialize message context on load

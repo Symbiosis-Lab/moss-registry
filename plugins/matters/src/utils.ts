@@ -157,10 +157,6 @@ export function getExtensionFromContentType(contentType: string): string | null 
   return null;
 }
 
-// ============================================================================
-// Async Utilities
-// ============================================================================
-
 /**
  * Sleep for specified milliseconds
  */
@@ -238,10 +234,6 @@ export async function downloadAsset(
   };
 }
 
-// ============================================================================
-// Sync receipt formatting
-// ============================================================================
-
 /**
  * Format the article-sync outcome as a NOUN-LED receipt line for the progress
  * surface — "12 articles already up to date", not a bare "12 unchanged" whose
@@ -286,10 +278,6 @@ export function formatArticleSyncSummary(counts: {
   // 2 failed to sync" (the bare ", 2 failed" looked like 2 of the 5 broke).
   return failed > 0 ? `${base}, ${failed} failed to sync` : base;
 }
-
-// ============================================================================
-// Binary Utilities
-// ============================================================================
 
 /**
  * Convert Uint8Array to base64 string in chunks to avoid stack overflow

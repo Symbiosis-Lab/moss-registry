@@ -14,10 +14,6 @@
 
 import { readPluginFile, writePluginFile } from "@symbiosis-lab/moss-api";
 
-// ============================================================================
-// Types
-// ============================================================================
-
 /** One permanently-failed media download recorded to failed-media.json */
 export interface FailedMediaEntry {
   /** Original remote URL that could not be downloaded */

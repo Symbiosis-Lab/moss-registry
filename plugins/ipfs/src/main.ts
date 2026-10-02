@@ -52,10 +52,6 @@ function nestedProbePath(files: SiteFile[]): string | null {
   return files.find((f) => f.path.includes("/"))?.path ?? null;
 }
 
-// ============================================================================
-// deploy hook
-// ============================================================================
-
 async function deploy(context: DeployContext): Promise<HookResult> {
   setCurrentHookName("deploy");
   console.log("IPFS Deployer: Starting deployment...");
@@ -389,10 +385,6 @@ async function configure_domain(context: ConfigureDomainContext): Promise<HookRe
 
   return { success: true, message };
 }
-
-// ============================================================================
-// Plugin registration
-// ============================================================================
 
 const IpfsPlugin = { deploy, configure_domain };
 (window as unknown as { IpfsPlugin: typeof IpfsPlugin }).IpfsPlugin = IpfsPlugin;

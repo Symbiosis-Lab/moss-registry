@@ -224,10 +224,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
   });
 
-  // ============================================================================
-  // Scenario: Deploy with empty site directory
-  // ============================================================================
-
   Scenario("Deploy with empty site directory", ({ Given, When, Then, And }) => {
     Given("the directory is a git repository", () => {
       // Git origin exists
@@ -250,10 +246,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(deployResult?.message).toMatch(/site.*empty|build.*first|not found/i);
     });
   });
-
-  // ============================================================================
-  // Scenario: Successful deployment with SSH remote
-  // ============================================================================
 
   Scenario("Successful deployment with SSH remote", ({ Given, When, Then, And }) => {
     Given("the directory is a git repository", () => {

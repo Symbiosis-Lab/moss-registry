@@ -34,10 +34,6 @@ export interface DeployResult {
   treeChanged: boolean;
 }
 
-// ============================================================================
-// Internal Helpers
-// ============================================================================
-
 /**
  * Parse an error response body for a human-readable message.
  */
@@ -50,10 +46,6 @@ async function parseErrorMessage(response: Response): Promise<string> {
   }
 }
 
-
-// ============================================================================
-// API Functions
-// ============================================================================
 
 /**
  * Verify that a repository exists on GitHub.
@@ -119,10 +111,6 @@ export async function verifyRepoExists(
     throw new Error(msg);
   }
 }
-
-// ============================================================================
-// Git Origin Helpers
-// ============================================================================
 
 /**
  * Read the deploy target from the project's .git origin remote.

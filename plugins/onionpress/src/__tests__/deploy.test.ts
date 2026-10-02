@@ -86,10 +86,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// ============================================================================
-// Happy path
-// ============================================================================
-
 describe("deploy — success", () => {
   beforeEach(() => {
     mockDiscover.mockResolvedValue(endpoint());
@@ -138,10 +134,6 @@ describe("deploy — success", () => {
   });
 });
 
-// ============================================================================
-// No receiver
-// ============================================================================
-
 describe("deploy — no receiver", () => {
   it("fails with a Start-OnionPress toast in the result and never packs or commits", async () => {
     mockDiscover.mockResolvedValue(null);
@@ -160,10 +152,6 @@ describe("deploy — no receiver", () => {
     });
   });
 });
-
-// ============================================================================
-// Upload failure aborts before commit
-// ============================================================================
 
 describe("deploy — failed upload aborts before commit", () => {
   it("does not call commit when /generation fails, still cleans up, and reports the error", async () => {

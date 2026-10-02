@@ -514,9 +514,6 @@ describe("GitHub API", () => {
     });
   });
 
-  // ============================================================================
-  // ensurePagesSource() tests
-  // ============================================================================
   describe("ensurePagesSource", () => {
     it("creates Pages when not enabled (404)", async () => {
       // GET /pages → 404 (not enabled)
@@ -630,9 +627,6 @@ describe("GitHub API", () => {
     });
   });
 
-  // ============================================================================
-  // getRepoSshUrl() tests
-  // ============================================================================
   describe("getRepoSshUrl", () => {
     let getRepoSshUrl: (owner: string, repo: string, token: string) => Promise<string>;
 

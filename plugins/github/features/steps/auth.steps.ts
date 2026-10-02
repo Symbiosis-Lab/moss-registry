@@ -48,10 +48,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     vi.restoreAllMocks();
   });
 
-  // ============================================================================
-  // Scenario: Request device code from GitHub
-  // ============================================================================
-
   Scenario("Request device code from GitHub", ({ Given, When, Then, And }) => {
     Given("no existing GitHub credentials", () => {
       credentialStore.clear();
@@ -88,10 +84,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(deviceCodeResponse?.interval).toBe(5);
     });
   });
-
-  // ============================================================================
-  // Scenario: Poll for access token after authorization
-  // ============================================================================
 
   Scenario("Poll for access token after authorization", ({ Given, When, Then, And }) => {
     Given("a valid device code", () => {
@@ -135,10 +127,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
   });
 
-  // ============================================================================
-  // Scenario: Handle authorization pending state
-  // ============================================================================
-
   Scenario("Handle authorization pending state", ({ Given, When, Then, And }) => {
     Given("a valid device code", () => {
       mockFetch = createMockFetch({
@@ -178,10 +166,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
     });
   });
 
-  // ============================================================================
-  // Scenario: Store token in git credential helper
-  // ============================================================================
-
   Scenario("Store token in git credential helper", ({ Given, When, Then, And }) => {
     Given("a valid access token", () => {
       storedToken = "gho_test_token_abc123";
@@ -201,10 +185,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(retrievedToken).toBe(storedToken);
     });
   });
-
-  // ============================================================================
-  // Scenario: Handle expired device code
-  // ============================================================================
 
   Scenario("Handle expired device code", ({ Given, When, Then }) => {
     Given("a device code that has expired", () => {
@@ -235,10 +215,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       expect(tokenResponse?.error).toBe("expired_token");
     });
   });
-
-  // ============================================================================
-  // Scenario: Validate token with GitHub API
-  // ============================================================================
 
   Scenario("Validate token with GitHub API", ({ Given, When, Then, And }) => {
     Given("a valid access token", () => {
