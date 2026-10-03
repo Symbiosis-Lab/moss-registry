@@ -2,7 +2,7 @@
  * Social data storage module for Matters plugin
  *
  * Stores social interactions (comments, donations, appreciations) in
- * .moss/data/social/matters.json (moved from .moss/social/ in commit 3436fd636).
+ * .moss/data/social/matters.json.
  *
  * Schema Documentation:
  * ---------------------

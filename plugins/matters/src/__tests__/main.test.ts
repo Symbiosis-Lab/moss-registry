@@ -1150,15 +1150,14 @@ describe("normalizeHtmlForMatters - math", () => {
  *
  * `test-fixtures/syndication-test-site/moss-emitted-body.html` is the verbatim
  * `html_content` that `moss build --no-plugins` wrote to `article-map.json`
- * for `input/posts/rich-test-article.md` (recaptured 2026-07-21).
+ * for `input/posts/rich-test-article.md`.
  *
  * It MUST come from `article-map.json`, NOT from the shipped page HTML under
  * `.moss/build/current/`. `article-map.json` is what the plugin actually
  * receives (`load_articles_for_syndication` → `getArticleContent`); the shipped
  * page has already had `data-source-line` stripped by `ship_phase`'s
- * staging→site file copy. Capturing from the shipped page is how this fixture
- * green-lit a shape production never produces, hiding a dead Pass 1 behind 17
- * passing tests. Regenerate with:
+ * staging→site file copy. Capturing from the shipped page would green-light a shape
+ * production never produces. Regenerate with:
  *
  *   cd plugins/matters/test-fixtures/syndication-test-site
  *   moss build input --no-plugins
