@@ -328,7 +328,7 @@ async function waitForToken(
  * Prompt user to login to Matters.town
  */
 // ============================================================================
-// Test-harness escape hatch (T8a, 2026-05-28)
+// Test-harness escape hatch
 // ============================================================================
 //
 // `MOSS_MATTERS_TEST_PROFILE` lets the onboarding e2e harness bypass the
@@ -1622,9 +1622,8 @@ export async function syndicateArticle(
 /**
  * Wait for draft to be published or the browser to be closed.
  *
- * Rewritten (R6) from a `while`-loop into a single `new Promise` executor
- * with a shared `settle()` guard so exactly ONE resolution wins. Three racing
- * branches all call `settle`:
+ * A single `new Promise` executor with a shared `settle()` guard so exactly ONE
+ * resolution wins. Three racing branches all call `settle`:
  *
  *   (a) Poll loop — sleep(5s) then fetchDraft; if draft.article → settle published.
  *       Uses the `sleep` utility so tests can mock it to a no-op.
@@ -1805,15 +1804,10 @@ export function getArticleContent(article: ArticleInfo): { content: string; isHt
  * sanitizer strips any `<img>` not inside `<figure class="image">` with
  * a `<figcaption>` child, and also strips `<figure>` with any other
  * class (`moss-image`, plain `<figure>`, etc.). Smoke test against
- * `server.matters.icu` on 2026-05-27 confirmed this contract empirically
- * (see `.credentials/accounts.md` for the test wallet).
- *
- * Phase 2A of the unified-image-emission migration (2026-05-25) removed
- * the plugin's matters-shape wrap on the assumption moss's
- * `<figure class="moss-image">` output would round-trip through matters.
- * It does not — matters strips that wrap entirely. So we restore the
- * wrap, but as a matters-specific pre-upload transform (not a
- * regression of moss-core's emission). See `wrapImagesForMatters`.
+ * `server.matters.icu` confirmed this contract empirically (see
+ * `.credentials/accounts.md` for the test wallet). moss's `<figure class="moss-image">`
+ * output does not round-trip through matters, so the wrap is restored here as a
+ * matters-specific pre-upload transform. See `wrapImagesForMatters`.
  */
 /**
  * Strip moss's auto-injected article-title `<h1 class="moss-article-title">`
@@ -2086,15 +2080,15 @@ export interface MathTransformStats {
  *
  * moss P1 renders math as its own LaTeX SOURCE WITH DELIMITERS, wrapped in
  * `<code class="moss-math" data-moss-math="inline|display">` with the TeX
- * HTML-escaped. Verified against real `moss build` output 2026-07-21:
+ * HTML-escaped. Real `moss build` output:
  *
  *   <code class="moss-math" data-moss-math="inline">$E = mc^2$</code>
  *   <p><code class="moss-math" data-moss-math="display">$$ o_t = x $$</code></p>
  *   <code class="moss-math" data-moss-math="inline">$a &lt; b \&amp; c &gt; d$</code>
  *
  * Matters' write paths run `normalizeArticleHTML(sanitizeHTML(content))`
- * (matters-server putDraft/publishArticle/editArticle). Smoke-tested 2026-07-21
- * by running the REAL `@matters/matters-editor` transformers bundle over each
+ * (matters-server putDraft/publishArticle/editArticle). Behaviour below was
+ * established by running the REAL `@matters/matters-editor` transformers bundle over each
  * candidate shape:
  *
  *   - `class` is emptied (only /^language-./ on `code` survives) and `data-*`
@@ -2102,8 +2096,7 @@ export interface MathTransformStats {
  *   - The TipTap round-trip has CodeBlock but NO inline Code mark, so a bare
  *     `<code>` element is DELETED, promoting its text into the parent. Today
  *     `<code class="moss-math">$E=mc^2$</code>` already arrives as plain
- *     `$E=mc^2$` — accidentally correct, but unchosen and untested. We now
- *     make it deliberate.
+ *     `$E=mc^2$` — which the transform keeps deliberately.
  *   - Newlines OUTSIDE `<pre>` are COLLAPSED to single spaces. Verified:
  *     `<p>$$\na % note\nb\n$$</p>` → `<p>$$ a % note b $$</p>`. The newline
  *     that terminated the LaTeX comment is gone, so `b` is now commented out —
@@ -2288,7 +2281,7 @@ export function transformMathForMatters(html: string): MathTransformStats {
  *
  * matters' server-side sanitizer STRIPS that entirely (the `<audio>` vanishes
  * and the fallback text leaks out as a stray `<p>`). The only audio shape it
- * keeps — verified 2026-06-16 against `server.matters.icu` — is:
+ * keeps — verified against `server.matters.icu` — is:
  *   <figure class="audio"><audio controls><source src="URL" type="MIME"></audio>
  *     <figcaption></figcaption></figure>
  * with three hard requirements found empirically:
