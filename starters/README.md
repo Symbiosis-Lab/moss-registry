@@ -13,14 +13,14 @@ starters/
     posters/home-light.jpg   1600x1000 JPEG, the first viewport of the built home page, light scheme
     posters/home-dark.jpg    the same, dark scheme
     site/                    exactly the folder a user's new site starts as
-    .cut                     registry tooling: which paths of the full site make up site/
-    fixups.sh                registry tooling, optional: edits the cut cannot infer
-    README.md                for maintainers: what it is, what fills it and why, what was cut and why
+    .cut                     optional registry tooling: which paths of a fuller site make up site/
+    fixups.sh                optional registry tooling: edits the cut cannot infer
+    README.md                for maintainers: what it is, what fills it and why, and what was cut if it was cut
 ```
 
 `site/` is the product. The app builds it, previews it and copies it into a new folder byte for byte, so whatever is in `site/` is what the user gets, including `.moss/config.toml`, the theme, and `.moss/STARTER.md` (notes to the user on making the starter theirs). Everything beside `site/` is for the people who maintain the registry and never reaches a user.
 
-A starter is usually cut from a larger site that was built and kept elsewhere: the full site has dozens of pages, the starter keeps enough of each kind for every feature to show. `.cut` lists those paths and `scripts/cut-starter.sh` rebuilds `site/` from them, so the starter can be refreshed when the full site improves without anyone copying files by hand.
+`site/` is the whole product: the registry neither requires nor knows about any fuller version of it. A starter can be written directly in `site/`, or cut from a fuller site its author keeps elsewhere, keeping enough of each kind of page for every feature to show. `.cut`, `fixups.sh` and `scripts/cut-starter.sh` exist for that second case and are optional: `.cut` lists the paths of the fuller site, and `cut-starter.sh` rebuilds `site/` from them, so the starter can be refreshed when the fuller site improves without anyone copying files by hand.
 
 ## `manifest.json`
 
@@ -37,6 +37,7 @@ All fields are required unless marked. Consumers ignore fields they do not know.
 | `language` | string | BCP 47 tag of the site's language, such as `en` or `zh-Hant`. |
 | `min_moss_version` | string | The lowest moss release the starter is known to build clean on (`--strict`). |
 | `order` | integer | The picker shows starters in ascending `order`. |
+| `demo_url` | string, optional | An absolute `https://` URL of a live demo the author chooses to keep. It can be anything: the starter itself deployed somewhere, or a fuller site it was cut from. The registry does not host it, check it or depend on it. |
 | `tour` | array | 3 to 5 stops, each `{ "label", "path" }`. `path` is a `/`-rooted URL path to a page that exists in the built site, percent-encoded as moss writes its links (so a Chinese folder name appears as `%E7%95%AB`). The tour is what a reader is shown to see what the starter can do: the home page, a typical page, a series with previous and next, a map. |
 
 ## What every `site/` guarantees
@@ -87,6 +88,7 @@ A published starter is listed in the registry index as an entry with `"type": "s
 | `display_name` | The manifest's `name`. |
 | `description` | The manifest's `line`. |
 | `credit`, `language`, `order`, `min_moss_version`, `tour` | From the manifest. |
+| `demo_url` | From the manifest when it has one and it is a valid `https://` URL; otherwise the key is absent. |
 | `download_url`, `sha256`, `size_bytes` | The source zip. |
 | `preview_url`, `preview_sha256`, `preview_size_bytes` | The preview zip. Omitted when it was not built. |
 | `preview_moss_version` | The moss release that built the preview (what `moss --version` reports). Omitted with the other preview fields. |
@@ -105,17 +107,17 @@ A starter's failure never holds back the rest of the registry: the starters job 
 
 ## Adding a starter
 
-1. Build the full site privately, as a real site, until it is the thing you would want a stranger to start from. Fill it with words and pictures that are public domain or openly licensed, and state the basis.
-2. Write `starters/<id>/.cut`: the paths of the full site that make up the starter, one per line, with a comment on why each group is there. Keep enough of every section for its feature to show (a series needs two pages for previous and next; a map needs located pages) and no more.
-3. Run `scripts/cut-starter.sh <path-to-the-full-site> <id>`. It writes `starters/<id>/site/`, strips `uid:` lines and deploy keys, prunes the gazetteer and `sort:` lists to the pages kept, and brings every image under the size budget. If a correction cannot be inferred, put it in `starters/<id>/fixups.sh`: a small, idempotent script run with the working directory at `site/`.
+1. Write the starter's `site/`: a real small site, filled with words and pictures that are public domain or openly licensed, with the basis stated. Or, if you keep a fuller site elsewhere, cut it down (steps 2 and 3 below).
+2. Optional, to cut from a fuller site: write `starters/<id>/.cut`, the paths of the fuller site that make up the starter, one per line, with a comment on why each group is there. Keep enough of every section for its feature to show (a series needs two pages for previous and next; a map needs located pages) and no more.
+3. Optional, to cut from a fuller site: run `scripts/cut-starter.sh <path-to-the-fuller-site> <id>`. It writes `starters/<id>/site/`, strips `uid:` lines and deploy keys, prunes the gazetteer and `sort:` lists to the pages kept, and brings every image under the size budget. If a correction cannot be inferred, put it in `starters/<id>/fixups.sh`: a small, idempotent script run with the working directory at `site/`.
 4. Write `site/.moss/STARTER.md` (what to replace, how it is put together, what belongs to whom) and `starters/<id>/README.md`.
-5. Write `manifest.json`. Choose the tour by looking at the built site, then run `MOSS=… scripts/check-starters.sh` to confirm every stop resolves.
+5. Write `manifest.json`. Choose the tour by looking at the built site, then run `MOSS=… scripts/check-starters.sh` to confirm every stop resolves. Add `demo_url` if you keep a live demo.
 6. Make the posters: `MOSS=… scripts/make-posters.sh <id>`, and look at them.
 7. Run `MOSS=… scripts/check-starters.sh` once more, then open a pull request.
 
 ## Updating a starter
 
-Re-run `scripts/cut-starter.sh` against the improved full site, raise `version` in `manifest.json`, and if the home page changed run `scripts/make-posters.sh` again. A re-cut with nothing changed upstream produces no diff, so a diff after a re-cut is always a real change. CI refuses a pull request that changes `site/` or `posters/` without raising the starter's `version`.
+Edit `site/` directly, or, for a starter cut from a fuller site, re-run `scripts/cut-starter.sh` against the improved fuller site (a re-cut with nothing changed upstream produces no diff, so a diff after a re-cut is always a real change). Either way, raise `version` in `manifest.json`, and if the home page changed run `scripts/make-posters.sh` again. CI refuses a pull request that changes `site/` or `posters/` without raising the starter's `version`.
 
 A released version is final, as it is for plugins: never replace one in place, publish the next.
 
@@ -125,7 +127,7 @@ All of them live in `scripts/` and can be re-run safely.
 
 | Script | What it does |
 |---|---|
-| `cut-starter.sh <full-site> <id>` | Rebuilds `starters/<id>/site/` from the full site and `.cut`. Keeps `site/.moss/STARTER.md` and `site/.moss/templates/` across a re-cut, because they belong to the starter. |
+| `cut-starter.sh <full-site> <id>` | Optional, for starters cut from a fuller site: rebuilds `starters/<id>/site/` from it and `.cut`. Keeps `site/.moss/STARTER.md` and `site/.moss/templates/` across a re-cut, because they belong to the starter. |
 | `check-starters.sh [<id> …]` | Validates starters against this contract, and the preview moss pin against their `min_moss_version`. |
 | `fetch-moss.sh [<path>]` | Downloads the moss pinned in `moss.json` and verifies its sha256. |
 | `make-posters.sh <id>` | Builds a scratch copy, screenshots the home page light and dark at 1600x1000, writes the two JPEGs. Needs `MOSS`, Playwright with Chromium (`NODE_PATH` pointing at a `node_modules` that has it) and Pillow. |

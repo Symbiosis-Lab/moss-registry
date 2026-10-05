@@ -8,6 +8,7 @@
   "language": "zh-Hant",
   "min_moss_version": "0.15.4",
   "order": 30,
+  "demo_url": "https://zhudasnotebook.com/",
   "tour": [
     {
       "label": "Home",

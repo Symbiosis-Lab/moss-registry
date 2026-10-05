@@ -241,6 +241,16 @@ export function selectStarterReleases(releases) {
   return { selected: [...best.values()].sort((a, b) => a.id.localeCompare(b.id)), skipped };
 }
 
+function isHttpsUrl(value) {
+  if (typeof value !== "string" || /\s/.test(value)) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" && u.hostname !== "" && u.username === "" && u.password === "";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Turn one selected starter release into an index entry, from the bytes of the
  * release: manifest fields from manifest.json inside the source zip, hashes and
@@ -275,6 +285,11 @@ export function toStarterEntry(candidate, manifest, { source, preview, meta }) {
     size_bytes: source.sizeBytes,
   };
   const warnings = [];
+  // An optional link: a bad one costs the entry its link, never the entry.
+  if (manifest.demo_url !== undefined) {
+    if (isHttpsUrl(manifest.demo_url)) entry.demo_url = manifest.demo_url;
+    else warnings.push(`${tag}: manifest demo_url is not an absolute https:// URL; omitting it`);
+  }
   if (candidate.preview && preview) {
     const carrier = meta && typeof meta.preview_moss_version === "string" && meta.preview_moss_version !== "";
     if (!carrier) {

@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 STARTERS = ROOT / "starters"
@@ -72,6 +72,12 @@ def check_manifest(sid, starter, errors):
             errors.append(f"manifest: '{key}' is empty")
     if not LANG_RE.match(m["language"]):
         errors.append(f"manifest: language '{m['language']}' is not a BCP 47 tag")
+    if "demo_url" in m:
+        demo = m["demo_url"]
+        u = urlparse(demo) if isinstance(demo, str) else None
+        if (u is None or u.scheme != "https" or not u.hostname or u.username is not None
+                or u.password is not None or any(c.isspace() for c in demo)):
+            errors.append("manifest: demo_url must be an absolute https:// URL without credentials")
     tour = m["tour"]
     if not tour:
         errors.append("manifest: tour is empty")

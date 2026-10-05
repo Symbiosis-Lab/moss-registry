@@ -389,6 +389,25 @@ test("an entry lacking a field every client requires is refused", () => {
   assert.throws(() => toStarterEntry(candidate, starterManifest("other"), { ...bytesOf, meta: goodMeta }), /the tag says essays@1\.0\.0/);
 });
 
+test("demo_url is carried when the manifest has it and absent when it does not", () => {
+  const candidate = selectStarterReleases([starterRelease("essays", "1.0.0")]).selected[0];
+  const args = { ...bytesOf, meta: goodMeta };
+  const withDemo = toStarterEntry(candidate, starterManifest("essays", "1.0.0", { demo_url: "https://example.invalid/demo/" }), args);
+  assert.equal(withDemo.entry.demo_url, "https://example.invalid/demo/");
+  assert.deepEqual(withDemo.warnings, []);
+  assert.ok(!("demo_url" in toStarterEntry(candidate, starterManifest(), args).entry));
+});
+
+test("a bad demo_url costs the entry its link, not the entry", () => {
+  const candidate = selectStarterReleases([starterRelease("essays", "1.0.0")]).selected[0];
+  for (const bad of ["http://example.invalid/", "not a url", "https://user:pw@example.invalid/", "", 42, "javascript:alert(1)"]) {
+    const { entry, warnings } = toStarterEntry(candidate, starterManifest("essays", "1.0.0", { demo_url: bad }), { ...bytesOf, meta: goodMeta });
+    assert.equal(entry.id, "essays", `entry survives demo_url ${JSON.stringify(bad)}`);
+    assert.ok(!("demo_url" in entry));
+    assert.match(warnings.join("\n"), /demo_url/);
+  }
+});
+
 /** Fetcher over in-memory files; `broken` names fail the way a 404 would. */
 function fixtureFetch(files, broken = []) {
   return async (a) => {

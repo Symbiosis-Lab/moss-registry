@@ -124,6 +124,8 @@ def pack(sid: str, base: str, moss):
         "display_name": m["name"], "description": m["line"],
     }
     entry.update({k: m[k] for k in ENTRY_FIELDS})
+    if "demo_url" in m:
+        entry["demo_url"] = m["demo_url"]
     entry.update({"download_url": f"{base}/{tag}/{src_name}", "sha256": digest, "size_bytes": size})
     if moss:
         scratch, built = build_preview(moss, starter)

@@ -117,14 +117,14 @@ the registry index. There is no second publish step.
 
 A starter is a small, complete site a new moss site can begin as. The contract (layout, manifest, guarantees) is in [`starters/README.md`](starters/README.md); this is the short route through it.
 
-1. Build the full site on your own first, as a real site, and keep it outside this repository.
-2. Add `starters/<id>/.cut` listing which paths of that site make up the starter, then run `scripts/cut-starter.sh <path-to-the-full-site> <id>`. It writes `starters/<id>/site/` and removes everything that must not ship: `uid:` lines, deploy keys, build output.
+1. Write the starter as a real small site: either directly in `starters/<id>/site/`, or as a fuller site you keep outside this repository and cut down.
+2. Optional, to cut from a fuller site: add `starters/<id>/.cut` listing which paths of it make up the starter, then run `scripts/cut-starter.sh <path-to-the-fuller-site> <id>`. It writes `starters/<id>/site/` and removes everything that must not ship: `uid:` lines, deploy keys, build output.
 3. Write `site/.moss/STARTER.md` (notes for the person making the starter theirs), a maintainer `README.md`, and `manifest.json`, with a tour of three to five pages that show what the starter can do.
 4. Make the two posters with `scripts/make-posters.sh <id>` and look at them.
-5. Run `MOSS=/path/to/moss scripts/check-starters.sh`. It validates the manifest, posters and guarantees, builds each starter with `--strict` and confirms every tour page exists. CI runs the static half of it.
+5. Run `MOSS=/path/to/moss scripts/check-starters.sh`. It validates the manifest, posters and guarantees, builds each starter with `--strict` and confirms every tour page exists. CI runs it too, with a pinned moss.
 6. Open a PR touching only your starter's directory. After it merges, the publish workflow releases the new version as `starter-<id>-v<version>` and adds it to the index.
 
-To change an existing starter, re-cut it from its full site, **raise `version` in its `manifest.json`**, and re-make the posters if the home page changed. CI rejects a PR that changes a starter's `site/` or `posters/` without raising `version`, for the same reason a plugin's version must move: a released version is final, and a changed starter is a new one.
+To change an existing starter, edit its `site/` (or re-cut it from its fuller site, if it has one), **raise `version` in its `manifest.json`**, and re-make the posters if the home page changed. CI rejects a PR that changes a starter's `site/` or `posters/` without raising `version`, for the same reason a plugin's version must move: a released version is final, and a changed starter is a new one.
 
 **Licence.** Everything a starter is filled with, words and pictures alike, must be in the public domain or under an open licence that allows reuse and redistribution, because every user who picks the starter receives a copy. State the basis: in the site's About page, or in the starter's README, naming each source and why it is free to use. Material you cannot show the basis for does not go in.
 
