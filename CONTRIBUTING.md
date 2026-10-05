@@ -113,6 +113,21 @@ turnaround.
 On merge, CI packages your plugin, publishes a GitHub Release, and adds it to
 the registry index. There is no second publish step.
 
+## Contributing a starter
+
+A starter is a small, complete site a new moss site can begin as. The contract (layout, manifest, guarantees) is in [`starters/README.md`](starters/README.md); this is the short route through it.
+
+1. Build the full site on your own first, as a real site, and keep it outside this repository.
+2. Add `starters/<id>/.cut` listing which paths of that site make up the starter, then run `scripts/cut-starter.sh <path-to-the-full-site> <id>`. It writes `starters/<id>/site/` and removes everything that must not ship: `uid:` lines, deploy keys, build output.
+3. Write `site/.moss/STARTER.md` (notes for the person making the starter theirs), a maintainer `README.md`, and `manifest.json`, with a tour of three to five pages that show what the starter can do.
+4. Make the two posters with `scripts/make-posters.sh <id>` and look at them.
+5. Run `MOSS=/path/to/moss scripts/check-starters.sh`. It validates the manifest, posters and guarantees, builds each starter with `--strict` and confirms every tour page exists. CI runs the static half of it.
+6. Open a PR touching only your starter's directory.
+
+To change an existing starter, re-cut it from its full site, **raise `version` in its `manifest.json`**, and re-make the posters if the home page changed. CI rejects a PR that changes a starter's `site/` or `posters/` without raising `version`, for the same reason a plugin's version must move: a released version is final, and a changed starter is a new one.
+
+**Licence.** Everything a starter is filled with, words and pictures alike, must be in the public domain or under an open licence that allows reuse and redistribution, because every user who picks the starter receives a copy. State the basis: in the site's About page, or in the starter's README, naming each source and why it is free to use. Material you cannot show the basis for does not go in.
+
 ## How changes land
 
 Merging here publishes: a commit on `main` runs a workflow holding a token that
