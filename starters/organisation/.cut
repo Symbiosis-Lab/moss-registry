@@ -1,0 +1,73 @@
+# starters/organisation/.cut -- which paths of the full site this starter is
+# cut from make up site/.
+# One path per line, relative to the full site's root. A directory copies
+# recursively. Regenerate from the root of this repository with:
+#   scripts/cut-starter.sh <path-to-the-full-site> organisation
+#
+# The organisation starter: a society publishing its programme in its own
+# collective voice. Five nav items (Home, Reading, Circles, Calendar,
+# About): a course of reading as a series, local chapters as located pages
+# with the places map, a calendar of dated days and gatherings, notices
+# listed on the home page, a still photograph as the banner with the
+# society's name beneath it, stat tiles, a gallery inside About. Every
+# section keeps enough pages for its feature to show.
+
+# moss's own scaffold gitignores, identical between the full site and the
+# starter -- not build output, just checked-in convention.
+.moss/.gitignore
+
+# site config + gazetteer (places.toml is pruned to referenced places only)
+.moss/config.toml
+.moss/places.toml
+
+# theme + self-hosted fonts, whole directory
+.moss/theme
+
+# the banner photograph and the five other pictures of About's gallery
+# (compressed to the 1600px budget)
+assets/hall_philosophy_1898.jpg
+assets/boat_landing_1898.jpg
+assets/cottage_row_1898.jpg
+assets/athenaeum_1898.jpg
+assets/assembly_hall_1898.jpg
+assets/golden_gate_postcard_c1898.jpg
+
+# home (banner, name and mottoes, stat tiles, latest notices) and about
+# (gallery, then a metadata list)
+Chautauqua Literary and Scientific Circle.md
+About.md
+
+# reading: the year's list on the folder page + the first two monthly
+# outlines, one real prev/next pair
+Course of Reading/Course of Reading.md
+Course of Reading/01-october-1884.md
+Course of Reading/02-march-1885.md
+
+# circles: six towns in six states, so the places map reads as a country,
+# not a cluster
+Local Circles/Local Circles.md
+Local Circles/Perrysburg.md
+Local Circles/Petoskey.md
+Local Circles/Lafayette.md
+Local Circles/Minneapolis.md
+Local Circles/Mobile.md
+Local Circles/De Soto.md
+
+# calendar: the Circle's list of its days on the folder page, three
+# memorial days, and three Assembly days -- Recognition Day, 1882 is the
+# one page with its own map
+Calendar/Calendar.md
+Calendar/Founders Day.md
+Calendar/Shakspere Day.md
+Calendar/Addison Day.md
+Calendar/Recognition Day, 1882.md
+Calendar/Commencement Day, 1884.md
+Calendar/Commencement Day, 1885.md
+
+# notices: not in the nav, listed on the home page; four, one per issue
+# year plus the homily on regularity
+Notices/Notices.md
+Notices/1883-01-those-most-in-need.md
+Notices/1883-11-degrees-and-diplomas.md
+Notices/1885-03-regularity.md
+Notices/1885-04-intending-to-receive-diplomas.md

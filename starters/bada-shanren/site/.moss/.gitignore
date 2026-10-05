@@ -1,0 +1,10 @@
+identity/
+keys/
+data/*
+!data/redirects.json
+build/cache/
+build/staging/
+agents/
+history/
+build.nosync/
+cache/

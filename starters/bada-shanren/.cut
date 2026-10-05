@@ -1,0 +1,77 @@
+# starters/bada-shanren/.cut -- which paths of the full site this starter is
+# cut from make up site/.
+# One path per line, relative to the full site's root. A directory copies
+# recursively. Regenerate from the root of this repository with:
+#   scripts/cut-starter.sh <path-to-the-full-site> bada-shanren
+#
+# Selection rationale: see README.md beside this file. Only works whose
+# images have clear reuse terms are listed. Edits a mechanical cut cannot
+# infer live in fixups.sh instead of here.
+
+# moss's own scaffold gitignores, identical between the full site and the
+# starter -- not build output, just checked-in convention.
+.moss/.gitignore
+
+# site config (domain + [channels.email] dropped by cut-starter.sh)
+.moss/config.toml
+
+# theme, whole directory
+.moss/theme
+
+# home page and chronology. The home page's own cover and featured list name
+# pages and images that are not in this cut; fixups.sh repoints them.
+八大山人.md
+年表.md
+
+# 文 (writings): folder index, the 河上花歌 with its four Commons images, the
+# letter to 石濤 and three of the thirteen letters as text pages. The letters'
+# scans are left out (fixups.sh removes their image embeds); their texts
+# read complete without them. The series index page's sort: list is pruned to
+# match by scripts/prune-sort-lists.py.
+文/文.md
+文/河上花歌.md
+文/河上花歌_1.jpg
+文/河上花歌_2.jpg
+文/河上花歌_3.jpg
+文/河上花歌_4.jpg
+文/與石濤書.md
+文/致方士琯十三札/致方士琯十三札.md
+文/致方士琯十三札/專使促駕.md
+文/致方士琯十三札/只手少甦.md
+文/致方士琯十三札/窮變得意處.md
+
+# 書 (calligraphy): the 蘭亭序 (Metropolitan Museum of Art Open Access) and its
+# cover crop
+書/書.md
+書/蘭亭序.md
+書/蘭亭序.jpg
+書/蘭亭序_cover.jpg
+
+# 畫 (paintings): folder index and the works whose images carry clear reuse
+# terms: Metropolitan Museum of Art Open Access (山水冊, 荷花禽鳥圖, 雙鷹圖),
+# National Palace Museum Open Data, CC BY 4.0 (傳綮寫生冊), and Wikimedia
+# Commons files tagged PD-Art (河上花圖, 魚石圖卷)
+畫/畫.md
+畫/山水冊.md
+畫/山水冊.jpg
+畫/荷花禽鳥圖.md
+畫/荷花禽鳥圖.jpg
+畫/荷花禽鳥圖_cover.jpg
+畫/雙鷹圖.md
+畫/雙鷹圖.jpg
+畫/傳綮寫生冊.md
+畫/傳綮寫生冊.jpg
+畫/傳綮寫生冊_1.jpg
+畫/傳綮寫生冊_2.jpg
+畫/傳綮寫生冊_3.jpg
+畫/傳綮寫生冊_11.jpg
+畫/傳綮寫生冊_12.jpg
+畫/傳綮寫生冊_13.jpg
+畫/傳綮寫生冊_14.jpg
+畫/傳綮寫生冊_15.jpg
+畫/河上花圖.md
+畫/河上花圖.jpg
+畫/河上花圖_cover.jpg
+畫/河上花圖_歌.jpg
+畫/魚石圖卷.md
+畫/魚石圖卷.jpg

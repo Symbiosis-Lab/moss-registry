@@ -1,0 +1,10 @@
+---
+title: "Regularity"
+date: "1885-03"
+source: "The Chautauquan, March 1885, “Local Circles” (Gutenberg #55060). The issue is dated by month only."
+description: "Regularity is necessary to permanency."
+---
+
+Regularity is necessary to permanency. Whatever undertaking we desire to make a permanent success, we must make regular; whatever we wish to do successfully, we must do regularly. A tiresome, prosaic quality we are apt to consider it, and one which restricts our freedom. The regular return of small duties often makes them annoying, yet in large affairs regularity adds dignity and strength. It is essential for the establishment of any institution. A trite truth this may be, but trite truths are not always applied, and it is for the application of this homily to local circles that we sue.
+
+It is most desirable that your local circle should become durable. Not a club, to which you can run in as you have leisure, or which can be adjourned for other engagements; which shall run this winter, and “perhaps,” “if nothing happens,” go on next winter. Not at all. There is a higher idea embodied in the plan. The true ambition of each member of a circle should be to make it *the* literary association of the community, the leader in practical ideas, clear thinking, intelligent talk and refined manners; but to reach this goal the circle meeting must be considered too valuable to be omitted for any occasion whatever. Its object is equal to that of any institution in the town. If you wish to develop this idea, to establish your circle, to secure for it recognition as a well founded organization, regularity in meeting and attendance must be secured. It is true that a social or religious event sometimes happens for which courtesy seems to demand an adjournment. In such a case it is quite possible to select another night. The one idea upon which we would insist is that the circle be considered and conducted as a permanent institution, that it be made the intellectual center of your life. How wonderful an impetus to thought and culture is such an organization, only those who lack its influence can tell.

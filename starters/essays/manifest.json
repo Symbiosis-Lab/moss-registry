@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "essays",
+  "version": "1.0.0",
+  "name": "Essays",
+  "line": "A writer's own site: essays, talks and an about page, in plain Markdown.",
+  "credit": "Filled with Virginia Woolf's essays and lectures, 1904–1929.",
+  "language": "en",
+  "min_moss_version": "0.15.4",
+  "order": 10,
+  "tour": [
+    {
+      "label": "Home",
+      "path": "/"
+    },
+    {
+      "label": "An essay with footnotes",
+      "path": "/essays/15-modern-fiction/"
+    },
+    {
+      "label": "An essay with a route map",
+      "path": "/essays/28-to-spain/"
+    },
+    {
+      "label": "A talk in chapters, with previous and next",
+      "path": "/talks/a-room-of-one-s-own/01-but-you-may-say/"
+    },
+    {
+      "label": "Every place on one map",
+      "path": "/places/"
+    }
+  ]
+}

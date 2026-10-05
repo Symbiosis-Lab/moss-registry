@@ -1,0 +1,132 @@
+/* Organisation starter theme: the Circle's own printed programme, 1885.
+   Libre Caslon Text carries the lifted editorial prose (real italics); Old
+   Standard TT, the textbook Modern of American 1880s print shops, carries
+   headings, mottoes and numerals. Both OFL, whole files, licences in fonts/. */
+
+@font-face { font-family: "Libre Caslon Text"; font-weight: 400 700; font-style: normal;
+  font-display: swap; src: url("fonts/libre-caslon-text.woff2") format("woff2"); }
+@font-face { font-family: "Libre Caslon Text"; font-weight: 400 700; font-style: italic;
+  font-display: swap; src: url("fonts/libre-caslon-text-italic.woff2") format("woff2"); }
+@font-face { font-family: "Old Standard TT"; font-weight: 400; font-style: normal;
+  font-display: swap; src: url("fonts/old-standard-tt-400.woff2") format("woff2"); }
+@font-face { font-family: "Old Standard TT"; font-weight: 400; font-style: italic;
+  font-display: swap; src: url("fonts/old-standard-tt-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "Old Standard TT"; font-weight: 700; font-style: normal;
+  font-display: swap; src: url("fonts/old-standard-tt-700.woff2") format("woff2"); }
+
+/* Tokens only: warm paper, one lake grey-blue hue (205). Accent 7:1 on paper, muted 5:1. */
+:root {
+  --moss-color-bg: hsl(42 38% 94%);
+  --moss-color-surface: hsl(42 30% 90%);
+  --moss-color-text: hsl(30 18% 13%);
+  --moss-color-text-secondary: hsl(30 10% 28%);
+  --moss-color-muted: hsl(30 8% 37%);
+  --moss-color-accent: hsl(205 42% 28%);
+  --moss-border-light: hsl(40 20% 82%);
+  --moss-border-medium: hsl(40 14% 72%);
+  --moss-font-heading: "Old Standard TT", "Bodoni 72", Georgia, serif;
+  --moss-font-heading-weight: 700;
+  --moss-font-body: "Libre Caslon Text", Georgia, serif;
+  --moss-reading-size-base: clamp(1.0625rem, 1.02rem + 0.2vw, 1.1875rem); /* Caslon runs large; 17-19px */
+  --moss-read-leading: 1.65;
+}
+/* Dark: the lake after dusk, same hue, accent lifted to 6:1 on the ground. */
+:root[data-theme="dark"] {
+  --moss-color-bg: hsl(205 14% 10%);
+  --moss-color-surface: hsl(205 12% 14%);
+  --moss-color-text: hsl(42 28% 89%);
+  --moss-color-text-secondary: hsl(42 14% 74%);
+  --moss-color-muted: hsl(42 10% 63%);
+  --moss-color-accent: hsl(205 50% 70%);
+  --moss-border-light: hsl(205 10% 20%);
+  --moss-border-medium: hsl(205 10% 28%);
+}
+
+/* moss keys the heading token off .moss-article-title only; headings in the body need the tags too (card titles already take the token). */
+h1, h2, h3, h4, h5, h6 { font-family: var(--moss-font-heading); font-weight: var(--moss-font-heading-weight); }
+
+/* Display heading: large and tight, the date line a small caption beneath. */
+.moss-article-title {
+  font-size: clamp(2.25rem, 6vw, 3.75rem);
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+/* Datelines (page date line and card meta): small caps, lining numerals. */
+.date-line .date,
+.moss-card-meta {
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.date-line .date { font-size: 0.8125rem; }
+
+/* Home banner: the photograph carries no words, so it is cropped to a band that leaves the name in the first screen;
+   the crop keeps the Hall of Philosophy's columns and benches in frame. */
+.moss-hero img {
+  max-block-size: 56vh;
+  object-fit: cover;
+  object-position: 50% 42%;
+}
+
+/* Masthead under the banner: the Circle's name and its three mottoes, set as a title page, not as a caption on the picture. */
+.masthead {
+  text-align: center;
+  margin-block: var(--moss-space-lg);
+}
+.masthead h1 {
+  font-size: clamp(1.9rem, 4.4vw, 3.3rem);
+  line-height: 1.04;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+  margin: 0 0 var(--moss-space-md);
+}
+.masthead p {
+  font-family: var(--moss-font-heading);
+  font-style: italic;
+  font-size: clamp(1.05rem, 1.7vw, 1.3rem);
+  line-height: 1.5;
+  color: var(--moss-color-text-secondary);
+  margin: 0;
+}
+
+/* Stat tiles: display numeral, small phrase, a rule above and no card chrome. */
+.moss-grid.stats .moss-grid-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--moss-space-xs);
+  background: none;
+  border: 0;
+  border-block-start: 2px solid var(--moss-color-text);
+  border-radius: 0;
+  box-shadow: none;
+  padding: var(--moss-space-sm) 0 0;
+}
+.moss-grid.stats .moss-grid-card p { margin: 0; }
+.moss-grid.stats strong {
+  font-family: var(--moss-font-heading);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 2.8vw, 2.15rem);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  font-variant-numeric: lining-nums;
+}
+.moss-grid.stats .moss-grid-card p + p {
+  font-size: 0.875rem;
+  color: var(--moss-color-text-secondary);
+}
+
+/* A button is a quiet pill, the same weight as the text around it. */
+.moss-buttons .moss-btn { font-family: var(--moss-font-body); font-size: 0.85rem; font-weight: 400; padding: 0.3em 0.85em; border-radius: 999px; box-shadow: none; }
+.moss-buttons .moss-btn[data-role="primary"] { background: none; color: var(--moss-color-text); }
+
+/* Nav: five one-word items. On a phone the gap tightens so they hold one row. */
+@media (max-width: 26rem) { .nav-links { column-gap: 0.55rem; font-size: 0.95rem; } }
+
+/* Cards: the meta is the dateline (shared above), the title the display face. */
+.moss-card-meta {
+  font-size: 0.78rem;
+  color: var(--moss-color-muted);
+}
+.moss-card-title { font-size: clamp(1.2rem, 2.2vw, 1.5rem); line-height: 1.2; letter-spacing: -0.005em; }
+.moss-card-description { font-size: 0.95rem; }
