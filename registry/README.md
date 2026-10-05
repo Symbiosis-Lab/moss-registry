@@ -45,6 +45,8 @@ describes what has actually been released rather than what someone hand-edited.
 Every field comes from the manifest *inside* the published zip, so an entry
 cannot describe something other than the bytes it points at.
 
+The index also lists starters, as entries with `"type": "starter"` beside the plugin entries; they carry the same `id`, `version`, `display_name`, `download_url` and `sha256` fields plus a description, a tour and preview download fields (see [`starters/README.md`](../starters/README.md)). Clients skip entry types they do not know, so these entries change nothing for an app that predates them.
+
 moss fetches both files from one pinned origin:
 
 ```

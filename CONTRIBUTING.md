@@ -122,7 +122,7 @@ A starter is a small, complete site a new moss site can begin as. The contract (
 3. Write `site/.moss/STARTER.md` (notes for the person making the starter theirs), a maintainer `README.md`, and `manifest.json`, with a tour of three to five pages that show what the starter can do.
 4. Make the two posters with `scripts/make-posters.sh <id>` and look at them.
 5. Run `MOSS=/path/to/moss scripts/check-starters.sh`. It validates the manifest, posters and guarantees, builds each starter with `--strict` and confirms every tour page exists. CI runs the static half of it.
-6. Open a PR touching only your starter's directory.
+6. Open a PR touching only your starter's directory. After it merges, the publish workflow releases the new version as `starter-<id>-v<version>` and adds it to the index.
 
 To change an existing starter, re-cut it from its full site, **raise `version` in its `manifest.json`**, and re-make the posters if the home page changed. CI rejects a PR that changes a starter's `site/` or `posters/` without raising `version`, for the same reason a plugin's version must move: a released version is final, and a changed starter is a new one.
 

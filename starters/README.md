@@ -29,7 +29,7 @@ All fields are required unless marked. Consumers ignore fields they do not know.
 | Field | Type | Meaning |
 |---|---|---|
 | `schema_version` | integer | `1` |
-| `id` | string | The folder name. Lowercase letters, digits and `-`. |
+| `id` | string | The folder name. Lowercase letters, digits and `-`. It may not equal the id of a plugin. |
 | `version` | string | Semver, starting at `"1.0.0"`. Any change to `site/` or `posters/` must raise it; CI checks. |
 | `name` | string | Display name in the picker. |
 | `line` | string | One sentence: what kind of site this is, and for whom. |
@@ -62,7 +62,7 @@ The words and pictures in a starter must be public domain or openly licensed, an
 
 ## How moss uses a starter
 
-The desktop app bundles every starter's `manifest.json` and posters, so the picker works offline. When a reader chooses a starter, the app downloads that starter's source zip, checks its sha256, and copies `site/` into the new folder. For a live preview of a starter it downloads the preview zip, checks its sha256 and serves the built site from a local copy.
+The desktop app bundles every starter's `manifest.json` and posters, so the picker works offline. When a reader chooses a starter, the app downloads that starter's source zip, checks its sha256, and copies `site/` into the new folder. For a live preview of a starter it downloads the preview zip, checks its sha256 and serves the built site from a local copy. The index entries that point at these downloads are described below; clients that predate them skip those entries.
 
 `scripts/pack-starters` makes what is downloaded, into `dist/` (gitignored):
 
@@ -70,6 +70,7 @@ The desktop app bundles every starter's `manifest.json` and posters, so the pick
 |---|---|
 | `dist/starters/<id>-<version>.zip` | The source: `manifest.json`, `posters/` and `site/`, at the zip root and nothing else. |
 | `dist/starters/<id>-<version>-preview.zip` | The built site: the contents of the build output at the zip root (`index.html`, `_moss/`, `assets/`, …), without `_moss/og/`. Those are the share-card images moss draws for other sites' link previews; no page shows one, and they were a third of the largest preview. Made only when `MOSS` points at a moss binary; it is built from a scratch copy with `--strict`. |
+| `dist/starters/<id>-<version>.json` | Which moss built the preview and the sha256 of both zips. Made only with the preview. It is the third asset of the release. |
 | `dist/starters/<id>/` | The unpacked source, for inspection. |
 | `dist/starters/index-entries.json` | One registry-index entry per starter, described below. |
 
@@ -92,7 +93,15 @@ A published starter is listed in the registry index as an entry with `"type": "s
 
 URLs are `<base>/starter-<id>-v<version>/<zip name>`. The base is `https://github.com/Symbiosis-Lab/moss-registry/releases/download` unless `--base-url` says otherwise, so each starter version is a release tagged `starter-<id>-v<version>` whose assets are its two zips.
 
-**Status:** designed, not yet switched on. Nothing in this repository publishes a starter yet: the publish workflow and the index builder are unchanged, there are no `starter-*` releases, and the live index has no starter entries. Until that step lands there is nothing to download: the download and preview steps above describe the design, and the app takes its starters from a pinned commit of this repository.
+### How a starter is released and indexed
+
+When a merge to `main` carries a starter whose tag `starter-<id>-v<version>` does not exist yet, the publish workflow's `starters` job packs it and creates that release with three assets: the source zip, the preview zip, and `<id>-<version>.json`, a small file naming the moss release that built the preview (`preview_moss_version`) and the sha256 of each zip it describes. Then the index is rebuilt from the releases that exist: for each starter id it lists the highest published version, with every field read from the release itself. The manifest fields come from `manifest.json` inside the source zip, the hashes and sizes from the downloaded assets, the URLs from the release. If the `.json` is missing or its hashes disagree with the zips, the entry simply has no preview fields. A release without its source zip, or whose manifest cannot fill an entry, is skipped with a warning.
+
+Previews are built by the moss release pinned in [`moss.json`](moss.json): its version and the sha256 of its Linux binary. `scripts/fetch-moss.sh` downloads it and refuses a binary whose hash differs, and `check-starters.sh` refuses a pin lower than any starter's `min_moss_version`. Pull requests build and pack every starter with the same binary, so the Linux path is proven before merge. Moving the pin is an ordinary pull request; it does not rebuild starters already released.
+
+A released version is final. An existing tag is never touched, so fixing a starter always means raising its `version`.
+
+A starter's failure never holds back the rest of the registry: the starters job is separate from the plugin release job, and the index and `revoked.json` deploy whether or not it succeeded.
 
 ## Adding a starter
 
@@ -117,7 +126,8 @@ All of them live in `scripts/` and can be re-run safely.
 | Script | What it does |
 |---|---|
 | `cut-starter.sh <full-site> <id>` | Rebuilds `starters/<id>/site/` from the full site and `.cut`. Keeps `site/.moss/STARTER.md` and `site/.moss/templates/` across a re-cut, because they belong to the starter. |
-| `check-starters.sh [<id> …]` | Validates starters against this contract. |
+| `check-starters.sh [<id> …]` | Validates starters against this contract, and the preview moss pin against their `min_moss_version`. |
+| `fetch-moss.sh [<path>]` | Downloads the moss pinned in `moss.json` and verifies its sha256. |
 | `make-posters.sh <id>` | Builds a scratch copy, screenshots the home page light and dark at 1600x1000, writes the two JPEGs. Needs `MOSS`, Playwright with Chromium (`NODE_PATH` pointing at a `node_modules` that has it) and Pillow. |
 | `pack-starters [<id> …]` | Writes the zips and the index entries described above. |
 | `check-starter-versions.sh <base-ref>` | Fails if `site/` or `posters/` changed without a `version` bump since `<base-ref>`. |
