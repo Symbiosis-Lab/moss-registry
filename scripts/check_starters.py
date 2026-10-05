@@ -62,6 +62,8 @@ def check_manifest(sid, starter, errors):
         errors.append("manifest: id must match [a-z0-9-]+")
     if m["id"] != sid:
         errors.append(f"manifest: id '{m['id']}' must equal the folder name '{sid}'")
+    if (ROOT / "plugins" / sid).exists():
+        errors.append(f"a starter and a plugin may not share an id: plugins/{sid}/ exists")
     for key in ("version", "min_moss_version"):
         if not SEMVER_RE.match(m[key]):
             errors.append(f"manifest: {key} '{m[key]}' is not semver (x.y.z)")
@@ -202,6 +204,32 @@ def check_build(moss, sid, starter, manifest, errors):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def semver_tuple(v):
+    return tuple(int(x) for x in v.split("."))
+
+
+def check_pin(ids):
+    """The pinned preview moss must be new enough for every starter."""
+    pin_path = STARTERS / "moss.json"
+    if not pin_path.is_file():
+        return ["starters/moss.json is missing"]
+    pin = json.loads(pin_path.read_text(encoding="utf-8"))
+    if not SEMVER_RE.match(str(pin.get("version", ""))) or not re.match(r"^[0-9a-f]{64}$", str(pin.get("sha256", ""))):
+        return ["starters/moss.json needs a semver 'version' and a 64-hex 'sha256'"]
+    errors = []
+    for sid in ids:
+        mpath = STARTERS / sid / "manifest.json"
+        if not mpath.is_file():
+            continue
+        try:
+            low = json.loads(mpath.read_text(encoding="utf-8"))["min_moss_version"]
+            if SEMVER_RE.match(low) and semver_tuple(pin["version"]) < semver_tuple(low):
+                errors.append(f"starters/moss.json pins moss {pin['version']}, below {sid}'s min_moss_version {low}")
+        except (ValueError, KeyError):
+            pass  # check_manifest reports a broken manifest
+    return errors
+
+
 def main(argv):
     site_only = "--site-only" in argv
     argv = [a for a in argv if a != "--site-only"]
@@ -214,6 +242,13 @@ def main(argv):
         return 1
     moss = os.environ.get("MOSS")
     failed = 0
+    if not site_only:
+        pin_errors = check_pin(ids)
+        if pin_errors:
+            failed += 1
+            print("check-starters: preview moss pin: FAILED", file=sys.stderr)
+            for e in pin_errors:
+                print(f"  - {e}", file=sys.stderr)
     for sid in ids:
         starter = STARTERS / sid
         errors = []

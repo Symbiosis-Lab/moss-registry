@@ -11,6 +11,8 @@ Writes, under dist/ (gitignored):
   dist/starters/<id>-<version>-preview.zip the built site, files at the zip root,
                                            without the share-card images
                                            (only when MOSS is set)
+  dist/starters/<id>-<version>.json        which moss built the preview, and the hash of
+                                           each zip it describes (only when MOSS is set)
   dist/starters/index-entries.json         one registry-index entry per starter
 
 Both zips are deterministic: entries sorted, fixed timestamps and
@@ -21,6 +23,11 @@ folder). .cut, fixups.sh and README.md are registry tooling and never ship.
 The preview is built from a scratch copy of site/ with `moss build --strict`;
 nothing is ever built inside the repository, because moss writes `uid:` lines
 into the files it builds.
+
+The .json file is the third asset of a starter's release. The index builder
+reads preview_moss_version from it rather than from the repository at index
+time, so the entry says which moss built the bytes the release holds, and it
+checks the two hashes in it against the zips it downloaded.
 
 Entry URLs are <base-url>/starter-<id>-v<version>/<zip name>; the base
 defaults to this repository's GitHub release downloads.
@@ -129,9 +136,16 @@ def pack(sid: str, base: str, moss):
             pdigest, psize = write_zip(OUT / prev_name, built_files)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
+        meta = {
+            "schema_version": 1, "id": sid, "version": version,
+            "preview_moss_version": moss_version(moss),
+            "source_sha256": digest, "preview_sha256": pdigest,
+        }
+        (OUT / f"{sid}-{version}.json").write_text(
+            json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         entry.update({
             "preview_url": f"{base}/{tag}/{prev_name}", "preview_sha256": pdigest,
-            "preview_size_bytes": psize, "preview_moss_version": moss_version(moss),
+            "preview_size_bytes": psize, "preview_moss_version": meta["preview_moss_version"],
         })
     return m["order"], entry
 
