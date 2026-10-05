@@ -1,4 +1,4 @@
-# bada-shanren
+# vertical
 
 A single artist's catalogue in vertical Chinese typesetting, read from right to left: a home page, a chronology (年表), and three sections, 畫 (paintings), 書 (calligraphy) and 文 (writings). Each painting and calligraphy piece is a page with its image and the artist's own inscriptions; each writing is a page of text. The picker shows it as **Vertical**.
 

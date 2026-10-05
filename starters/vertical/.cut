@@ -1,8 +1,8 @@
-# starters/bada-shanren/.cut -- which paths of the full site this starter is
+# starters/vertical/.cut -- which paths of the full site this starter is
 # cut from make up site/.
 # One path per line, relative to the full site's root. A directory copies
 # recursively. Regenerate from the root of this repository with:
-#   scripts/cut-starter.sh <path-to-the-full-site> bada-shanren
+#   scripts/cut-starter.sh <path-to-the-full-site> vertical
 #
 # Selection rationale: see README.md beside this file. Only works whose
 # images have clear reuse terms are listed. Edits a mechanical cut cannot

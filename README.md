@@ -68,7 +68,7 @@ index, install, update, revoke — and none of it cares which kind is moving.
 
 ## Starters
 
-A **starter** is a complete small site a new moss site can begin as: real pages, a real theme and a real map, filled with public-domain or openly licensed words and pictures, so a newcomer sees a finished site before writing anything. There are three today: `essays` (a writer's own site), `organisation` (a society's site) and `bada-shanren` (a vertical Chinese site). Each lives in `starters/<id>/` with a manifest, two posters and the `site/` folder that becomes the user's. Like a theme, a starter is content moss never executes. [`starters/README.md`](starters/README.md) is the contract: what a starter contains, what it guarantees, how it is packed for download and how to add one.
+A **starter** is a complete small site a new moss site can begin as: real pages, a real theme and a real map, filled with public-domain or openly licensed words and pictures, so a newcomer sees a finished site before writing anything. There are three today: `essays` (a writer's own site), `organisation` (a society's site) and `vertical` (a vertical Chinese site). Each lives in `starters/<id>/` with a manifest, two posters and the `site/` folder that becomes the user's. Like a theme, a starter is content moss never executes. [`starters/README.md`](starters/README.md) is the contract: what a starter contains, what it guarantees, how it is packed for download and how to add one.
 
 > **Status:** the starters are checked on every pull request, and each version merged to `main` is published as a release (`starter-<id>-v<version>`, with a source zip and a preview zip) and listed in the live index as a `"type": "starter"` entry. Clients skip index entries of a type they do not know.
 

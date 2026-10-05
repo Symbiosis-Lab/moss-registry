@@ -141,4 +141,4 @@ All of them live in `scripts/` and can be re-run safely.
 |---|---|---|---|
 | [`essays`](essays/) | Essays | en | A writer's own site: essays, talks and an about page. |
 | [`organisation`](organisation/) | Organisation | en | A society's site: a course of reading, local circles on a map, a calendar, notices. |
-| [`bada-shanren`](bada-shanren/) | Vertical | zh-Hant | A vertical Chinese site, read right to left: writings, calligraphy, paintings. |
+| [`vertical`](vertical/) | Vertical | zh-Hant | A vertical Chinese site, read right to left: writings, calligraphy, paintings. |

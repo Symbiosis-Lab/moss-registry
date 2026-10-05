@@ -301,7 +301,7 @@ const starterManifest = (id = "essays", version = "1.0.0", extra = {}) => ({
 });
 
 test("a starter tag parses, and a plugin tag does not", () => {
-  assert.deepEqual(parseStarterTag("starter-bada-shanren-v1.0.0"), { id: "bada-shanren", version: "1.0.0" });
+  assert.deepEqual(parseStarterTag("starter-vertical-v1.0.0"), { id: "vertical", version: "1.0.0" });
   assert.equal(parseStarterTag("github-v1.5.0"), null);
   assert.equal(parseStarterTag("starter-v1.0.0"), null);
   assert.equal(parseStarterTag("starter-essays-v1.0"), null);
@@ -322,13 +322,13 @@ test("starter selection ignores plugins, takes the highest version, and accounts
     starterRelease("essays", "1.10.0"),
     starterRelease("essays", "1.9.0"),
     starterRelease("organisation", "1.0.0", { draft: true }),
-    starterRelease("bada-shanren", "1.0.0", { prerelease: true }),
+    starterRelease("vertical", "1.0.0", { prerelease: true }),
     starterRelease("lonely", "1.0.0", { names: ["lonely-1.0.0-preview.zip"] }),
   ]);
   assert.deepEqual(selected.map((s) => s.tag), ["starter-essays-v1.10.0"]);
   assert.equal(reasonFor(skipped, "starter-essays-v1.9.0"), "superseded by starter-essays-v1.10.0");
   assert.equal(reasonFor(skipped, "starter-organisation-v1.0.0"), "draft");
-  assert.equal(reasonFor(skipped, "starter-bada-shanren-v1.0.0"), "prerelease");
+  assert.equal(reasonFor(skipped, "starter-vertical-v1.0.0"), "prerelease");
   assert.match(reasonFor(skipped, "starter-lonely-v1.0.0"), /no lonely-1\.0\.0\.zip asset/);
   assert.ok(!skipped.some((s) => s.tag === "github-v1.5.0"));
 });

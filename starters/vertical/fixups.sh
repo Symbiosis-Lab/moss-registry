@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# starters/bada-shanren/fixups.sh
+# starters/vertical/fixups.sh
 #
 # One-off textual corrections a mechanical cut cannot infer, because they are
 # editorial calls rather than integrity checks (integrity checks -- a dangling
