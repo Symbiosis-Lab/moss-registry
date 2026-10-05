@@ -116,12 +116,111 @@ jobs:
 
           echo "released $published package(s)"
 
+  # Starters are released here, in a job of their own, and nothing in the plugin
+  # job above knows about them. It has no `needs`, so a plugin failure does not
+  # stop starters from being cut, and (below) a starter failure does not stop
+  # the index from deploying: the index and revoked.json carry every installed
+  # app's catalog and kill list, and a starter must never be able to hold those
+  # back. A released starter version is final: a tag that exists is never touched.
+  #
+  # The timeout exists so the index job is never left waiting on a hung starters
+  # job. A job that hits its timeout reports `failure` to `needs.starters.result`
+  # (`cancelled` is only for a cancelled run), which the index condition below
+  # tolerates, so the index still deploys.
+  starters:
+    name: cut missing starter releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags are the version record
+
+      - name: Pack and release every starter whose tag is missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          # One starter failing must not stop the others, so failures are
+          # counted and the job fails at the end, not at the first.
+          moss=""
+          failed=0
+          published=0
+          for dir in starters/*/; do
+            dir="${dir%/}"
+            id="$(basename "$dir")"
+            manifest="$dir/manifest.json"
+            [ -f "$manifest" ] || { echo "$id: no manifest.json, skipping"; continue; }
+
+            version="$(jq -r '.version' "$manifest")"
+            tag="starter-${id}-v${version}"
+
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$id: $tag already released"
+              continue
+            fi
+
+            echo "::group::$id -> $tag"
+            # The pinned moss (starters/moss.json), downloaded once and
+            # sha256-verified. Without it no preview can be built, and a
+            # release without its preview would be final, so stop here.
+            if [ -z "$moss" ]; then
+              if ! moss="$(scripts/fetch-moss.sh)"; then
+                echo "::error::could not fetch the pinned moss; no starter can be released"
+                echo "::endgroup::"
+                failed=1
+                break
+              fi
+            fi
+
+            if ! MOSS="$moss" scripts/pack-starters "$id"; then
+              echo "::error::$id: packing failed"
+              echo "::endgroup::"
+              failed=1
+              continue
+            fi
+
+            files=("dist/starters/${id}-${version}.zip" "dist/starters/${id}-${version}-preview.zip" "dist/starters/${id}-${version}.json")
+            missing=0
+            for f in "${files[@]}"; do [ -f "$f" ] || { echo "::error::$id: pack produced no $f"; missing=1; }; done
+            if [ "$missing" = 1 ]; then
+              echo "::endgroup::"
+              failed=1
+              continue
+            fi
+
+            if gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+                 --title "$id $version" \
+                 --notes "Built from \`$dir\` at ${GITHUB_SHA}. See starters/README.md for what a starter contains."; then
+              published=$((published + 1))
+            else
+              echo "::error::$id: gh release create failed"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "released $published starter(s)"
+          exit "$failed"
+
   index:
     name: index and deploy
     # Always: the index must be regenerated even when nothing new was cut, since
     # a dispatch from moss arrives without this repo changing at all.
-    needs: release
-    if: always() && needs.release.result != 'failure'
+    #
+    # Runs when the plugin release job did not fail, exactly as before starters
+    # existed. The starters job is waited for (so a starter cut in this run is
+    # indexed in this run) but its failure or skip is tolerated: only a
+    # cancelled run stops here. A starters job that timed out reports `failure`,
+    # so it is tolerated like any other starter failure. The index builder treats starters as optional
+    # too, so a starter problem can never keep index.json or revoked.json from
+    # deploying.
+    needs: [release, starters]
+    if: always() && needs.release.result != 'failure' && needs.starters.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       contents: read

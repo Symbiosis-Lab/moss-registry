@@ -66,6 +66,45 @@ export function parseReleaseTag(tag) {
   return { id, version };
 }
 
+// ---------------------------------------------------------------- starters --
+// A starter version is a release tagged `starter-<id>-v<semver>` with up to
+// three assets. These helpers are separate from the plugin ones above on
+// purpose: nothing about how plugin tags and assets are named depends on them.
+
+/** Same id grammar scripts/check_starters.py enforces on the folder name. */
+export const STARTER_ID_RE = /^[a-z0-9-]+$/;
+
+export function starterTagFor(id, version) {
+  return `starter-${id}-v${version}`;
+}
+
+/** The source zip: manifest.json, posters/ and site/. */
+export function starterSourceAssetFor(id, version) {
+  return `${id}-${version}.zip`;
+}
+
+/** The built site, without the share-card images. Optional. */
+export function starterPreviewAssetFor(id, version) {
+  return `${id}-${version}-preview.zip`;
+}
+
+/** Which moss built the preview, and the hashes of the zips it describes. Optional. */
+export function starterMetaAssetFor(id, version) {
+  return `${id}-${version}.json`;
+}
+
+/** Split `starter-<id>-v<semver>` into id and version, or null. */
+export function parseStarterTag(tag) {
+  const t = String(tag);
+  if (!t.startsWith("starter-")) return null;
+  const at = t.lastIndexOf("-v");
+  if (at < "starter-".length + 1) return null;
+  const id = t.slice("starter-".length, at);
+  const version = t.slice(at + 2);
+  if (!STARTER_ID_RE.test(id) || !SEMVER_RE.test(version)) return null;
+  return { id, version };
+}
+
 /**
  * A `requires` entry is one of two shapes. `execute_binary:<basename>` grants
  * exactly one executable; the bare `execute_binary` grants every one of them
