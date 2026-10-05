@@ -29,3 +29,7 @@ npm-debug.log*
 # package-lock.json
 # Cargo.lock
 .worktrees/
+
+# Packed starters (scripts/pack-starters)
+dist/
+__pycache__/
