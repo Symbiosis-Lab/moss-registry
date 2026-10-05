@@ -8,6 +8,7 @@
   "language": "en",
   "min_moss_version": "0.15.4",
   "order": 20,
+  "demo_url": "https://chautauqua-circle.mosspub.com/",
   "tour": [
     {
       "label": "Home",
