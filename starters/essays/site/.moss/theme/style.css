@@ -1,0 +1,116 @@
+/* Intro starter theme: one hue, a fixed measure, fluid type, colours as
+   variables. A Bloomsbury sage, with Fraunces for display and Literata for
+   text. */
+
+@font-face { font-family: "Fraunces"; font-weight: 400; font-style: normal;
+  font-display: swap; src: url("fonts/fraunces-display.woff2") format("woff2"); }
+@font-face { font-family: "Literata"; font-weight: 400; font-style: normal;
+  font-display: swap; src: url("fonts/literata-400.woff2") format("woff2"); }
+@font-face { font-family: "Literata"; font-weight: 400; font-style: italic;
+  font-display: swap; src: url("fonts/literata-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "Literata"; font-weight: 700; font-style: normal;
+  font-display: swap; src: url("fonts/literata-700.woff2") format("woff2"); }
+
+:root {
+  /* One hue (150, sage), one saturation (20%); light/dark invert the same
+     two lightness stops, as before. Computed WCAG contrast (relative-luminance formula, not
+     eyeballed): body text 14%-on-94% (and its 94%-on-14% dark inverse) =
+     13.13:1, clearing the 7:1 target with room to spare. Accent cannot
+     share one lightness across both modes and still clear 4.5:1 against
+     both a 94%-L and a 14%-L page (see the essays theme's earlier rose
+     attempt) -- 36% vs the light page = 5.07:1, 62% vs the dark page =
+     6.28:1, each its own AA-plus pair. */
+  --moss-color-bg: hsl(150 20% 94%);
+  --moss-color-text: hsl(150 20% 14%);
+  --moss-color-accent: hsl(150 20% 36%);
+  /* The dateline (below) rides --moss-color-muted, not the body/accent pair
+     above -- moss's own stock muted value against this sage page measured
+     4.56:1 light / 4.70:1 dark, under a 4.8:1 target. 37% light = 4.86:1,
+     54% dark = 5.07:1 (same relative-luminance formula as above). Originally
+     tuned for the footer too, before the "no footer" route removed footer.md entirely. */
+  --moss-color-muted: hsl(150 20% 37%);
+  --moss-font-heading: "Fraunces", Georgia, "Times New Roman", serif;
+  --moss-font-heading-weight: 400;
+  --moss-font-body: "Literata", Georgia, serif;
+  /* Utopia-style fluid step: 19px at a 320px viewport to 21px at 1280px
+     (ratio 21/19 ~= 1.105 -- body text stays a subtle fluid nudge, not a
+     display-type jump). slope = (21-19)/(1280-320) = 1/480 =~ 0.2083vw;
+     intercept = 19px - 320px*slope = 18.33px = 1.1458rem. */
+  --moss-reading-size-base: clamp(1.1875rem, 1.1458rem + 0.2083vw, 1.3125rem);
+  --moss-read-leading: 1.6;
+  /* 42x reading-size is moss's own default and, by its own token comment,
+     already ~65-67ch for a body serif -- the fixed measure this system
+     asks for (unlike the fluid type above, the character count must NOT
+     move with viewport). Left as the default rather than re-derived per
+     font: content-width tracks reading-size, not any one font's own
+     glyph metrics, which is what keeps it font-stable in the first place. */
+}
+:root[data-theme="dark"] {
+  --moss-color-bg: hsl(150 20% 14%);
+  --moss-color-text: hsl(150 20% 94%);
+  --moss-color-accent: hsl(150 20% 62%);
+  --moss-color-muted: hsl(150 20% 54%);
+}
+
+/* moss keys --moss-font-heading off .moss-article-title, not the h1-h6 tags
+   -- a hand-authored heading (the home name; Essays.md/Talks.md) inherited
+   body font silently. Found by measuring computed font-family, not by eye. */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--moss-font-heading);
+}
+
+/* No forced min-height/vertical-centre: on a page this short, a 70vh box
+   pushed the footer a full scroll below the fold for no reason. Ordinary
+   flow, sized to sit with the nav and moss's own (now content-free) footer
+   in one 1280x800 screen on purpose, rather than stretched to fill
+   whatever the viewport is. */
+body[data-page="home"] h1 {
+  font-size: clamp(2.5rem, 7vw, 5.25rem);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  /* Title-page placement, not top-of-page: baseline sits near the upper
+     third of the viewport (23vh) minus 1.5x the heading's own font-size,
+     so the smaller type at narrow widths gets proportionately more of that
+     budget back -- checked at 1280x800 (baseline ~33.4%) and 390x844
+     (~33.5%), both still one screen, no scroll. */
+  margin-top: calc(23vh - 1.5em);
+  margin-bottom: clamp(0.5rem, 2vh, 1rem);
+}
+
+/* Her own introduction, quieter than the name so the name still dominates:
+   Literata italic (not the display face), centred, a narrow 32ch measure
+   so it reads as a single held line/two rather than a paragraph, set well
+   below the name via margin-top. There is no second (attribution) line any
+   more -- her sentence carries no citation, and its source lives only in
+   this page's frontmatter -- so only the one rule remains. */
+body[data-page="home"] article.container > h1 + p {
+  font-family: var(--moss-font-body);
+  font-style: italic;
+  color: var(--moss-color-muted);
+  text-align: center;
+  /* 32ch reads well once there's room for it, but a bare ch value doesn't
+     yield at narrow widths -- it's set by glyph metrics, not viewport, so
+     at 390px it can run past the container's own padded edge (checked:
+     overflowed and clipped the line ends at 390x844 before this). The
+     vw ceiling only binds below ~430px (32ch computes under 88vw everywhere
+     wider than that in this font), so desktop/tablet are unaffected. */
+  max-width: min(32ch, 88vw);
+  margin: clamp(2rem, 6vh, 3.5rem) auto 0;
+}
+
+/* Five nav items (Home, Essays, Talks, Fiction, About) overflow moss's own
+   19px narrow-width column-gap by about 2px at 390px -- measured directly
+   (sum of the five link widths plus four 19px gaps = ~284px against a 282px
+   available .nav-links box), not eyeballed -- which wraps "About" onto a
+   second row. moss's hamburger collapse only engages below 20rem (320px),
+   so above that the nav is expected to fit one row on its own rather than
+   fall back to a menu. 16px leaves about 10px of margin at 390px and only
+   applies under the same (max-width: 48rem), (pointer: coarse) condition
+   moss's own rule uses, so wider layouts are untouched. */
+@media (max-width: 48rem), (pointer: coarse) {
+  .nav-links {
+    column-gap: 16px;
+  }
+}
+

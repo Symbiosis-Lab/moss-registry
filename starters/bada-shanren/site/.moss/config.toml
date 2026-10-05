@@ -1,0 +1,6 @@
+schema_version = 6
+
+[site]
+lang = "zh-hant"
+typesetting = "vertical"
+implicit_figure = false

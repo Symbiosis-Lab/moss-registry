@@ -1,0 +1,41 @@
+["Chautauqua"]
+lat = 42.207955
+lng = -79.469229
+precision = "city"
+parent = "New York"
+
+["Perrysburg"]
+lat = 41.5503
+lng = -83.63
+precision = "city"
+parent = "Ohio"
+
+["Petoskey"]
+lat = 45.3733
+lng = -84.9553
+precision = "city"
+parent = "Michigan"
+
+["Lafayette"]
+lat = 40.4172
+lng = -86.8786
+precision = "city"
+parent = "Indiana"
+
+["Minneapolis"]
+lat = 44.9819
+lng = -93.2692
+precision = "city"
+parent = "Minnesota"
+
+["Mobile"]
+lat = 30.7277
+lng = -88.0527
+precision = "city"
+parent = "Alabama"
+
+["De Soto"]
+lat = 38.1406
+lng = -90.5575
+precision = "city"
+parent = "Missouri"

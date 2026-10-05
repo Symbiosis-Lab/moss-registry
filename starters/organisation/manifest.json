@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "organisation",
+  "version": "1.0.0",
+  "name": "Organisation",
+  "line": "A society's site: its course of reading, local circles on a map, a calendar of days, notices.",
+  "credit": "Filled with the Chautauqua Literary and Scientific Circle's own pages, 1882–1885.",
+  "language": "en",
+  "min_moss_version": "0.15.4",
+  "order": 20,
+  "tour": [
+    {
+      "label": "Home",
+      "path": "/"
+    },
+    {
+      "label": "A course of reading, with previous and next",
+      "path": "/course-of-reading/01-october-1884/"
+    },
+    {
+      "label": "A calendar of days",
+      "path": "/calendar/"
+    },
+    {
+      "label": "A day with its own map",
+      "path": "/calendar/recognition-day-1882/"
+    },
+    {
+      "label": "Local circles across the country",
+      "path": "/places/"
+    }
+  ]
+}

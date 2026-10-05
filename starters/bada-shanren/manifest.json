@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "bada-shanren",
+  "version": "1.0.0",
+  "name": "Vertical",
+  "line": "A vertical Chinese site, read right to left: writings, calligraphy and paintings.",
+  "credit": "Filled with the works and words of 八大山人 (Zhu Da, 1626–1705).",
+  "language": "zh-Hant",
+  "min_moss_version": "0.15.4",
+  "order": 30,
+  "tour": [
+    {
+      "label": "Home",
+      "path": "/"
+    },
+    {
+      "label": "Paintings",
+      "path": "/%E7%95%AB/"
+    },
+    {
+      "label": "A painting",
+      "path": "/%E7%95%AB/%E9%9B%99%E9%B7%B9%E5%9C%96/"
+    },
+    {
+      "label": "A letter in a series, with previous and next",
+      "path": "/%E6%96%87/%E8%87%B4%E6%96%B9%E5%A3%AB%E7%90%AF%E5%8D%81%E4%B8%89%E6%9C%AD/%E5%B0%88%E4%BD%BF%E4%BF%83%E9%A7%95/"
+    },
+    {
+      "label": "Chronology",
+      "path": "/%E5%B9%B4%E8%A1%A8/"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+["Haworth"]
+lat = 53.8315
+lng = -1.9551
+precision = "city"
+parent = "England"
+
+["Cambridge"]
+lat = 52.2081
+lng = 0.1225
+precision = "city"
+parent = "England"
+
+["Dieppe"]
+lat = 49.9250
+lng = 1.0750
+precision = "city"
+parent = "France"
+
+["Bordeaux"]
+lat = 44.8400
+lng = -0.5800
+precision = "city"
+parent = "France"
+
+["Sierra Nevada"]
+lat = 37.0855
+lng = -3.1875
+precision = "region"
+parent = "Spain"
+
+["Alpujarras"]
+lat = 36.9333
+lng = -3.3333
+precision = "region"
+parent = "Spain"
+
+["Hayes Court"]
+lat = 51.3667
+lng = 0.0167
+precision = "city"
+parent = "England"

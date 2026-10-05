@@ -1,14 +1,10 @@
 # moss-registry
 
-> Plugins and themes for [moss](https://mosspub.com) — and the registry that
-> distributes them.
+> Plugins, themes and starters for [moss](https://mosspub.com) — and the registry that distributes them.
 
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-This repository holds the source of everything moss can install — plugins and
-themes, first-party and community alike — plus the registry metadata the app
-reads to offer them. **Pull requests are welcome** — see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+This repository holds the source of everything moss can install or begin a site from — plugins, themes and starter sites, first-party and community alike — plus the registry metadata the app reads to offer them. **Pull requests are welcome** — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Plugins and themes
 
@@ -69,6 +65,12 @@ index, install, update, revoke — and none of it cares which kind is moving.
 > and force-pushed on each sync — which is why older docs said PRs could not be
 > merged. That is no longer true: this repo is now the source of truth for
 > plugin code.
+
+## Starters
+
+A **starter** is a complete small site a new moss site can begin as: real pages, a real theme and a real map, filled with public-domain or openly licensed words and pictures, so a newcomer sees a finished site before writing anything. There are three today: `essays` (a writer's own site), `organisation` (a society's site) and `bada-shanren` (a vertical Chinese site). Each lives in `starters/<id>/` with a manifest, two posters and the `site/` folder that becomes the user's. Like a theme, a starter is content moss never executes. [`starters/README.md`](starters/README.md) is the contract: what a starter contains, what it guarantees, how it is packed for download and how to add one.
+
+> **Status:** the starters are checked on every pull request, but publishing them is designed and not yet switched on. There are no starter releases and no `starter` entries in the live index; the publish workflow and the index builder are unchanged, and clients skip index entries of a type they do not know.
 
 ## How distribution works
 
@@ -135,6 +137,10 @@ plugins/<id>/        a published plugin
   .generated         only on generated dirs — source of truth is moss
 themes/<id>/         a published theme (planned): style.css, assets, manifest,
                      preview.png — no executable entry point
+starters/<id>/       a starter site: manifest.json, posters/, site/ (what a user's
+                     new site starts as), plus .cut, fixups.sh and README.md
+                     for maintainers — see starters/README.md
+scripts/             tooling for starters: cut, check, posters, pack
 registry/
   revoked.json       versions moss must refuse to load (the kill switch)
 ```
@@ -181,3 +187,5 @@ oldest moss you support with `min_moss_version` in your manifest.
 ## License
 
 MIT — see [LICENSE](LICENSE). Contributions are accepted under the same license.
+
+The MIT license covers the code and the tooling. What a starter is filled with keeps its own status: public domain, or the open licence its README names.

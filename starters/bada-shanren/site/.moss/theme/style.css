@@ -1,0 +1,60 @@
+:root {
+  --moss-color-bg: #f8f5f0;
+  --moss-color-text: #1a1a1a;
+  --moss-color-accent: #c04020;
+  --moss-color-surface: #f0ebe3;
+  --moss-color-muted: #7a7570;
+  --moss-font-body: "Noto Serif TC", "Source Han Serif TC", "Songti TC", "Noto Serif SC", serif;
+  --moss-font-heading: "Noto Serif TC", "Source Han Serif TC", "Songti TC", "Noto Serif SC", serif;
+  --moss-content-width: 50ch;
+  --moss-space-xl: 4rem;
+  --moss-space-2xl: 6rem;
+  --moss-reading-size-base: 1.2rem;
+}
+
+/* 夜色: the same five tokens for dark mode. moss flips `data-theme` on <html>;
+   a theme that redeclares a token on :root must redeclare it here too, or the
+   page stays light while moss's own dark chrome goes dark. */
+:root[data-theme="dark"] {
+  --moss-color-bg: #1c1914;
+  --moss-color-text: #e6dfd3;
+  --moss-color-accent: #e06a48;
+  --moss-color-surface: #27221b;
+  --moss-color-muted: #9b938a;
+}
+
+/* 留白: generous line height for classical Chinese */
+main > article.container {
+  line-height: 2;
+}
+
+/* More breathing room between collection items */
+.moss-cards[data-layout="list"] {
+  gap: var(--moss-space-xl);
+  /* 全幅不裁: a painting's middle is often blank paper, so moss's default
+     centre crop made 魚、孤禽圖、山水冊 read as missing images. Show the whole
+     work in the thumbnail box instead (2026-09-23). */
+  --moss-card-cover-fit: contain;
+}
+
+/* 圖版在正文: 每件的畫是正文第一段 `::: {.plate}`，其後一行原作尺寸。
+   尺寸行與正文同為直排，沿行居中，即落在畫旁、與畫上下對齊 (2026-09-23)。 */
+.plate > p + p {
+  text-align: center;
+  color: var(--moss-color-muted);
+  font-size: var(--moss-size-sm);
+}
+
+/* 直排時畫與尺寸各佔一行、沿行居中：畫比欄短時，尺寸仍對齊畫的中線。 */
+body[data-typesetting="vertical"] .plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 起句與三架之間留一段大白。首頁開篇四句自題之後，即是書畫文三卡；
+   moss 預設的段間距（24px）在此太促，開篇與其目錄之間該有一停頓。
+   只認緊接段落的那一格，故三卡與其下六卡之間不受影響。 */
+main > article.container > p + .moss-grid {
+  margin-block-start: var(--moss-space-xl);
+}
