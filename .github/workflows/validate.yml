@@ -165,23 +165,42 @@ jobs:
             node .github/scripts/validate-revocations.mjs --new registry/revoked.json
           fi
 
-  # Starters are sites, not code moss runs, so there is nothing to build here:
-  # the checks are static (manifest, posters, the guarantees every site/ makes)
-  # and the version rule. The build half of check-starters.sh needs a moss
-  # binary, which this powerless gate does not have; maintainers run it with
-  # MOSS set before opening the PR.
+  # Starters are sites, not code moss runs, so there is nothing of ours to
+  # build: the checks are static (manifest, posters, the guarantees every site/
+  # makes) plus the version rule. They are also built and packed here, with the
+  # same hash-pinned moss binary the publish workflow uses, so a starter that
+  # builds on a maintainer's machine but not on Linux fails on the PR instead of
+  # on main.
+  #
+  # This job executes a downloaded binary. It is safe to do so because the
+  # binary is fixed by the sha256 in starters/moss.json (a PR that changes that
+  # pin is visible in its own diff) and because the job's token is read-only:
+  # nothing from the PR is given write access to anything.
   starters:
     name: starters
     needs: detect
     if: needs.detect.outputs.starters == 'true'
     runs-on: ubuntu-latest
+    # Bounds a hung build; the same limit as the publish job.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check starters against the contract
+      - name: Fetch the pinned moss (sha256-verified)
+        id: moss
+        run: echo "path=$(scripts/fetch-moss.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Check starters against the contract, and build them
+        env:
+          MOSS: ${{ steps.moss.outputs.path }}
         run: scripts/check-starters.sh
+
+      - name: Pack starters (dry run of what publish releases)
+        env:
+          MOSS: ${{ steps.moss.outputs.path }}
+        run: scripts/pack-starters
 
       # A starter that changed without a new version would be a new thing
       # under an old number, which is exactly what the version exists to

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "id": "bada-shanren",
+  "id": "vertical",
   "version": "1.0.0",
   "name": "Vertical",
   "line": "A vertical Chinese site, read right to left: writings, calligraphy and paintings.",
@@ -8,6 +8,7 @@
   "language": "zh-Hant",
   "min_moss_version": "0.15.4",
   "order": 30,
+  "demo_url": "https://zhudasnotebook.com/",
   "tour": [
     {
       "label": "Home",

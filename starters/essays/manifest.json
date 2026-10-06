@@ -8,6 +8,7 @@
   "language": "en",
   "min_moss_version": "0.15.4",
   "order": 10,
+  "demo_url": "https://virginia-woolf.mosspub.com/",
   "tour": [
     {
       "label": "Home",
