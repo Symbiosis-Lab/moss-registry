@@ -264,3 +264,26 @@ jobs:
 
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  # Reads the deployed index the way a client does and re-downloads every
+  # starter zip it names, checking sha256 and size. It runs after the deploy and
+  # nothing depends on it, so index.json and revoked.json are already live
+  # whatever it finds; a red result here means a starter's release assets no
+  # longer match the index and installs of it will fail on users' machines.
+  verify:
+    name: verify published starters
+    needs: index
+    if: always() && needs.index.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Re-download every starter zip through the live index
+        run: node .github/scripts/verify-published.mjs --index-url "https://symbiosis-lab.org/moss-registry/index.json" --serial "${{ github.run_number }}"
