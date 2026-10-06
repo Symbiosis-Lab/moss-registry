@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "id": "vertical",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Vertical",
-  "line": "A vertical Chinese site, read right to left: writings, calligraphy and paintings.",
+  "line": "A vertical Chinese site.",
   "credit": "Filled with the works and words of 八大山人 (Zhu Da, 1626–1705).",
   "language": "zh-Hant",
   "min_moss_version": "0.15.4",

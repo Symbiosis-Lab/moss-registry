@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "id": "essays",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Essays",
-  "line": "A writer's own site: essays, talks and an about page, in plain Markdown.",
+  "line": "An essay collection.",
   "credit": "Filled with Virginia Woolf's essays and lectures, 1904–1929.",
   "language": "en",
   "min_moss_version": "0.15.4",
