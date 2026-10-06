@@ -25,6 +25,7 @@ import {
   starterSourceAssetFor,
   starterPreviewAssetFor,
   starterMetaAssetFor,
+  starterPosterAssetFor,
 } from "./registry-rules.mjs";
 
 export const SCHEMA_VERSION = 1;
@@ -236,6 +237,10 @@ export function selectStarterReleases(releases) {
       source,
       preview: named(starterPreviewAssetFor(id, version)),
       meta: named(starterMetaAssetFor(id, version)),
+      posters: {
+        light: named(starterPosterAssetFor(id, version, "light")),
+        dark: named(starterPosterAssetFor(id, version, "dark")),
+      },
     });
   }
   return { selected: [...best.values()].sort((a, b) => a.id.localeCompare(b.id)), skipped };
@@ -257,14 +262,17 @@ function isHttpsUrl(value) {
  * sizes from the downloaded assets, URLs from the release's own asset URLs.
  *
  * `source` and `preview` are { sha256, sizeBytes } (preview null when absent);
- * `meta` is the parsed sidecar json or null. The four preview fields come
+ * `meta` is the parsed sidecar json or null, `posters` is { light, dark } of
+ * { sha256, sizeBytes } (either may be missing). The poster fields (url, sha256
+ * and size for light and dark) also come together or not at all: both posters
+ * attached, and the sidecar naming the same hashes. The four preview fields come
  * together or not at all: they are omitted when the preview or the sidecar is
  * missing, or when the sidecar's hashes disagree with the zips it describes
  * (it would then be naming a different build). Returns { entry, warnings };
  * throws when the entry would lack a field clients require, because one such
  * entry fails the whole index for every installed app.
  */
-export function toStarterEntry(candidate, manifest, { source, preview, meta }) {
+export function toStarterEntry(candidate, manifest, { source, preview, meta, posters = {} }) {
   const { id, version, tag } = candidate;
   if (manifest?.id !== id || manifest?.version !== version) {
     throw new Error(`${tag}: manifest.json says ${manifest?.id}@${manifest?.version}, the tag says ${id}@${version}`);
@@ -303,6 +311,20 @@ export function toStarterEntry(candidate, manifest, { source, preview, meta }) {
       entry.preview_moss_version = meta.preview_moss_version;
     }
   }
+  if (candidate.posters?.light || candidate.posters?.dark) {
+    const both = candidate.posters.light && candidate.posters.dark && posters.light && posters.dark;
+    if (!both) {
+      warnings.push(`${tag}: poster assets incomplete or unreadable; omitting poster fields`);
+    } else if (meta?.poster_light_sha256 !== posters.light.sha256 || meta?.poster_dark_sha256 !== posters.dark.sha256) {
+      warnings.push(`${tag}: ${starterMetaAssetFor(id, version)} does not name the attached posters; omitting poster fields`);
+    } else {
+      for (const scheme of ["light", "dark"]) {
+        entry[`poster_${scheme}_url`] = candidate.posters[scheme].browser_download_url;
+        entry[`poster_${scheme}_sha256`] = posters[scheme].sha256;
+        entry[`poster_${scheme}_size_bytes`] = posters[scheme].sizeBytes;
+      }
+    }
+  }
   for (const key of CLIENT_REQUIRED_FIELDS) {
     if (typeof entry[key] !== "string" || entry[key] === "") {
       throw new Error(`${tag}: entry would lack required field "${key}"; refusing to emit it`);
@@ -338,13 +360,25 @@ export async function buildStarterEntries(releases, { fetchAsset, readManifest, 
       if (candidate.preview) {
         try {
           preview = hashed(await fetchAsset(candidate.preview));
-          if (candidate.meta) meta = JSON.parse((await fetchAsset(candidate.meta)).bytes.toString("utf8"));
         } catch (e) {
-          warn(`${candidate.tag}: preview assets unreadable (${e.message}); omitting preview fields`);
-          preview = null;
+          warn(`${candidate.tag}: preview unreadable (${e.message}); omitting preview fields`);
         }
       }
-      const { entry, warnings } = toStarterEntry(candidate, manifest, { source: hashed(src), preview, meta });
+      // The sidecar vouches for the posters as well as the zips, so it is read on its own.
+      if (candidate.meta) {
+        try {
+          meta = JSON.parse((await fetchAsset(candidate.meta)).bytes.toString("utf8"));
+        } catch (e) {
+          warn(`${candidate.tag}: ${candidate.meta.name} unreadable (${e.message}); omitting preview and poster fields`);
+        }
+      }
+      const posters = {};
+      for (const scheme of ["light", "dark"]) {
+        const a = candidate.posters[scheme];
+        if (!a) continue;
+        try { posters[scheme] = hashed(await fetchAsset(a)); } catch (e) { warn(`${candidate.tag}: poster ${scheme} unreadable (${e.message})`); }
+      }
+      const { entry, warnings } = toStarterEntry(candidate, manifest, { source: hashed(src), preview, meta, posters });
       warnings.forEach(warn);
       entries.push(entry);
       console.log(`index ${candidate.tag} (starter, ${entry.size_bytes} bytes)`);

@@ -68,7 +68,7 @@ export function parseReleaseTag(tag) {
 
 // ---------------------------------------------------------------- starters --
 // A starter version is a release tagged `starter-<id>-v<semver>` with up to
-// three assets. These helpers are separate from the plugin ones above on
+// five assets. These helpers are separate from the plugin ones above on
 // purpose: nothing about how plugin tags and assets are named depends on them.
 
 /** Same id grammar scripts/check_starters.py enforces on the folder name. */
@@ -91,6 +91,11 @@ export function starterPreviewAssetFor(id, version) {
 /** Which moss built the preview, and the hashes of the zips it describes. Optional. */
 export function starterMetaAssetFor(id, version) {
   return `${id}-${version}.json`;
+}
+
+/** A standalone copy of one poster, so a picker card needs no zip. scheme: "light" | "dark". */
+export function starterPosterAssetFor(id, version, scheme) {
+  return `${id}-${version}-poster-${scheme}.jpg`;
 }
 
 /** Split `starter-<id>-v<semver>` into id and version, or null. */

@@ -32,8 +32,8 @@ All fields are required unless marked. Consumers ignore fields they do not know.
 | `id` | string | The folder name. Lowercase letters, digits and `-`. It may not equal the id of a plugin. |
 | `version` | string | Semver, starting at `"1.0.0"`. Any change to `site/` or `posters/` must raise it; CI checks. |
 | `name` | string | Display name in the picker. |
-| `line` | string | One sentence: what kind of site this is, and for whom. |
-| `credit` | string | One sentence: whose words and pictures fill it. |
+| `line` | string | One short sentence: what the design is for ("An essay collection."). Shown on the picker card. |
+| `credit` | string | One sentence: what fills it, and whose it is ("Filled with Virginia Woolf's essays and lectures, 1904–1929."). |
 | `language` | string | BCP 47 tag of the site's language, such as `en` or `zh-Hant`. |
 | `min_moss_version` | string | The lowest moss release the starter is known to build clean on (`--strict`). |
 | `order` | integer | The picker shows starters in ascending `order`. |
@@ -63,7 +63,7 @@ The words and pictures in a starter must be public domain or openly licensed, an
 
 ## How moss uses a starter
 
-The desktop app bundles every starter's `manifest.json` and posters, so the picker works offline. When a reader chooses a starter, the app downloads that starter's source zip, checks its sha256, and copies `site/` into the new folder. For a live preview of a starter it downloads the preview zip, checks its sha256 and serves the built site from a local copy. The index entries that point at these downloads are described below; clients that predate them skip those entries.
+The picker draws its cards from the registry index alone: each starter's entry carries the card's text and the URLs and hashes of its two posters, which are released as standalone images so that drawing a card never means fetching a zip. When a reader chooses a starter, the app downloads that starter's source zip, checks its sha256, and copies `site/` into the new folder. For a live preview of a starter it downloads the preview zip, checks its sha256 and serves the built site from a local copy. The index entries that point at these downloads are described below; clients that predate them skip those entries.
 
 `scripts/pack-starters` makes what is downloaded, into `dist/` (gitignored):
 
@@ -71,7 +71,8 @@ The desktop app bundles every starter's `manifest.json` and posters, so the pick
 |---|---|
 | `dist/starters/<id>-<version>.zip` | The source: `manifest.json`, `posters/` and `site/`, at the zip root and nothing else. |
 | `dist/starters/<id>-<version>-preview.zip` | The built site: the contents of the build output at the zip root (`index.html`, `_moss/`, `assets/`, …), without `_moss/og/`. Those are the share-card images moss draws for other sites' link previews; no page shows one, and they were a third of the largest preview. Made only when `MOSS` points at a moss binary; it is built from a scratch copy with `--strict`. |
-| `dist/starters/<id>-<version>.json` | Which moss built the preview and the sha256 of both zips. Made only with the preview. It is the third asset of the release. |
+| `dist/starters/<id>-<version>-poster-light.jpg`, `…-poster-dark.jpg` | The two posters, copied out of `posters/` unchanged. |
+| `dist/starters/<id>-<version>.json` | Which moss built the preview and the sha256 of both zips and both posters. Made only with the preview. |
 | `dist/starters/<id>/` | The unpacked source, for inspection. |
 | `dist/starters/index-entries.json` | One registry-index entry per starter, described below. |
 
@@ -92,12 +93,14 @@ A published starter is listed in the registry index as an entry with `"type": "s
 | `download_url`, `sha256`, `size_bytes` | The source zip. |
 | `preview_url`, `preview_sha256`, `preview_size_bytes` | The preview zip. Omitted when it was not built. |
 | `preview_moss_version` | The moss release that built the preview (what `moss --version` reports). Omitted with the other preview fields. |
+| `poster_light_url`, `poster_light_sha256`, `poster_light_size_bytes` | The light poster as a standalone JPEG. |
+| `poster_dark_url`, `poster_dark_sha256`, `poster_dark_size_bytes` | The dark poster. The six poster fields come together or not at all: releases cut before posters were attached to them have none. |
 
-URLs are `<base>/starter-<id>-v<version>/<zip name>`. The base is `https://github.com/Symbiosis-Lab/moss-registry/releases/download` unless `--base-url` says otherwise, so each starter version is a release tagged `starter-<id>-v<version>` whose assets are its two zips.
+URLs are `<base>/starter-<id>-v<version>/<zip name>`. The base is `https://github.com/Symbiosis-Lab/moss-registry/releases/download` unless `--base-url` says otherwise, so each starter version is a release tagged `starter-<id>-v<version>` whose assets are its two zips, the two posters and the `.json`.
 
 ### How a starter is released and indexed
 
-When a merge to `main` carries a starter whose tag `starter-<id>-v<version>` does not exist yet, the publish workflow's `starters` job packs it and creates that release with three assets: the source zip, the preview zip, and `<id>-<version>.json`, a small file naming the moss release that built the preview (`preview_moss_version`) and the sha256 of each zip it describes. Then the index is rebuilt from the releases that exist: for each starter id it lists the highest published version, with every field read from the release itself. The manifest fields come from `manifest.json` inside the source zip, the hashes and sizes from the downloaded assets, the URLs from the release. If the `.json` is missing or its hashes disagree with the zips, the entry simply has no preview fields. A release without its source zip, or whose manifest cannot fill an entry, is skipped with a warning.
+When a merge to `main` carries a starter whose tag `starter-<id>-v<version>` does not exist yet, the publish workflow's `starters` job packs it and creates that release with five assets: the source zip, the preview zip, the two posters as `<id>-<version>-poster-light.jpg` and `-poster-dark.jpg`, and `<id>-<version>.json`, a small file naming the moss release that built the preview (`preview_moss_version`) and the sha256 of each zip and poster it describes. Then the index is rebuilt from the releases that exist: for each starter id it lists the highest published version, with every field read from the release itself. The manifest fields come from `manifest.json` inside the source zip, the hashes and sizes from the downloaded assets, the URLs from the release. If the `.json` is missing or its hashes disagree with the zips, the entry simply has no preview fields; likewise it has no poster fields unless both posters are attached and the `.json` names their exact hashes. After a deploy, `verify-published.mjs` re-downloads the source zip, the preview and both posters of every entry through the live index and compares sha256 and size. A release without its source zip, or whose manifest cannot fill an entry, is skipped with a warning.
 
 Previews are built by the moss release pinned in [`moss.json`](moss.json): its version and the sha256 of its Linux binary. `scripts/fetch-moss.sh` downloads it and refuses a binary whose hash differs, and `check-starters.sh` refuses a pin lower than any starter's `min_moss_version`. Pull requests build and pack every starter with the same binary, so the Linux path is proven before merge. Moving the pin is an ordinary pull request; it does not rebuild starters already released.
 
