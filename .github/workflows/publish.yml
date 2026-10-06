@@ -184,7 +184,7 @@ jobs:
               continue
             fi
 
-            files=("dist/starters/${id}-${version}.zip" "dist/starters/${id}-${version}-preview.zip" "dist/starters/${id}-${version}.json")
+            files=("dist/starters/${id}-${version}.zip" "dist/starters/${id}-${version}-preview.zip" "dist/starters/${id}-${version}.json" "dist/starters/${id}-${version}-poster-light.jpg" "dist/starters/${id}-${version}-poster-dark.jpg")
             missing=0
             for f in "${files[@]}"; do [ -f "$f" ] || { echo "::error::$id: pack produced no $f"; missing=1; }; done
             if [ "$missing" = 1 ]; then

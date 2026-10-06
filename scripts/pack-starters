@@ -11,8 +11,12 @@ Writes, under dist/ (gitignored):
   dist/starters/<id>-<version>-preview.zip the built site, files at the zip root,
                                            without the share-card images
                                            (only when MOSS is set)
+  dist/starters/<id>-<version>-poster-light.jpg
+  dist/starters/<id>-<version>-poster-dark.jpg
+                                           the two posters again, standalone, so a client can
+                                           draw a picker card without fetching a zip
   dist/starters/<id>-<version>.json        which moss built the preview, and the hash of
-                                           each zip it describes (only when MOSS is set)
+                                           each zip and poster it describes (only when MOSS is set)
   dist/starters/index-entries.json         one registry-index entry per starter
 
 Both zips are deterministic: entries sorted, fixed timestamps and
@@ -51,6 +55,7 @@ STARTERS = ROOT / "starters"
 OUT = ROOT / "dist" / "starters"
 STAMP = (1980, 1, 1, 0, 0, 0)  # the earliest time a zip can store
 DEFAULT_BASE = "https://github.com/Symbiosis-Lab/moss-registry/releases/download"
+POSTERS = (("light", "home-light.jpg"), ("dark", "home-dark.jpg"))
 ENTRY_FIELDS = ("credit", "language", "order", "min_moss_version", "tour")
 # Left out of the preview zip: the share-card image moss draws for each page.
 # Only <meta> tags and JSON-LD name them, for other sites' link previews; no
@@ -127,6 +132,17 @@ def pack(sid: str, base: str, moss):
     if "demo_url" in m:
         entry["demo_url"] = m["demo_url"]
     entry.update({"download_url": f"{base}/{tag}/{src_name}", "sha256": digest, "size_bytes": size})
+    poster_hashes = {}
+    for scheme, fname in POSTERS:
+        data = (starter / "posters" / fname).read_bytes()
+        name = f"{sid}-{version}-poster-{scheme}.jpg"
+        (OUT / name).write_bytes(data)
+        poster_hashes[scheme] = hashlib.sha256(data).hexdigest()
+        entry.update({
+            f"poster_{scheme}_url": f"{base}/{tag}/{name}",
+            f"poster_{scheme}_sha256": poster_hashes[scheme],
+            f"poster_{scheme}_size_bytes": len(data),
+        })
     if moss:
         scratch, built = build_preview(moss, starter)
         try:
@@ -142,6 +158,8 @@ def pack(sid: str, base: str, moss):
             "schema_version": 1, "id": sid, "version": version,
             "preview_moss_version": moss_version(moss),
             "source_sha256": digest, "preview_sha256": pdigest,
+            "poster_light_sha256": poster_hashes["light"],
+            "poster_dark_sha256": poster_hashes["dark"],
         }
         (OUT / f"{sid}-{version}.json").write_text(
             json.dumps(meta, indent=2) + "\n", encoding="utf-8")

@@ -8,6 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 import {
   selectReleases,
@@ -279,10 +280,10 @@ test("cmpSemver orders by numeric core, ignoring pre-release", () => {
 
 const asset = (tag, name) => ({ name, browser_download_url: `https://example.invalid/${tag}/${name}`, url: `https://api.invalid/${tag}/${name}` });
 
-/** A starter release; `names` are the assets attached, by default all three. */
+/** A starter release; `names` are the assets attached, by default all five. */
 function starterRelease(id, version, { names, ...overrides } = {}) {
   const tag = `starter-${id}-v${version}`;
-  const all = [`${id}-${version}.zip`, `${id}-${version}-preview.zip`, `${id}-${version}.json`];
+  const all = [`${id}-${version}.zip`, `${id}-${version}-preview.zip`, `${id}-${version}.json`, `${id}-${version}-poster-light.jpg`, `${id}-${version}-poster-dark.jpg`];
   return { tag_name: tag, draft: false, prerelease: false, assets: (names ?? all).map((n) => asset(tag, n)), ...overrides };
 }
 
@@ -334,11 +335,18 @@ test("starter selection ignores plugins, takes the highest version, and accounts
 });
 
 const bytesOf = { source: { sha256: "a".repeat(64), sizeBytes: 100 }, preview: { sha256: "b".repeat(64), sizeBytes: 900 } };
-const goodMeta = { preview_moss_version: "0.15.4", source_sha256: "a".repeat(64), preview_sha256: "b".repeat(64) };
+const posterBytes = { light: { sha256: "c".repeat(64), sizeBytes: 70000 }, dark: { sha256: "d".repeat(64), sizeBytes: 65000 } };
+const goodMeta = {
+  preview_moss_version: "0.15.4",
+  source_sha256: "a".repeat(64),
+  preview_sha256: "b".repeat(64),
+  poster_light_sha256: "c".repeat(64),
+  poster_dark_sha256: "d".repeat(64),
+};
 
 test("a starter entry carries exactly the agreed fields, from the release's own bytes", () => {
   const candidate = selectStarterReleases([starterRelease("essays", "1.0.0")]).selected[0];
-  const { entry, warnings } = toStarterEntry(candidate, starterManifest(), { ...bytesOf, meta: goodMeta });
+  const { entry, warnings } = toStarterEntry(candidate, starterManifest(), { ...bytesOf, posters: posterBytes, meta: goodMeta });
   assert.deepEqual(warnings, []);
   assert.deepEqual(entry, {
     type: "starter",
@@ -358,7 +366,40 @@ test("a starter entry carries exactly the agreed fields, from the release's own 
     preview_sha256: "b".repeat(64),
     preview_size_bytes: 900,
     preview_moss_version: "0.15.4",
+    poster_light_url: "https://example.invalid/starter-essays-v1.0.0/essays-1.0.0-poster-light.jpg",
+    poster_light_sha256: "c".repeat(64),
+    poster_light_size_bytes: 70000,
+    poster_dark_url: "https://example.invalid/starter-essays-v1.0.0/essays-1.0.0-poster-dark.jpg",
+    poster_dark_sha256: "d".repeat(64),
+    poster_dark_size_bytes: 65000,
   });
+});
+
+test("poster fields come together or not at all, and only when the sidecar vouches for the bytes", () => {
+  const full = selectStarterReleases([starterRelease("essays", "1.0.0")]).selected[0];
+  const oneLight = selectStarterReleases([starterRelease("essays", "1.0.0", { names: ["essays-1.0.0.zip", "essays-1.0.0.json", "essays-1.0.0-poster-light.jpg"] })]).selected[0];
+  const legacy = selectStarterReleases([starterRelease("essays", "1.0.0", { names: ["essays-1.0.0.zip", "essays-1.0.0-preview.zip", "essays-1.0.0.json"] })]).selected[0];
+  const none = (e) => !Object.keys(e).some((k) => k.startsWith("poster_"));
+  const args = { ...bytesOf, posters: posterBytes, meta: goodMeta };
+
+  // A release cut before posters existed has none and says nothing about it.
+  const old = toStarterEntry(legacy, starterManifest(), { ...bytesOf, meta: goodMeta });
+  assert.ok(none(old.entry));
+  assert.deepEqual(old.warnings, []);
+  // Half a pair is no pair.
+  const half = toStarterEntry(oneLight, starterManifest(), { source: bytesOf.source, preview: null, meta: goodMeta, posters: { light: posterBytes.light } });
+  assert.ok(none(half.entry));
+  assert.match(half.warnings[0], /poster assets incomplete/);
+  // A sidecar written for other bytes must not be believed.
+  for (const key of ["poster_light_sha256", "poster_dark_sha256"]) {
+    const stale = toStarterEntry(full, starterManifest(), { ...args, meta: { ...goodMeta, [key]: "e".repeat(64) } });
+    assert.ok(none(stale.entry), key);
+    assert.match(stale.warnings[0], /does not name the attached posters/);
+  }
+  const noMeta = toStarterEntry(full, starterManifest(), { ...args, meta: null });
+  assert.ok(none(noMeta.entry));
+  // Preview fields are independent of the posters.
+  assert.equal(noMeta.entry.preview_url, undefined);
 });
 
 test("preview fields come together or not at all", () => {
@@ -391,7 +432,7 @@ test("an entry lacking a field every client requires is refused", () => {
 
 test("demo_url is carried when the manifest has it and absent when it does not", () => {
   const candidate = selectStarterReleases([starterRelease("essays", "1.0.0")]).selected[0];
-  const args = { ...bytesOf, meta: goodMeta };
+  const args = { ...bytesOf, posters: posterBytes, meta: goodMeta };
   const withDemo = toStarterEntry(candidate, starterManifest("essays", "1.0.0", { demo_url: "https://example.invalid/demo/" }), args);
   assert.equal(withDemo.entry.demo_url, "https://example.invalid/demo/");
   assert.deepEqual(withDemo.warnings, []);
@@ -450,7 +491,46 @@ test("a broken preview download drops only the preview fields", async () => {
   });
   assert.equal(entries.length, 1);
   assert.ok(!("preview_url" in entries[0]));
-  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /preview unreadable/);
+});
+
+test("a broken poster download drops the poster fields, not the entry", async () => {
+  const warnings = [];
+  const files = { "essays-1.0.0.json": JSON.stringify(goodMeta) };
+  const fetchAsset = async (a) => {
+    if (a.name === "essays-1.0.0-poster-dark.jpg") throw new Error("download: 404");
+    return { path: a.name, bytes: Buffer.from(files[a.name] ?? `bytes of ${a.name}`) };
+  };
+  const [entry] = await buildStarterEntries([starterRelease("essays", "1.0.0")], {
+    fetchAsset,
+    readManifest: () => starterManifest(),
+    warn: (m) => warnings.push(m),
+  });
+  assert.ok(!Object.keys(entry).some((k) => k.startsWith("poster_")));
+  assert.ok(warnings.some((w) => /poster dark unreadable/.test(w)));
+});
+
+test("every field of a full starter entry has the JSON type the reader expects", async () => {
+  const sha = (t) => createHash("sha256").update(t).digest("hex");
+  const files = {};
+  const meta = { preview_moss_version: "0.15.4" };
+  for (const [key, name] of [["source", "essays-1.0.0.zip"], ["preview", "essays-1.0.0-preview.zip"], ["poster_light", "essays-1.0.0-poster-light.jpg"], ["poster_dark", "essays-1.0.0-poster-dark.jpg"]]) {
+    files[name] = `bytes of ${name}`;
+    meta[`${key}_sha256`] = sha(files[name]);
+  }
+  files["essays-1.0.0.json"] = JSON.stringify(meta);
+  const [entry] = await buildStarterEntries([starterRelease("essays", "1.0.0")], {
+    fetchAsset: fixtureFetch(files),
+    readManifest: () => starterManifest(),
+    warn: (m) => assert.fail(m),
+  });
+  const strings = ["type", "id", "version", "display_name", "description", "credit", "language", "min_moss_version", "download_url", "sha256",
+    "preview_url", "preview_sha256", "preview_moss_version", "poster_light_url", "poster_light_sha256", "poster_dark_url", "poster_dark_sha256"];
+  const ints = ["order", "size_bytes", "preview_size_bytes", "poster_light_size_bytes", "poster_dark_size_bytes"];
+  for (const k of strings) assert.equal(typeof entry[k], "string", k);
+  for (const k of ints) assert.ok(Number.isInteger(entry[k]), k);
+  assert.ok(Array.isArray(entry.tour));
+  assert.deepEqual(Object.keys(entry).filter((k) => ![...strings, ...ints, "tour"].includes(k)), []);
 });
 
 test("the plugin part of the index is byte-identical with and without starters", async () => {

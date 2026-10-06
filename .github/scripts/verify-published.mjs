@@ -37,6 +37,12 @@ export function assetsOf(entry) {
   };
   add("source", entry.download_url, entry.sha256, entry.size_bytes);
   add("preview", entry.preview_url, entry.preview_sha256, entry.preview_size_bytes);
+  // Posters are optional in the index (older releases have none), but an entry
+  // that names any poster field must name all three, and they are verified.
+  for (const scheme of ["light", "dark"]) {
+    const [url, sha256, size] = ["url", "sha256", "size_bytes"].map((f) => entry[`poster_${scheme}_${f}`]);
+    if (url !== undefined || sha256 !== undefined || size !== undefined) add(`poster ${scheme}`, url, sha256, size);
+  }
   return { assets, problems };
 }
 
