@@ -4,9 +4,10 @@ import {
   escapeRegex,
   buildAssetUrlPattern,
   replaceAssetUrls,
-  replaceImageWithWikilink,
-  replaceImageUrlWithWikilink,
+  replaceImageWithLocal,
+  replaceImageUrlWithLocal,
   calculateRelativePath,
+  imageDestination,
 } from "../downloader";
 
 // Note: The downloader module heavily depends on:
@@ -182,65 +183,75 @@ Some text
   });
 });
 
-describe("replaceImageWithWikilink", () => {
-  const assetId = "66296200-de80-43f1-a1a2-ce2b1403a3e2";
-  const filename = "66296200-de80-43f1-a1a2-ce2b1403a3e2.jpg";
-
-  it("replaces the WHOLE image token with a filename-only wikilink (B2)", () => {
-    const content = "![](https://assets.matters.news/embed/66296200-de80-43f1-a1a2-ce2b1403a3e2/file.jpg)";
-    const result = replaceImageWithWikilink(content, assetId, filename);
-    expect(result.replaced).toBe(true);
-    expect(result.content).toBe(`![[${filename}]]`);
-    // No residual relative-markdown wrapper.
-    expect(result.content).not.toContain("](");
+describe("imageDestination", () => {
+  it("is the path from the article to the asset", () => {
+    expect(imageDestination("文章/a.md", "assets/x.jpg")).toBe("../assets/x.jpg");
   });
 
-  it("drops alt text and the CDN URL (depth-independent ![[file]])", () => {
-    const content = "before ![some alt](https://imagedelivery.net/xxx/prod/embed/66296200-de80-43f1-a1a2-ce2b1403a3e2/public) after";
-    const result = replaceImageWithWikilink(content, assetId, filename);
+  it("percent-encodes what would end or change a Markdown destination, not other scripts", () => {
+    expect(imageDestination("a.md", "assets/my photo (1)#2.jpg")).toBe("assets/my%20photo%20%281%29%232.jpg");
+    expect(imageDestination("a.md", "assets/封面.jpg")).toBe("assets/封面.jpg");
+  });
+});
+
+describe("replaceImageWithLocal", () => {
+  const assetId = "66296200-de80-43f1-a1a2-ce2b1403a3e2";
+  const filename = "../assets/66296200-de80-43f1-a1a2-ce2b1403a3e2.jpg";
+
+  it("replaces the WHOLE image token with the standard form (B2)", () => {
+    const content = "![](https://assets.matters.news/embed/66296200-de80-43f1-a1a2-ce2b1403a3e2/file.jpg)";
+    const result = replaceImageWithLocal(content, assetId, filename);
     expect(result.replaced).toBe(true);
-    expect(result.content).toBe(`before ![[${filename}]] after`);
+    expect(result.content).toBe(`![](${filename})`);
+    expect(result.content).not.toContain("https://");
+  });
+
+  it("drops alt text and the CDN URL ", () => {
+    const content = "before ![some alt](https://imagedelivery.net/xxx/prod/embed/66296200-de80-43f1-a1a2-ce2b1403a3e2/public) after";
+    const result = replaceImageWithLocal(content, assetId, filename);
+    expect(result.replaced).toBe(true);
+    expect(result.content).toBe(`before ![](${filename}) after`);
   });
 
   it("handles a markdown title attribute ![alt](url \"title\") (htmd emits these)", () => {
     const content = `![cap](https://assets.matters.news/embed/66296200-de80-43f1-a1a2-ce2b1403a3e2/file.jpg "A caption")`;
-    const result = replaceImageWithWikilink(content, assetId, filename);
+    const result = replaceImageWithLocal(content, assetId, filename);
     expect(result.replaced).toBe(true);
-    expect(result.content).toBe(`![[${filename}]]`);
+    expect(result.content).toBe(`![](${filename})`);
     expect(result.content).not.toContain("https://"); // CDN url fully removed
   });
 
   it("returns replaced=false when the asset id is absent", () => {
     const content = "![](https://example.com/other.jpg)";
-    const result = replaceImageWithWikilink(content, assetId, filename);
+    const result = replaceImageWithLocal(content, assetId, filename);
     expect(result.replaced).toBe(false);
     expect(result.content).toBe(content);
   });
 });
 
-describe("replaceImageUrlWithWikilink (B6 — legacy non-UUID assets)", () => {
+describe("replaceImageUrlWithLocal (B6 — legacy non-UUID assets)", () => {
   // A legacy cloudfront URL with no UUID segment to key on.
   const url = "https://d1y0vy6cjcgwlk.cloudfront.net/legacy/photo.jpg";
-  const filename = "photo.jpg";
+  const filename = "../assets/photo.jpg";
 
   it("replaces the whole image token for an exact non-UUID URL", () => {
     const content = `before ![cap](${url}) after`;
-    const result = replaceImageUrlWithWikilink(content, url, filename);
+    const result = replaceImageUrlWithLocal(content, url, filename);
     expect(result.replaced).toBe(true);
-    expect(result.content).toBe(`before ![[${filename}]] after`);
+    expect(result.content).toBe(`before ![](${filename}) after`);
     expect(result.content).not.toContain("cloudfront.net");
   });
 
   it("handles an htmd title trailer ![alt](url \"title\")", () => {
     const content = `![cap](${url} "A caption")`;
-    const result = replaceImageUrlWithWikilink(content, url, filename);
+    const result = replaceImageUrlWithLocal(content, url, filename);
     expect(result.replaced).toBe(true);
-    expect(result.content).toBe(`![[${filename}]]`);
+    expect(result.content).toBe(`![](${filename})`);
   });
 
   it("only matches the exact URL, not a different one", () => {
     const content = "![](https://d1y0vy6cjcgwlk.cloudfront.net/legacy/other.jpg)";
-    const result = replaceImageUrlWithWikilink(content, url, filename);
+    const result = replaceImageUrlWithLocal(content, url, filename);
     expect(result.replaced).toBe(false);
     expect(result.content).toBe(content);
   });
@@ -370,8 +381,8 @@ Some text
     const updatedContent = ctx.filesystem.getFile(`${ctx.projectPath}/article.md`)?.content;
     expect(updatedContent).toBeDefined();
 
-    // UUID1 should be replaced with a filename-only wikilink (B2)
-    expect(updatedContent).toContain(`![[${uuid1}.jpg]]`);
+    // UUID1 should be replaced with the standard form (B2)
+    expect(updatedContent).toContain(`![](assets/${uuid1}.jpg)`);
     expect(updatedContent).not.toContain(`https://assets.matters.news/embed/${uuid1}.jpg`);
 
     // UUID2 should remain as remote URL (download failed)
@@ -404,10 +415,10 @@ title: "Test"
 
     // Verify the file was updated
     const updatedContent = ctx.filesystem.getFile(`${ctx.projectPath}/test.md`)?.content;
-    expect(updatedContent).toContain(`![[${uuid}.png]]`);
+    expect(updatedContent).toContain(`![](assets/${uuid}.png)`);
   });
 
-  it("handles file in subdirectory with a depth-independent wikilink", async () => {
+  it("writes the path up from a file in a subdirectory", async () => {
     const uuid = "dddddddd-4444-4444-4444-444444444444";
     const markdownContent = `---
 title: "Nested Article"
@@ -431,10 +442,9 @@ title: "Nested Article"
 
     expect(result.imagesDownloaded).toBe(1);
 
-    // Wikilink is depth-INDEPENDENT: identical at any nesting, no `../` chain.
+    // The standard form climbs one `../` per folder of the article.
     const updatedContent = ctx.filesystem.getFile(`${ctx.projectPath}/文章/游记/article.md`)?.content;
-    expect(updatedContent).toContain(`![[${uuid}.jpg]]`);
-    expect(updatedContent).not.toContain("../");
+    expect(updatedContent).toContain(`![](../../assets/${uuid}.jpg)`);
   });
 
   it("skips already existing assets", async () => {
@@ -531,8 +541,8 @@ title: "色达"
 
     const updatedContent = ctx.filesystem.getFile(`${ctx.projectPath}/文章/游记/色达.md`)?.content;
     expect(updatedContent).toBeDefined();
-    // Depth-independent wikilink (asset on disk is .jpg though the URL was .jpeg).
-    expect(updatedContent).toContain(`![[${uuid}.jpg]]`);
+    // Standard form (asset on disk is .jpg though the URL was .jpeg).
+    expect(updatedContent).toContain(`![](../../assets/${uuid}.jpg)`);
     expect(updatedContent).not.toContain(`https://assets.matters.news/embed/${uuid}.jpeg`);
   });
 
@@ -573,11 +583,10 @@ Some text
     const updatedContent = ctx.filesystem.getFile(`${ctx.projectPath}/nested/dir/article.md`)?.content;
     expect(updatedContent).toBeDefined();
 
-    // cover → bare filename; body images → depth-independent wikilinks.
+    // cover → bare filename; body images → standard `![](path)`.
     expect(updatedContent).toContain(`${uuid1}.jpg`);
-    expect(updatedContent).toContain(`![[${uuid2}.png]]`);
-    expect(updatedContent).toContain(`![[${uuid3}.jpeg]]`);
-    expect(updatedContent).not.toContain("../");
+    expect(updatedContent).toContain(`![](../../assets/${uuid2}.png)`);
+    expect(updatedContent).toContain(`![](../../assets/${uuid3}.jpeg)`);
 
     // None should have remote URLs
     expect(updatedContent).not.toContain("https://assets.matters.news");
@@ -643,10 +652,9 @@ title: "Legacy Image Article"
 
     const updatedContent = ctx.filesystem.getFile(`${ctx.projectPath}/文章/old-post.md`)?.content;
     expect(updatedContent).toBeDefined();
-    // The legacy image is now a depth-independent wikilink; the CDN URL is gone.
-    expect(updatedContent).toContain("![[photo.jpg]]");
+    // The legacy image is now the standard form, written from the article; the CDN URL is gone.
+    expect(updatedContent).toContain("![](../assets/photo.jpg)");
     expect(updatedContent).not.toContain("cloudfront.net");
-    expect(updatedContent).not.toContain("../");
   });
 
   it("should not write file if replacement results in identical content", async () => {
