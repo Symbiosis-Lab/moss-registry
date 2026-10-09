@@ -10,7 +10,7 @@ This file lives in `.moss/` on purpose, so it is never built as a page. Delete i
 
 ## What to replace
 
-- `Virginia Woolf.md` is the home page. Replace its body with your name and a line of your own. Keep `home: true` in its frontmatter; without it the front page becomes a feed of every page on the site.
+- `index.md` is the home page. Replace its body with your name and a line of your own. Keep `home: true` in its frontmatter; without it the front page becomes a feed of every page on the site.
 - `Essays/` and `Talks/` hold the writing. Replace the files with your own. The numbered filenames (`01-`, `02-`, …) are what keep the folder in reading order; keep the habit, or add `sort:` to the folder's page.
 - `About.md` and `assets/portrait.jpg` are the about page and its portrait. The list at the bottom of About names Woolf's books, editions and public-domain status; rewrite or delete it.
 - `.moss/templates/essay.md` and `.moss/templates/talk.md` are bare frontmatter skeletons to copy from when you start a new page.

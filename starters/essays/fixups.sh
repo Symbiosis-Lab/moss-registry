@@ -13,3 +13,9 @@ perl -0pi -e '
   s/ -- only the numbers moved off \w+.s\n\s+340\/35\/93\/13\././;
   s/ \(\S+\.com\n\s+style; see \S+\.md\)//;
 ' .moss/theme/style.css
+
+# A starter inherits the destination folder name; its home is structural.
+if [[ -f 'Virginia Woolf.md' ]]; then
+  mv 'Virginia Woolf.md' index.md
+fi
+perl -0pi -e 's/^title:.*\n//m' index.md

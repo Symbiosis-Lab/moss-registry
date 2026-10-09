@@ -161,6 +161,11 @@ def check_site(site, errors):
         errors.append(f"site/ is {total / 1048576:.1f} MB, must be under 25 MB")
     homes = [p for p in site.glob("*.md")
              if re.search(r"(?m)^home:\s*true\s*$", frontmatter(p))]
+    for home in homes:
+        if re.search(r"(?m)^title:\s*\S", frontmatter(home)):
+            errors.append(f"{home.relative_to(site)}: starter home must inherit the user's folder name, omit title")
+        if home.stem.casefold() not in ("index", "readme"):
+            errors.append(f"{home.relative_to(site)}: starter home needs an index filename to inherit the user's folder name")
     if not homes:
         errors.append("site/: no top-level .md file carries `home: true` in its frontmatter")
     if not (site / ".moss" / "STARTER.md").is_file():

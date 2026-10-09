@@ -10,7 +10,7 @@ This file lives in `.moss/` on purpose, so it is never built as a page. Delete i
 
 ## What to replace
 
-- `八大山人.md` is the home page. Keep `home: true` in its frontmatter; replace the body and the highlight grid with your own.
+- `index.md` is the home page. Keep `home: true` in its frontmatter; replace the body and the highlight grid with your own.
 - `畫/`, `書/` and `文/` are the sections. Each has an index page (`畫/畫.md` and so on) with `children_style: summary`, which lists its works as cards, and `series: true`, which gives the works previous and next links. Rename the folders for whatever you catalogue.
 - Each work is a Markdown file with an image beside it, named after the work. `cover:` in its frontmatter names the image used for its card; the image itself is shown on the page.
 - `年表.md` is a plain chronology page; replace or delete it.

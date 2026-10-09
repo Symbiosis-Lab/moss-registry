@@ -1,5 +1,4 @@
 ---
-title: "Chautauqua Literary and Scientific Circle"
 home: true
 children: false
 source: "The Chautauquan, March 1885 (Gutenberg #55060), “Local Circles”: “C. L. S. C. Mottoes”; October 1884 (#55218); May 1885 (#55331), “The C. L. S. C. Classes”. Photographs: Detroit Publishing Co., c. 1898, Library of Congress (no known restrictions on publication)."

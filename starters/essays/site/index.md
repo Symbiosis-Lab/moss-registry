@@ -1,5 +1,4 @@
 ---
-title: "Virginia Woolf"
 home: true
 children: false
 source: "A Room of One's Own, Chapter Four, 1929"
