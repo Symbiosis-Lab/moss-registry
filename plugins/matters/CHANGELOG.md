@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _Pending publish — cumulative since `1.1.2` (last released on main); full detail under [1.4.0] and [1.2.0]._
 
+- Changed (`1.5.6`): images imported from Matters are written into your articles as standard Markdown, `![](../assets/photo.jpg)`, the path from the article to the file, instead of `![[photo.jpg]]`, which only moss and Obsidian understand. A space or parenthesis in the file name is written as `%20`, `%28` and the like. Articles already imported keep the form they have.
+
 - Changed (`1.5.5`): no behaviour change. Comments in the plugin's source were shortened, and the version moves because the source did.
 
 - Fixed (`1.5.4`): moss no longer shows a line in the progress panel for something that didn't happen. Turning off Auto-Import Posts used to still leave a "Matters auto-import off" line sitting next to an unrelated "Publish failed" line; it's now silent, since a setting you chose isn't something worth reporting on every build. Publishing your site is the same: it no longer shows "No new articles to syndicate" or "Syndicated · 0 posts" when Matters had nothing new to report — a line only appears when there's something to tell you, whether a real publish or something that still needs your attention, like a draft saved for later. Separately, a background build with no usable Matters session now names the real problem — "Matters session expired" or "Matters not connected" — instead of always saying "not connected" even when you'd been logged in before and the session simply expired.

@@ -86,21 +86,32 @@ export function replaceAssetUrls(
 }
 
 /**
- * Replace a full markdown image token `![alt](url)` whose URL contains the
- * asset id with a filename-only wikilink `![[filename]]` (B2).
- *
- * Unlike `replaceAssetUrls` — which swaps only the URL substring and leaves the
- * `![alt](...)` wrapper plus a depth-dependent relative path (`../assets/…` vs
- * `../../assets/…`) — this replaces the ENTIRE image token so moss's shared
- * filename-stem asset resolver (`resolve::asset_class::resolve_asset_ref`)
- * resolves it from ANY article depth with no `../` chains. The basename carries
- * the real extension, so the extensionless-ref bug (B8) disappears too. Alt
- * text is dropped to match moss/Obsidian `![[file]]` embed syntax.
+ * The destination of a standard `![](…)` image written in `fromPath` for the
+ * project file `toPath`: the path from the article, with only the characters
+ * that would end or change a Markdown destination percent-encoded (space,
+ * parentheses, `<>`, `#`, `?`, `|`, `%`). Names in other scripts stay raw, as
+ * moss's own link completion writes them.
  */
-export function replaceImageWithWikilink(
+export function imageDestination(fromPath: string, toPath: string): string {
+  return calculateRelativePath(fromPath, toPath).replace(
+    /[ ()<>#?|%]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`,
+  );
+}
+
+/**
+ * Replace a full markdown image token `![alt](url)` whose URL contains the
+ * asset id with the standard `![](destination)` (B2).
+ *
+ * Unlike `replaceAssetUrls`, which swaps only the URL substring and leaves the
+ * `![alt](...)` wrapper, this replaces the ENTIRE token, so the CDN URL and
+ * its title trailer go too. The destination carries the real extension, so
+ * the extensionless-ref bug (B8) disappears. Alt text is dropped.
+ */
+export function replaceImageWithLocal(
   content: string,
   assetId: string,
-  filename: string
+  destination: string
 ): { content: string; replaced: boolean } {
   // `!\[[^\]]*\]` = the `![alt]` part (alt may be empty); then `(url[ "title"])`
   // where the url contains the asset id. The optional ` "title"` trailer matches
@@ -114,25 +125,25 @@ export function replaceImageWithWikilink(
     return { content, replaced: false };
   }
   pattern.lastIndex = 0;
-  const newContent = content.replace(pattern, `![[${filename}]]`);
+  const newContent = content.replace(pattern, () => `![](${destination})`);
   return { content: newContent, replaced: true };
 }
 
 /**
- * Replace a full markdown image token whose URL is the EXACT given URL with a
- * filename-only wikilink `![[filename]]` (B6 — legacy non-UUID CDN assets).
+ * Replace a full markdown image token whose URL is the EXACT given URL with
+ * `![](destination)` (B6 — legacy non-UUID CDN assets).
  *
- * `replaceImageWithWikilink` keys on a Matters asset UUID; legacy cloudfront
+ * `replaceImageWithLocal` keys on a Matters asset UUID; legacy cloudfront
  * images (e.g. `assets.matters.news/.../image.jpg` with no UUID segment) have
  * no UUID to key on, so their references were never rewritten — the dead remote
  * CDN URL leaked into the published body. This matches on the literal URL
  * instead, so a downloaded legacy asset still localizes. The optional ` "title"`
  * trailer matches htmd's `![alt](url "title")` output.
  */
-export function replaceImageUrlWithWikilink(
+export function replaceImageUrlWithLocal(
   content: string,
   url: string,
-  filename: string
+  destination: string
 ): { content: string; replaced: boolean } {
   const pattern = new RegExp(
     `!\\[[^\\]]*\\]\\(${escapeRegex(url)}(?:\\s+"[^"]*")?\\)`,
@@ -142,7 +153,7 @@ export function replaceImageUrlWithWikilink(
     return { content, replaced: false };
   }
   pattern.lastIndex = 0;
-  const newContent = content.replace(pattern, `![[${filename}]]`);
+  const newContent = content.replace(pattern, () => `![](${destination})`);
   return { content: newContent, replaced: true };
 }
 
@@ -600,18 +611,19 @@ export async function downloadMediaAndUpdate(
         : downloadedByUrl.get(media.url);
       if (!localPath) continue;
 
-      // Emit a filename-only wikilink (B2/B8): depth-independent, resolved by
-      // moss's shared filename-stem asset resolver from any article depth — no
-      // `../` chains. The basename carries the real extension. Replaces the
-      // prior depth-dependent `calculateRelativePath` + URL-substring rewrite.
+      // Emit the standard `![](path)` (B2/B8), written from this article to the
+      // asset, so any Markdown editor can follow it. The path carries the real
+      // extension. The cover keeps the bare filename: frontmatter has no
+      // relative-path form and the resolver finds it by name.
       const filename = localPath.split('/').pop() || localPath;
+      const destination = imageDestination(file.path, localPath);
 
-      // Update body references → `![[filename]]`. UUID assets match any CDN URL
-      // carrying the UUID; non-UUID assets match the exact URL.
+      // Update body references → `![](destination)`. UUID assets match any CDN
+      // URL carrying the UUID; non-UUID assets match the exact URL.
       if (media.inBody) {
         const { content: newBody, replaced } = media.uuid
-          ? replaceImageWithWikilink(body, media.uuid, filename)
-          : replaceImageUrlWithWikilink(body, media.url, filename);
+          ? replaceImageWithLocal(body, media.uuid, destination)
+          : replaceImageUrlWithLocal(body, media.url, destination);
         if (replaced) {
           body = newBody;
           modified = true;

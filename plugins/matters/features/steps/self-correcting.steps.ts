@@ -72,7 +72,7 @@ Some text here.
       // Cover should be updated to relative path
       expect(content).toContain(`cover: "${uuid1}.jpg"`);
       // Body image should be updated to relative path
-      expect(content).toContain(`![[${uuid1}.jpg]]`);
+      expect(content).toContain(`![](../assets/${uuid1}.jpg)`);
       // Should NOT contain remote URLs
       expect(content).not.toContain("https://assets.matters.news");
       expect(content).not.toContain("https://imagedelivery.net");
@@ -131,7 +131,7 @@ title: "Test Article"
     And("all image references should be updated to local paths", () => {
       const content = ctx!.filesystem.getFile(`${projectPath}/文章/test.md`)?.content;
       expect(content).toBeDefined();
-      expect(content).toContain(`![[${uuid1}.jpg]]`);
+      expect(content).toContain(`![](../assets/${uuid1}.jpg)`);
       expect(content).not.toContain("https://assets.matters.news");
       ctx?.cleanup();
     });
@@ -191,8 +191,8 @@ title: "Test Article"
     And("all image references should be updated to local paths", () => {
       const content = ctx!.filesystem.getFile(`${projectPath}/文章/test.md`)?.content;
       expect(content).toBeDefined();
-      expect(content).toContain(`![[${uuid1}.jpg]]`);
-      expect(content).toContain(`![[${uuid2}.jpg]]`);
+      expect(content).toContain(`![](../assets/${uuid1}.jpg)`);
+      expect(content).toContain(`![](../assets/${uuid2}.jpg)`);
       expect(content).not.toContain("https://assets.matters.news");
       ctx?.cleanup();
     });
@@ -259,7 +259,7 @@ cover: "https://imagedelivery.net/kDRCweMmqLnTPNlbum-pYA/prod/embed/${uuid1}/ima
       expect(content).toBeDefined();
       // Both should point to the same local path
       expect(content).toContain(`cover: "${uuid1}.jpg"`);
-      expect(content).toContain(`![[${uuid1}.jpg]]`);
+      expect(content).toContain(`![](../assets/${uuid1}.jpg)`);
       expect(content).not.toContain("https://imagedelivery.net");
       expect(content).not.toContain("https://assets.matters.news");
       ctx?.cleanup();
@@ -288,7 +288,7 @@ title: "Test Article"
 cover: "${uuid1}.jpg"
 ---
 
-![[${uuid1}.jpg]]
+![](../assets/${uuid1}.jpg)
 `;
       ctx!.filesystem.setFile(`${projectPath}/文章/test.md`, markdownContent);
       originalContent = markdownContent;
@@ -390,9 +390,9 @@ title: "File 3"
       const content2 = ctx!.filesystem.getFile(`${projectPath}/文章/file2.md`)?.content;
       const content3 = ctx!.filesystem.getFile(`${projectPath}/文章/file3.md`)?.content;
 
-      expect(content1).toContain(`![[${uuid1}.jpg]]`);
-      expect(content2).toContain(`![[${uuid2}.jpg]]`);
-      expect(content3).toContain(`![[${uuid3}.jpg]]`);
+      expect(content1).toContain(`![](../assets/${uuid1}.jpg)`);
+      expect(content2).toContain(`![](../assets/${uuid2}.jpg)`);
+      expect(content3).toContain(`![](../assets/${uuid3}.jpg)`);
     });
 
     And("all three files should be written to disk", () => {
@@ -463,7 +463,7 @@ title: "File 3"
 
     Then("the first file should have updated references and be written", () => {
       const content1 = ctx!.filesystem.getFile(`${projectPath}/文章/file1.md`)?.content;
-      expect(content1).toContain(`![[${uuid1}.jpg]]`);
+      expect(content1).toContain(`![](../assets/${uuid1}.jpg)`);
       expect(content1).not.toContain("https://assets.matters.news");
     });
 
@@ -475,7 +475,7 @@ title: "File 3"
 
     And("the third file should have updated references and be written", () => {
       const content3 = ctx!.filesystem.getFile(`${projectPath}/文章/file3.md`)?.content;
-      expect(content3).toContain(`![[${uuid3}.jpg]]`);
+      expect(content3).toContain(`![](../assets/${uuid3}.jpg)`);
       expect(content3).not.toContain("https://assets.matters.news");
       ctx?.cleanup();
     });
@@ -564,9 +564,9 @@ title: "Multi Image"
 
       // All three references should be updated
       const content = ctx!.filesystem.getFile(`${projectPath}/文章/multi-image.md`)?.content;
-      expect(content).toContain(`![[${uuid1}.jpg]]`);
-      expect(content).toContain(`![[${uuid2}.jpg]]`);
-      expect(content).toContain(`![[${uuid3}.jpg]]`);
+      expect(content).toContain(`![](../assets/${uuid1}.jpg)`);
+      expect(content).toContain(`![](../assets/${uuid2}.jpg)`);
+      expect(content).toContain(`![](../assets/${uuid3}.jpg)`);
       expect(content).not.toContain("https://assets.matters.news");
 
       ctx?.cleanup();
