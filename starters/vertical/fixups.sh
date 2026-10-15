@@ -10,12 +10,16 @@
 # re-running the cut is safe. See README.md beside this file.
 set -euo pipefail
 
+if [[ -f '八大山人.md' ]]; then
+  mv '八大山人.md' index.md
+fi
+
 # 1. 八大山人.md's provenance comment quotes [[目]], a wikilink to a page
 #    renamed away from that name long ago in the full site itself -- it
 #    doesn't resolve even there, so the cut isn't what broke it, and a
 #    generic link-fixer would be guessing at authorial intent to repair it.
 #    De-link to the bare word.
-perl -pi -e 's/\[\[目\]\]/目/' 八大山人.md
+perl -pi -e 's/\[\[目\]\]/目/' index.md
 
 # 2. 文/文.md, 書/書.md, 畫/畫.md: the full site deliberately leaves
 #    prev/next off across dozens of children. The starter keeps only a
@@ -39,9 +43,9 @@ find . -name '*.md' -exec perl -pi -e 's/\.moss\/notes\/印與名號\.md(（原 
 
 # 4a. The home page: a kept image for the share card, and a featured list of
 #     kept works. The comment bullets about the old share-card image go.
-perl -pi -e 's/^cover: 孤禽圖_cover\.jpg$/cover: 畫\/荷花禽鳥圖_cover.jpg/' 八大山人.md
-perl -0pi -e 's/:::grid \{\.summary\}\n.*?\n:::/:::grid {.summary}\n[[畫\/雙鷹圖|雙鷹圖]]\n+++\n[[畫\/荷花禽鳥圖|荷花禽鳥圖]]\n+++\n[[畫\/河上花圖|河上花圖]]\n+++\n[[畫\/魚石圖卷|魚石圖卷]]\n+++\n[[畫\/山水冊|山水冊]]\n+++\n[[畫\/傳綮寫生冊|傳綮寫生冊]]\n:::/s' 八大山人.md
-perl -ni -e 'print unless /^- 2026-09-(07|10) 分享圖/' 八大山人.md
+perl -pi -e 's/^cover: 孤禽圖_cover\.jpg$/cover: 畫\/荷花禽鳥圖_cover.jpg/' index.md
+perl -0pi -e 's/:::grid \{\.summary\}\n.*?\n:::/:::grid {.summary}\n[[畫\/雙鷹圖|雙鷹圖]]\n+++\n[[畫\/荷花禽鳥圖|荷花禽鳥圖]]\n+++\n[[畫\/河上花圖|河上花圖]]\n+++\n[[畫\/魚石圖卷|魚石圖卷]]\n+++\n[[畫\/山水冊|山水冊]]\n+++\n[[畫\/傳綮寫生冊|傳綮寫生冊]]\n:::/s' index.md
+perl -ni -e 'print unless /^- 2026-09-(07|10) 分享圖/' index.md
 
 # 4b. Folder covers.
 perl -pi -e 's/^cover: 安晚冊\.jpg$/cover: 雙鷹圖.jpg/' 畫/畫.md
@@ -79,3 +83,6 @@ for p in Path(".").rglob("*.md"):
     if n != t:
         p.write_text(n, encoding="utf-8")
 PY
+
+# A starter inherits the destination folder name; its home is structural.
+perl -0pi -e 's/^title:.*\n//m' index.md

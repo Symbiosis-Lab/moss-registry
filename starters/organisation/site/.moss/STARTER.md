@@ -10,7 +10,7 @@ This file lives in `.moss/` on purpose, so it is never built as a page. Delete i
 
 ## What to replace
 
-- `Chautauqua Literary and Scientific Circle.md` is the home page. It holds a still photograph as a full-width `:::hero`, the society's name and mottoes beneath it in a `{.masthead}` block, three stat tiles in a `:::grid 3 {.stats}`, and the three latest notices as a folder embed. Keep `home: true` in its frontmatter.
+- `index.md` is the home page. It holds a still photograph as a full-width `:::hero`, the society's name and mottoes beneath it in a `{.masthead}` block, three stat tiles in a `:::grid 3 {.stats}`, and the three latest notices as a folder embed. Keep `home: true` in its frontmatter.
 - `Course of Reading/` is a series: its pages have previous and next links.
 - `Local Circles/` has a located page for each chapter. `location:` puts a page in the gazetteer (`.moss/places.toml`), and a `:::buttons` link on the folder page leads to the map at `/places/`.
 - `Calendar/` lists the society's days. The days are dated pages (`date:` at day precision) and the folder page sorts them oldest first with `sort: date-asc`. One page carries `map: true`, which draws its own map.

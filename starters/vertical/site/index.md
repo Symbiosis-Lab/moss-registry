@@ -1,5 +1,4 @@
 ---
-title: 八大山人
 home: true
 cover: 畫/荷花禽鳥圖_cover.jpg
 description: 還識得此人麼？

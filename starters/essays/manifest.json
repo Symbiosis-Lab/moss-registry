@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "essays",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "name": "Essays",
   "line": "An essay collection.",
   "credit": "Filled with Virginia Woolf's essays and lectures, 1904–1929.",

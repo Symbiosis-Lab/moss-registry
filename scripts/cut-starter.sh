@@ -11,7 +11,7 @@
 #
 #   1. strips every `uid:` frontmatter line (minted fresh on the user's own
 #      first build; a starter must never ship one)
-#   2. drops `domain`, `site_id` and `[channels.*]` from .moss/config.toml,
+#   2. drops `domain`, `site_id`, `environment` and `[channels.*]` from .moss/config.toml,
 #      keeping schema_version, [site] display keys, and [terms.*] (deploy
 #      and identity live in .moss/state.toml, never in config.toml, and
 #      state.toml is refused by the forbidden-path check below)
@@ -149,6 +149,7 @@ if [[ -f "$config" ]]; then
     drop_section { next }
     /^domain[[:space:]]*=/ { next }
     /^site_id[[:space:]]*=/ { next }
+    /^environment[[:space:]]*=/ { next }
     {
       print
       prevblank = ($0 == "")
