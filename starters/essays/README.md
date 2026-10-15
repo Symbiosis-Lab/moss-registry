@@ -8,7 +8,7 @@ The picker shows it as **Essays**.
 
 Virginia Woolf, in her own voice. Every sentence of running text on every page is hers, verbatim, from *The Common Reader* (First Series, 1925) and *A Room of One's Own* (1929), taken from public-domain Project Gutenberg texts. The only words that are ours are structural: folder names, filenames and the metadata fields the schema allows. No sentence of body text may be written in the registry's voice, anywhere, including captions, descriptions and the home page.
 
-Dates, venues and credits are metadata, not prose, so they are allowed. Each essay and chapter opens with a one-line dateline (first publication venue and date) written as a single emphasised sentence, which the theme sets as a small-caps masthead. A day is stated only where the date is confirmed from a primary source; otherwise the dateline carries the year alone, and one essay carries a year with no venue because its venue was never confirmed. The six chapters of the book all carry the same combined dateline, because the book is not a clean per-chapter split of the two 1928 lectures it grew from.
+Dates, venues and credits are metadata, not prose, so they are allowed. Each essay and talk records where and when it first appeared in its `source:` frontmatter, which never renders on the page. A day is stated only where the date is confirmed from a primary source. The chapters of the book share one combined source, because the book is not a clean per-chapter split of the two 1928 lectures it grew from.
 
 ## Sections
 
@@ -33,4 +33,4 @@ Both books are in the public domain in the United States (both published before 
 
 ## Notes
 
-A folder whose files are named `01-`, `02-`, … sorts correctly without anything else, but previous and next links need `series: true` on the folder's page, so `Talks/A Room of One's Own/` carries it. The talks' `source:` metadata never renders on the page, by design: it is provenance, like the dateline and the About list.
+A folder whose files are named `01-`, `02-`, … sorts correctly without anything else, but previous and next links need `series: true` on the folder's page, so `Talks/A Room of One's Own/` carries it. `source:` never renders on the page, by design: it is provenance, like the About list.
