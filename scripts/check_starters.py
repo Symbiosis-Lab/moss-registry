@@ -173,7 +173,7 @@ def check_site(site, errors):
     config = site / ".moss" / "config.toml"
     if config.is_file():
         for n, line in enumerate(config.read_text(encoding="utf-8").splitlines(), 1):
-            if re.match(r"\s*(domain|site_id)\s*=", line) or re.match(r"\s*\[channels\.", line):
+            if re.match(r"\s*(domain|site_id|environment)\s*=", line) or re.match(r"\s*\[channels\.", line):
                 errors.append(f"site/.moss/config.toml:{n}: deploy/identity key must not ship ({line.strip()})")
 
 

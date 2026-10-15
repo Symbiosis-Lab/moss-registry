@@ -47,7 +47,7 @@ All fields are required unless marked. Consumers ignore fields they do not know.
 - Its home page is `index.md` (or `README.md`), carries `home: true`, and omits `title:` so the site name comes from the user’s folder.
 - No file carries a `uid:` line. moss writes those into any file it builds, and each user's first build mints their own.
 - None of these paths exists: `.moss/state.toml`, `.moss/identity`, `.moss/keys`, `.moss/build*`, `.moss/cache`, `.claude/`, `.cursor/`, and nothing under `.moss/data/` except `redirects.json`. They are build output or belong to one person's site.
-- `.moss/config.toml` has no `domain`, no `site_id` and no `[channels.*]`: a starter has no address and publishes nowhere.
+- `.moss/config.toml` has no `domain`, no `site_id`, no `environment` and no `[channels.*]`: a starter has no address and publishes nowhere.
 - It is under 25 MB in total.
 - `.moss/STARTER.md` exists. It lives in `.moss/` so it is never built as a page.
 
