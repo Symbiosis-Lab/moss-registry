@@ -4,6 +4,7 @@
 
 ### Changed
 
+- When git is not installed, publishing waits with a Download button for moss's copy of git, and goes on once it is there, instead of failing straight away. It fails with the usual git message if nothing arrives within ten minutes.
 - Publishing reports each step once, when it starts, instead of repeating the same line on a timer. The repetition existed to convince moss the plugin had not hung; moss now counts the work itself as being alive — a push or an upload it is running, and, while the repository form is open, the fact that the plugin is waiting on you. The panel says which one it is waiting for instead of showing a progress bar that never moves, and a repository form you close or leave alone is reported as cancelled rather than as a step that succeeded.
 - Signing in happens before publishing, not in the middle of it. moss now asks the plugin whether your GitHub account is connected when you click Publish, and shows a "Sign in to GitHub" button in its own window if it is not — instead of the old behaviour, where a publish would start, reach the halfway point, and quietly wait for a sign-in behind a progress bar that said it was working.
 

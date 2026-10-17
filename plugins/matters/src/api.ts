@@ -1333,7 +1333,7 @@ export async function createDraft(input: PutDraftInput): Promise<MattersDraftWit
     input,
   });
 
-  console.log(`   ✅ Draft created with ID: ${data.putDraft.id}`);
+  console.info(`   ✅ Draft created with ID: ${data.putDraft.id}`);
   return data.putDraft;
 }
 

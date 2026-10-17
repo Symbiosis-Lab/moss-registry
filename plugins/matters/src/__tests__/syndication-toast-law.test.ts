@@ -463,9 +463,11 @@ describe("Law 2 — draft-timeout becomes a NeedsAction advisory with a link (no
         article: null,
       } as never);
 
+    // Queue order: the loading panel (no URL) opens first, then each draft.
     // Article-1: never-resolving closed → poll fires → fetchDraft[0] returns published.
     // Article-2: immediately-resolving closed → browser-close branch exits → null.
     mockOpenBrowser
+      .mockResolvedValueOnce({ closed: new Promise<void>(() => {}) })
       .mockResolvedValueOnce({ closed: new Promise<void>(() => {}) })
       .mockResolvedValueOnce({ closed: Promise.resolve() });
 

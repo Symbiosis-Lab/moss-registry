@@ -525,7 +525,7 @@ export async function captureLogin(): Promise<string | null | undefined> {
         }
       }
     } else {
-      console.warn("__access_token cookie NOT found");
+      console.debug("__access_token cookie NOT found");
     }
 
     return cachedAccessToken;
