@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-matters",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "Syndicate articles between local system and Matters.town",
   "main": "dist/main.bundle.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "clean": "rm -rf dist && mkdir -p dist",
     "copy-assets": "cp assets/* dist/",
     "watch-assets": "chokidar 'assets/**/*' -c 'npm run copy-assets'",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:all": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --project unit --coverage",
     "test:unit": "vitest run --project unit",
@@ -43,7 +44,7 @@
     "@graphql-codegen/schema-ast": "^5.0.2",
     "@graphql-codegen/typescript": "^5.0.10",
     "@graphql-codegen/typescript-operations": "^5.1.0",
-    "@symbiosis-lab/moss-api": "^0.13.1",
+    "@symbiosis-lab/moss-api": "^0.14.0",
     "@tauri-apps/api": "^2.11.1",
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^3.2.7",

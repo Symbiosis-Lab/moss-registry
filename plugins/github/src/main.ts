@@ -12,6 +12,7 @@
 import type { DeployContext, ConfigureDomainContext, HookResult, DnsTarget, DnsRecord } from "./types";
 import { fetchUrl } from "@symbiosis-lab/moss-api";
 import { reportProgress, reportError, setCurrentHookName, showToast, closeBrowser, resolveGitPath } from "./utils";
+import { waitForGit } from "./git-download";
 import { buildPagesUrl, parseGitHubUrl } from "./git";
 import { verifyRepoExists, getOriginOwnerRepo, deployViaGitPush, type DeployResult } from "./github-deploy";
 import { resolveTokenOutcome } from "./auth";
@@ -185,9 +186,9 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 
   console.log("GitHub Deployer: Starting deployment...");
 
-  // Pre-flight: resolve git binary (downloads if needed)
+  // Pre-flight: find git; if this machine has none, offer its download and wait.
   await reportProgress("configuring", 1, 10, "Checking git...");
-  const gitPath = await resolveGitPath();
+  const gitPath = (await resolveGitPath()) ?? (await waitForGit());
   if (!gitPath) {
     const msg = "Git is required for deployment.\n\nInstall git by running: xcode-select --install";
     await reportError(msg, "validation", true);

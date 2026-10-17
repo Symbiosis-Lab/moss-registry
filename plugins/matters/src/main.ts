@@ -439,7 +439,12 @@ async function affirmBindingFromProfile(): Promise<void> {
   }
 }
 
-async function promptLogin(): Promise<boolean> {
+/**
+ * `keepPanelLoading`: on success, return the panel to its loading state
+ * (`openBrowser()` with no URL) instead of closing it, so the caller can keep
+ * the same panel up until its next page navigates in place.
+ */
+async function promptLogin(options: { keepPanelLoading?: boolean } = {}): Promise<boolean> {
   // UI-layer escape hatch: when MOSS_MATTERS_TEST_PROFILE is set, skip
   // the login webview entirely and pretend authentication succeeded.
   // The API layer (apiConfig.queryMode = "user") already routes all
@@ -487,10 +492,14 @@ async function promptLogin(): Promise<boolean> {
       } catch {
         // Toast failure must not fail the login flow
       }
-      try {
-        await closeBrowser();
-      } catch {
-        // Browser might already be closed
+      if (options.keepPanelLoading) {
+        await openBrowser();
+      } else {
+        try {
+          await closeBrowser();
+        } catch {
+          // Browser might already be closed
+        }
       }
       return true;
     } else {
@@ -547,7 +556,6 @@ export async function login(context: ProcessContext): Promise<HookResult> {
   }
 
   const task = await startTask("Connect to Matters", {
-    hook: "import",
     trigger: context.trigger ?? "settings_manual",
     hasProgress: false,
     cancellable: false,
@@ -613,17 +621,15 @@ export async function process(context: ProcessContext): Promise<HookResult> {
   const testProfile = await applyTestProfileEscapeHatch();
 
   // Start a PanelTask so the breadcrumb hairline animates during import.
-  // hook = "import" — the process hook syncs articles from Matters (an import
-  //   operation), not a transform/enhance.
   // trigger — moss owns this context (ADR-015): it stamps `context.trigger` when
-  //   it invokes the hook. The onboarding card path → "onboarding_flow", which the
-  //   router maps to (ActionPanel, Ambient) → the hairline; every build/preview
-  //   rebuild → "background" (quiet). The plugin must NOT guess this from its own
+  //   it invokes the hook. The onboarding card path → "onboarding_flow". Onboarding
+  //   tasks take the default process hook, which places them on the workspace
+  //   surface, not the ActionPanel. Every build/preview rebuild → "background"
+  //   (quiet). The plugin must NOT guess this from its own
   //   state (e.g. the test-profile env var) — that conflated "test mode" with
   //   "user-initiated onboarding" and left the hairline dead in production.
   //   Absent (older moss) ⇒ "background", the safe quiet default.
   const task = await startTask("Importing from Matters", {
-    hook: "import",
     trigger: context.trigger ?? "background",
     hasProgress: true,
     cancellable: false,
@@ -1147,6 +1153,10 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
     job: "syndicate",
   });
 
+  // The panel is held from the loading open below until the draft navigates it
+  // in place (or until nothing will open a draft). The finally releases it once,
+  // so no early return or error leaves a loader behind.
+  let panelHeld = false;
   try {
     if (!context.deployment) {
       await task.failed("No deployment information available");
@@ -1157,6 +1167,9 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
     }
 
     const { url: siteUrl, deployed_at } = context.deployment;
+
+    await openBrowser();
+    panelHeld = true;
 
     console.log(`📡 Syndicating ${articlesToSyndicate.length} article(s) to Matters.town`);
     console.log(`🌐 Deployed site: ${siteUrl}`);
@@ -1177,9 +1190,11 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
       // label (spec: no Awaiting amber pulse for in-panel login).
       await task.awaiting("Connect to Matters", "", "cancel");
       await task.progress(undefined, "Connect to Matters");
-      const loginSuccess = await promptLogin();
+      const loginSuccess = await promptLogin({ keepPanelLoading: true });
       if (loginSuccess) {
         await dismissToast("matters-login-required");
+      } else {
+        panelHeld = false; // promptLogin closed the panel on its failure path
       }
       if (!loginSuccess) {
         // Propose an actionable account advisory: the user must sign in to
@@ -1220,8 +1235,14 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
     const totalToSyndicate = articlesToSyndicate.length;
     let processed = 0;
     for (const article of articlesToSyndicate) {
-      await task.progress(processed / totalToSyndicate, `Syndicating ${article.title}`);
       try {
+        // The previous article's draft closes the panel when it ends, so each
+        // article's work starts with the loading panel open again.
+        if (!panelHeld) {
+          await openBrowser();
+          panelHeld = true;
+        }
+        await task.progress(processed / totalToSyndicate, `Syndicating ${article.title}`);
         // Verify article is actually live at its deployed URL before syndicating.
         // Prevents publishing broken links (e.g., new article not yet deployed,
         // or GitHub Pages build failed).
@@ -1236,6 +1257,8 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
           addCanonicalLink: addCanonicalLink as boolean,
           lang,
         }, task);
+        // A returned article has opened its draft, which now owns the panel.
+        panelHeld = false;
 
         if (result.publishedUrl) {
           published++;
@@ -1330,6 +1353,15 @@ export async function syndicate(context: SyndicateContext): Promise<HookResult> 
       success: false,
       message: `Syndication failed: ${cause}`,
     };
+  } finally {
+    if (panelHeld) {
+      panelHeld = false;
+      try {
+        await closeBrowser();
+      } catch {
+        // Browser might already be closed
+      }
+    }
   }
 }
 
@@ -1378,7 +1410,7 @@ export async function syndicateArticle(
   options: { addCanonicalLink: boolean; lang: string },
   task: TaskHandle,
 ): Promise<{ draftId: string; publishedUrl?: string }> {
-  console.log(`  → Syndicating: ${article.title}`);
+  console.info(`  → Syndicating: ${article.title}`);
 
   const canonicalUrl = `${siteUrl.replace(/\/$/, "")}/${article.url_path.replace(/^\//, "")}`;
 
@@ -1508,7 +1540,7 @@ export async function syndicateArticle(
   // task.awaiting() also suspends the Rust 60s inactivity watchdog, so a slow
   // user is never killed by inactivity while the browser is open.
   const draftPageUrl = draftUrl(draft.id);
-  console.log(`    🌐 Opening draft for review: ${draftPageUrl}`);
+  console.info(`    🌐 Opening draft for review: ${draftPageUrl}`);
   // Project THIS folder's token into the matters cookie so the draft-room
   // webview authenticates as the bound account (the cookie is the webview's
   // only credential — see credential.prepareWebviewAuth), not whoever logged

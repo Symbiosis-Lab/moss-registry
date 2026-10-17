@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _Pending publish — cumulative since `1.1.2` (last released on main); full detail under [1.4.0] and [1.2.0]._
 
+- Changed: the Matters panel opens at once with a loader and stays open from sign-in until your draft is ready.
+
+- Changed: with several articles to import, the loader returns for each one.
+
+- Changed: the plugin's progress lines now appear in the app log.
+
 - Changed (`1.5.6`): images imported from Matters are written into your articles as standard Markdown, `![](../assets/photo.jpg)`, the path from the article to the file, instead of `![[photo.jpg]]`, which only moss and Obsidian understand. A space or parenthesis in the file name is written as `%20`, `%28` and the like. Articles already imported keep the form they have.
 
 - Changed (`1.5.5`): no behaviour change. Comments in the plugin's source were shortened, and the version moves because the source did.

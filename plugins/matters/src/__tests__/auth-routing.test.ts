@@ -520,10 +520,12 @@ describe("syndicate session gate", () => {
     expect(mockTaskAwaiting).toHaveBeenCalledWith("Connect to Matters", "", "cancel");
     expect(mockOpenBrowser).toHaveBeenCalled();
 
-    // Order invariant: awaiting must precede openBrowser so the watchdog
-    // marks the hook as Awaiting before the browser window opens.
+    // Order invariant: awaiting must precede the login navigation so the
+    // watchdog marks the hook as Awaiting before the login page opens. The
+    // loading panel (no URL) opens earlier, before the session check.
     const awaitingOrder = mockTaskAwaiting.mock.invocationCallOrder[0];
-    const openBrowserOrder = mockOpenBrowser.mock.invocationCallOrder[0];
+    const loginOpenIndex = mockOpenBrowser.mock.calls.findIndex(([url]) => url !== undefined);
+    const openBrowserOrder = mockOpenBrowser.mock.invocationCallOrder[loginOpenIndex];
     expect(awaitingOrder).toBeLessThan(openBrowserOrder);
   });
 });
