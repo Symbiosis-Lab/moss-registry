@@ -72,6 +72,12 @@ def check_manifest(sid, starter, errors):
             errors.append(f"manifest: '{key}' is empty")
     if not LANG_RE.match(m["language"]):
         errors.append(f"manifest: language '{m['language']}' is not a BCP 47 tag")
+    if "plugins" in m:
+        plugins = m["plugins"]
+        if (not isinstance(plugins, list) or not plugins
+                or not all(isinstance(p, str) and ID_RE.match(p) for p in plugins)
+                or len(set(plugins)) != len(plugins)):
+            errors.append("manifest: plugins must be a non-empty list of distinct plugin ids ([a-z0-9-]+)")
     if "demo_url" in m:
         demo = m["demo_url"]
         u = urlparse(demo) if isinstance(demo, str) else None
@@ -95,6 +101,31 @@ def check_manifest(sid, starter, errors):
             errors.append(f"manifest: tour path '{p}' listed twice")
         seen.add(p)
     return m
+
+
+def declared_plugins(manifest):
+    plugins = manifest.get("plugins") if manifest else None
+    return plugins if isinstance(plugins, list) else []
+
+
+def build_command(moss, site, manifest):
+    """moss refuses a plugin that came with a folder unless told otherwise;
+    a starter's carried plugins were reviewed with it, so its build allows them."""
+    cmd = [moss, "build", str(site), "--strict"]
+    if declared_plugins(manifest):
+        cmd.append("--allow-plugins")
+    return cmd
+
+
+def check_plugins(site, manifest, errors):
+    """Code a starter carries must be what its manifest declares, and no more."""
+    plugin_dir = site / ".moss" / "plugins"
+    carried = {p.name for p in plugin_dir.iterdir() if p.is_dir()} if plugin_dir.is_dir() else set()
+    declared = set(declared_plugins(manifest))
+    for pid in sorted(carried - declared):
+        errors.append(f"site/.moss/plugins/{pid}/ is carried but manifest 'plugins' does not declare it")
+    for pid in sorted(declared - carried):
+        errors.append(f"manifest declares plugin '{pid}' but site/.moss/plugins/{pid}/ does not exist")
 
 
 def jpeg_size(path):
@@ -194,7 +225,7 @@ def check_build(moss, sid, starter, manifest, errors):
     try:
         copy = scratch / "site"
         shutil.copytree(starter / "site", copy)
-        r = subprocess.run([moss, "build", str(copy), "--strict"],
+        r = subprocess.run(build_command(moss, copy, manifest),
                            capture_output=True, text=True)
         if r.returncode != 0:
             tail = (r.stdout + r.stderr).strip().splitlines()[-8:]
@@ -270,6 +301,8 @@ def main(argv):
             if not site_only:
                 check_posters(starter, errors)
             check_site(starter / "site", errors)
+            if manifest:
+                check_plugins(starter / "site", manifest, errors)
             if moss and manifest and not errors:
                 check_build(moss, sid, starter, manifest, errors)
         if errors:

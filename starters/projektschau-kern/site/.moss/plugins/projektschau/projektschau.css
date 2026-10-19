@@ -1,0 +1,200 @@
+/* Projektschau für KERN: Ergänzungen zum KERN-Kit. Nur, was KERN nicht hat; alle Werte aus KERN-Tokens oder den
+   Bereichsfarben (--ps-area-*) der Daten. Lizenz: EUPL-1.2. */
+
+/* Abstände zwischen Kopf, Filterleiste und Raster: KERN-Utility kern-stack-lg am Wrapper */
+.ps [hidden], .ps .is-hidden { display: none !important; }
+
+/* Kopf: Abstände über kern-stack-sm */
+.ps-kopfzeile { display: flex; justify-content: flex-end; align-items: stretch; gap: var(--kern-metric-space-small, 8px); }
+.ps-kopfzeile .kern-btn--x-small { margin-block: 0; }
+/* Symbolschalter als KERN-Checkbox: ohne den rechten Innenabstand der Komponente, mittig zur Zeile */
+.ps-kopfzeile .kern-form-check { padding-right: var(--kern-metric-space-small, 8px); align-items: center; grid-template-columns: var(--kern-metric-dimension-default, 24px) auto; }
+/* 24 Pixel sichtbar: die Kit-Checkbox (32 Pixel) als Ganzes auf 75 % skaliert, damit der Haken mittig bleibt; negative Ränder geben den Platzbedarf von 24 Pixel frei */
+.ps-kopfzeile .kern-form-check__checkbox { width: var(--kern-metric-dimension-large, 32px); height: var(--kern-metric-dimension-large, 32px); transform: scale(.75); transform-origin: center; margin: -4px; }
+/* Checkbox und Label in der Aktionsfarbe, damit der Schalter oben rechts als Bedienelement lesbar ist */
+.ps-kopfzeile .kern-form-check__checkbox { border-color: var(--kern-color-action-default-contextual, #2044aa); background: var(--kern-color-layout-background-default-contextual, #fff); }
+.ps-kopfzeile .kern-form-check__checkbox:hover { border-color: var(--kern-color-action-default-contextual, #2044aa); }
+.ps-kopfzeile .kern-form-check .kern-label { color: var(--kern-color-action-default-contextual, #2044aa); font-weight: var(--kern-typography-font-weight-label-default, 600); font-size: var(--kern-typography-font-size-small-static, 16px); padding-top: 0; padding-left: var(--kern-metric-space-small, 8px); cursor: pointer; }
+.ps-kopfzeile .kern-form-check__checkbox { cursor: pointer; }
+.ps-lang { justify-content: flex-end; }
+.ps-lede p { margin: 0; }
+.ps-lede p + p { margin-top: var(--kern-metric-space-small, 8px); }
+
+/* Filter */
+/* Filterleiste als eigener Bereich: haftet oben, Fläche und Linie aus KERN-Tokens */
+/* Leiste als Raster: Bereichsblock links, Umschalter rechts in derselben Zeile, Einordnungsblock darunter */
+.ps-controls { display: grid; grid-template-columns: 1fr auto; gap: var(--kern-metric-space-default, 16px); position: sticky; top: 0; z-index: 10; padding: var(--kern-metric-space-default, 16px) 0 0; background: color-mix(in oklab, var(--kern-color-layout-background-default, #fff) 88%, transparent); -webkit-backdrop-filter: blur(var(--kern-metric-space-small, 8px)); backdrop-filter: blur(var(--kern-metric-space-small, 8px)); }
+.ps-controls-divider { grid-column: 1 / -1; margin: 0; }
+/* Filterzeile als Raster: Beschriftung links, Buttons brechen in ihrer Spalte um */
+.ps-filter { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: var(--kern-metric-space-small, 8px) var(--kern-metric-space-default, 16px); }
+.ps-panel-bereich { grid-column: 1; grid-row: 1; }
+.ps-panel-cat { grid-column: 1 / -1; }
+/* Beschriftung auf Höhe der ersten Buttonzeile (Button 32 px, Label-Zeile 24 px) */
+.ps-filter-label { min-width: calc(var(--kern-metric-space-x-large, 32px) * 2.5); padding-top: var(--kern-metric-space-x-small, 4px); }
+/* Umschalter rechts neben dem Bereichsblock, auf Höhe der ersten Buttonzeile */
+.ps-view { grid-column: 2; grid-row: 1; align-self: start; }
+/* Umbrechende Filter: Abstand in der Höhe wie in der Breite (KERN gibt x-small-Buttons 8 px Außenabstand oben und unten) */
+.ps-filter .kern-btn--x-small { margin-block: 0; }
+.ps-count { color: inherit; opacity: .8; }
+.ps-icon { width: 1em; height: 1em; flex: none; }
+.kern-btn .ps-icon { margin-inline-end: var(--kern-metric-space-x-small, 4px); color: var(--kern-color-action-default-contextual, #2044aa); }
+.kern-btn--primary .ps-icon { color: var(--kern-color-action-on-default-contextual, #fff); }
+
+/* Bereichsfilter in der Bereichsfarbe: aktiv gefüllt (Text in „on“), inaktiv mit Rand und Text in der Bereichsfarbe */
+.ps-btn-bereich.kern-btn--primary { background: var(--ps-area); }
+.ps-btn-bereich.kern-btn--primary .kern-label, .ps-btn-bereich.kern-btn--primary .ps-icon { color: var(--ps-area-on, #fff); }
+.ps-btn-bereich.kern-btn--secondary .kern-label, .ps-btn-bereich.kern-btn--secondary .ps-icon { color: var(--ps-area-fg, var(--ps-area)); }
+.ps-btn-bereich.kern-btn--secondary { border-color: var(--ps-area); }
+/* Hover und Aktiv: KERN mischt dafür die Aktionsfarbe ab, hier entsprechend die Bereichsfarbe */
+.ps-btn-bereich.kern-btn--primary:not(:disabled):hover { background: color-mix(in oklab, var(--ps-area) 88%, black); }
+.ps-btn-bereich.kern-btn--primary:not(:disabled):active { background: color-mix(in oklab, var(--ps-area) 78%, black); }
+.ps-btn-bereich.kern-btn--secondary:not(:disabled):hover { background: color-mix(in oklab, var(--ps-area) 10%, transparent); }
+.ps-btn-bereich.kern-btn--secondary:not(:disabled):active { background: color-mix(in oklab, var(--ps-area) 18%, transparent); }
+
+/* Ansichtswahl Karten/Zeitlich als zusammenhängender Umschalter: KERN hat keinen Segmented Control. Farben und Radius
+   kommen aus den Button-Regeln (aktiv wie Primär, inaktiv wie Sekundär), nur die Segmente stoßen aneinander. */
+.ps-seg { gap: 0; }
+.ps-seg .kern-btn { margin: 0; border-radius: 0; }
+.ps-seg .kern-btn--secondary { border-color: var(--kern-color-action-default-contextual, #2044aa); }
+.ps-seg .kern-btn + .kern-btn { margin-inline-start: calc(-1 * var(--kern-metric-border-width-light, 1px)); }
+.ps-seg .kern-btn:first-child { border-start-start-radius: var(--kern-metric-border-radius-default, 4px); border-end-start-radius: var(--kern-metric-border-radius-default, 4px); }
+.ps-seg .kern-btn:last-child { border-start-end-radius: var(--kern-metric-border-radius-default, 4px); border-end-end-radius: var(--kern-metric-border-radius-default, 4px); }
+.ps-seg .kern-btn:focus-visible, .ps-seg .kern-btn--primary { z-index: 1; }
+
+/* Bis Tablet: Ansichtsumschalter als volle Zeile über den Bereichsfiltern, beide Hälften gleich breit */
+@media (max-width: 64rem) {
+	.ps-controls { grid-template-columns: 1fr; }
+	.ps-view { grid-column: 1; grid-row: 1; }
+	.ps-panel-bereich { grid-row: 2; }
+	.ps-view .kern-btn-wrapper { display: flex; width: 100%; }
+	.ps-view .kern-btn { flex: 1 1 0; }
+}
+
+/* Mobil: Beschriftung auf eigener Zeile, Buttons über die volle Breite, gleichmäßige Abstände zwischen den Blöcken */
+@media (max-width: 48rem) {
+	.ps-filter { grid-template-columns: 1fr; gap: var(--kern-metric-space-small, 8px); }
+	.ps-filter-label { padding-top: 0; }
+}
+
+/* Filterblöcke als KERN-Details: auf Desktop offen ohne Kopf, auf Mobil einklappbar; der Kopf hat die Größe der Beschriftung */
+.ps-panel > summary { padding: 0; min-height: 0; align-items: center; gap: var(--kern-metric-space-x-small, 4px); margin-bottom: var(--kern-metric-space-small, 8px); }
+.ps-panel > summary .kern-label { padding-block: 0; color: var(--kern-color-action-default-contextual, #2044aa); }
+.ps-panel > summary::before { width: var(--kern-metric-dimension-small, 20px); height: var(--kern-metric-dimension-small, 20px); min-width: var(--kern-metric-dimension-small, 20px); }
+.ps-panel--offen > summary { display: none; }
+/* Inhalt des Panels nie einrücken, auch zugeklappt-aufgeklappt auf Mobil: Filter über die ganze Breite */
+.ps-panel > .kern-details__body { padding-left: 0; margin-left: 0; box-shadow: none; }
+.ps-panel:not(.ps-panel--offen) .ps-filter-label { display: none; }
+
+/* Kartenraster: KERN-Grid (kern-row mit kern-col-12/md-6/lg-4/xxl-3). Die Rinne ist eine Stufe enger als die 2rem des Kits:
+   24 px (Token large), also 12 px je Spaltenseite, und die Zeile gleicht das aus. */
+.ps-grid.kern-row { margin-inline: calc(-1 * var(--kern-metric-space-large, 24px) / 2); }
+.ps-grid.kern-row > [class*="kern-col"].ps-col { padding: calc(var(--kern-metric-space-large, 24px) / 2); }
+.ps-col { display: flex; }
+.ps-col > .ps-card { width: 100%; min-width: 0; }
+/* Zurücksetzen-Knopf im Alert nicht auf volle Breite dehnen (der Alert-Rumpf ist eine Flex-Spalte mit stretch) */
+/* Leerzustand: Text und tertiärer Button in einem kern-stack, kein Kasten; Knopf nicht dehnen */
+.ps-empty .ps-reset { align-self: flex-start; }
+
+/* Karte: Fläche und ganz dezenter Rahmen in Stufen der Bereichsrampe, Titel in der Bereichsfarbe, Badges in der Bereichsfarbe */
+/* Fläche und Rahmen als Stufen der KERN-Farbrampe, aus area (Stufe 500) mit der relativen OKLCH-Syntax berechnet:
+   hell Fläche = Stufe 025 (L 96,4 %), Rahmen und Trennlinie = Stufe 100 (L 91,0 %); das Chroma folgt dem Rampenprofil.
+   Die color-mix-Zeile davor ist der Ersatz für Browser ohne relative Farbsyntax. */
+.ps-card { background: color-mix(in oklab, var(--ps-area) 7%, var(--kern-color-layout-background-default-contextual, #fff)); border-color: color-mix(in oklab, var(--ps-area) 20%, var(--kern-color-decorative-border-contextual, #c0c3d5)); }
+.ps-card { background: oklch(from var(--ps-area) 96.4% calc(c * 0.08) h); border-color: oklch(from var(--ps-area) 91% calc(c * 0.22) h); }
+.ps-card-divider { align-self: stretch; margin-top: var(--kern-metric-space-default, 16px); background-color: color-mix(in oklab, var(--ps-area) 20%, var(--kern-color-decorative-border-contextual, #c0c3d5)); }
+.ps-card .kern-card__container { padding: var(--kern-metric-space-large, 24px); } /* kompakte Variante (8 px Lücke, kleine Texte), Innenabstand aber eine Stufe größer als ihre 16 px */
+.ps-card .kern-card__footer { padding-top: 0; } /* Trenner gehört zu den Links: 24 Pixel über, 8 unter der Linie (mit der 8-px-Lücke der Karte) */
+.ps-card-divider { background-color: oklch(from var(--ps-area) 91% calc(c * 0.22) h); }
+/* Dunkelmodus, gespiegelt: Fläche = Stufe 950 (L 20,9 %), Rahmen und Trennlinie = Stufe 900 (L 25,9 %) */
+[data-kern-theme="dark"] .ps-card, .kern-dark .ps-card { background: color-mix(in oklab, var(--ps-area) 16%, var(--kern-color-layout-background-default-surface, #1c1a12)); border-color: color-mix(in oklab, var(--ps-area) 30%, var(--kern-color-layout-background-default-surface, #1c1a12)); }
+[data-kern-theme="dark"] .ps-card, .kern-dark .ps-card { background: oklch(from var(--ps-area) 20.9% calc(c * 0.65) h); border-color: oklch(from var(--ps-area) 25.9% calc(c * 0.8) h); }
+[data-kern-theme="dark"] .ps-card-divider, .kern-dark .ps-card-divider { background-color: oklch(from var(--ps-area) 25.9% calc(c * 0.8) h); }
+@media (prefers-color-scheme: dark) {
+	:root:not([data-kern-theme="light"]):not(.kern-light) .ps-card { background: oklch(from var(--ps-area) 20.9% calc(c * 0.65) h); border-color: oklch(from var(--ps-area) 25.9% calc(c * 0.8) h); }
+	:root:not([data-kern-theme="light"]):not(.kern-light) .ps-card-divider { background-color: oklch(from var(--ps-area) 25.9% calc(c * 0.8) h); }
+}
+/* Spezifität wie die Regel der kompakten Karte im Kit, sonst greift die Bereichsfarbe nicht */
+.ps-card .kern-card__container .kern-card__header .kern-title { color: var(--ps-area-fg, inherit); padding-inline: 0; }
+/* Status unter dem Titel in derselben Bereichsfarbe wie der Titel, ohne den oberen Grundlinienabstand des Kits (7 px), damit er näher am Titel sitzt (Spezifität über den Kit-Regeln der Karte) */
+.ps-card .kern-card__container .kern-card__header .kern-subline { color: var(--ps-area-fg, inherit); padding-top: 0; }
+/* Kartentitel eine Stufe größer als im Kit (medium-adaptive: 21 px, ab Desktop 24 px) */
+.ps-card .kern-card__container .kern-card__header .kern-title { font-size: var(--kern-typography-font-size-medium-adaptive, 21px); line-height: var(--kern-typography-line-height-medium-adaptive, 28px); }
+/* Cover mit großem Projektsymbol über dem Kartenkopf, optional: data-symbole="ja" am Wrapper (Attribut am Element oder Schalter der Demo).
+   Fläche = Stufe 100 der Bereichsrampe wie der Rahmen, Symbol in fg, Breite 22 % der Karte; das Kit setzt in __media alle Kinder auf 100 %, daher der Reset. */
+.ps-cover { display: none; aspect-ratio: 16 / 9; justify-content: center; align-items: center; color: var(--ps-area-fg, var(--ps-area)); background: color-mix(in oklab, var(--ps-area) 20%, var(--kern-color-decorative-border-contextual, #c0c3d5)); border-start-start-radius: var(--kern-metric-border-radius-default, 4px); border-start-end-radius: var(--kern-metric-border-radius-default, 4px); }
+.ps-cover { background: oklch(from var(--ps-area) 91% calc(c * 0.22) h); }
+.ps[data-symbole="ja"] .ps-cover { display: flex; }
+.kern-card__media.ps-cover > .ps-cover-icon { width: 22%; height: auto; overflow: visible; transition: transform 200ms ease-in-out; }
+/* Zeiger über der Karte (oder Fokus darin): Symbol wächst weich; das Kit hat keine Bewegungs-Tokens, 200 ms ist ein gesetzter Wert */
+.ps-card:hover .ps-cover-icon, .ps-card:focus-within .ps-cover-icon { transform: scale(1.15); }
+@media (prefers-reduced-motion: reduce) { .kern-card__media.ps-cover > .ps-cover-icon { transition: none; } }
+[data-kern-theme="dark"] .ps-cover, .kern-dark .ps-cover { background: oklch(from var(--ps-area) 25.9% calc(c * 0.8) h); }
+@media (prefers-color-scheme: dark) { :root:not([data-kern-theme="light"]):not(.kern-light) .ps-cover { background: oklch(from var(--ps-area) 25.9% calc(c * 0.8) h); } }
+.ps-tags { display: flex; flex-wrap: wrap; align-items: center; gap: var(--kern-metric-space-x-small, 4px); width: 100%; margin-bottom: var(--kern-metric-space-small, 8px); }
+.ps-num { margin-inline-start: auto; padding-block: 0; font-size: var(--kern-typography-font-size-small-static, 16px); color: var(--ps-area-fg, var(--kern-color-layout-text-muted-contextual, #51577a)); font-variant-numeric: tabular-nums; } /* keine Opazität: sie drückte fg unter 4,5:1 */
+.ps-badge { background: var(--ps-area); border-color: var(--ps-area); color: var(--ps-area-on, #fff); padding: var(--kern-metric-space-2x-small, 2px) var(--kern-metric-space-small, 8px); }
+.ps-badge .kern-label { color: inherit; padding-inline-end: var(--kern-metric-space-x-small, 4px); }
+.ps-badge .ps-icon { margin-inline-end: var(--kern-metric-space-x-small, 4px); }
+.kern-card__body .ps-field { padding-bottom: 0; }
+/* Feldbezeichnung und ihr Inhalt gehören zusammen: Abstand dazwischen halbiert */
+.kern-card__body .ps-field + * { margin-top: calc(-1 * var(--kern-metric-space-x-small, 4px)); }
+.kern-card__body .kern-list--small { align-self: stretch; }
+/* Listen in Karten enger als der KERN-Standard (16 px Abstand plus Innenabstand je Punkt) */
+.kern-card__body .kern-list--bullet { gap: var(--kern-metric-space-x-small, 4px); padding-left: calc(var(--kern-metric-space-default, 16px) + var(--kern-metric-space-x-small, 4px)); } /* Einrückung 20 px statt der 32 px des Kits, aus zwei Space-Tokens */
+.kern-card__body .kern-list--bullet li { padding-block: 0; }
+/* Kennzahl folgt direkt auf Text oder Liste; der Fuß mit den Links bleibt unten (Rumpf dehnt sich) */
+/* Kennzahl in der Bereichsfarbe (Spezifität über den Kit-Regeln der Karte) */
+.ps-card .kern-card__container .kern-card__body .ps-kpi { color: var(--ps-area-fg, inherit); }
+
+/* Zeitleiste nach dem Vorbild der Projektschau: Zeitraum links, senkrechte Linie mit Punkt in der Bereichsfarbe,
+   Nummer, Bereichs-Badge, Titel und Einordnung in der Bereichsfarbe wie auf den Karten */
+/* --ps-tl-mitte: Höhe der Mitte der ersten Zeile unter der Zeilenoberkante; am Desktop gemessen (Kopfzeile mit Badge), auf Mobil die halbe Zeilenhöhe */
+.ps-tl { --ps-tl-mitte: 17px; }
+.ps-tl, .ps-tl-liste { list-style: none; margin: 0; padding: 0; }
+.ps-year + .ps-year { margin-top: var(--kern-metric-space-large, 24px); }
+.ps-tl-jahr { margin-bottom: var(--kern-metric-space-small, 8px); }
+.ps-row { display: grid; grid-template-columns: calc(var(--kern-metric-space-x-large, 32px) * 3) 1fr; gap: 0 var(--kern-metric-space-default, 16px); }
+/* Zeitraum auf der Höhe der ersten Zeile */
+.ps-tl-zeit { text-align: right; padding-top: calc(var(--ps-tl-mitte) - var(--kern-typography-line-height-medium-static, 24px) / 2); }
+.ps-tl-main { position: relative; border-left: var(--kern-metric-border-width-default, 2px) solid var(--kern-color-decorative-border-contextual, #c0c3d5); padding: 0 0 var(--kern-metric-space-large, 24px) var(--kern-metric-space-large, 24px); }
+.ps-row:last-child .ps-tl-main { padding-bottom: var(--kern-metric-space-x-small, 4px); }
+/* Linie beginnt an der ersten und endet an der letzten sichtbaren Zeile je Jahr in der Mitte des Punkts (Klassen setzt das Skript nach jedem Filtern) */
+.ps-row--letzte .ps-tl-main { border-image: linear-gradient(var(--kern-color-decorative-border-contextual, #c0c3d5) var(--ps-tl-mitte), transparent var(--ps-tl-mitte)) 1; }
+.ps-row--erste.ps-row--letzte .ps-tl-main { border-image: none; border-color: transparent; }
+.ps-row--erste .ps-tl-main { border-image: linear-gradient(transparent var(--ps-tl-mitte), var(--kern-color-decorative-border-contextual, #c0c3d5) var(--ps-tl-mitte)) 1; }
+.ps-tl-main::before { content: ""; position: absolute; width: var(--kern-metric-dimension-x-small, 16px); height: var(--kern-metric-dimension-x-small, 16px); left: calc(-1 * (var(--kern-metric-dimension-x-small, 16px) + var(--kern-metric-border-width-default, 2px)) / 2); top: calc(var(--ps-tl-mitte) - var(--kern-metric-dimension-x-small, 16px) / 2); border-radius: 50%; background: var(--ps-area-fg, var(--ps-area)); box-shadow: 0 0 0 var(--kern-metric-border-width-default, 2px) var(--kern-color-layout-background-default, #fff); }
+.ps-tl-kopf { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--kern-metric-space-x-small, 4px) var(--kern-metric-space-small, 8px); }
+.ps-tl-kopf .ps-num { margin-inline-start: 0; }
+.ps-tl-titel { color: var(--ps-area-fg, inherit); padding: 0; flex: 0 1 auto; font-size: var(--kern-typography-font-size-large-static, 21px); line-height: var(--kern-typography-line-height-medium-static, 24px); }
+.ps-tl-cat { color: var(--ps-area-fg, inherit); }
+.ps-tl-kopf .ps-badge { position: relative; top: calc(-1 * var(--kern-metric-space-2x-small, 2px)); } /* Badge optisch mittig zur Titelzeile, Grundlinie liegt sonst einen Tick zu tief */
+.ps-tl-notiz { margin: var(--kern-metric-space-x-small, 4px) 0 0; padding: 0; }
+/* Mobil: Zeitraum über dem Eintrag, die Linie läuft durchgehend am Rand der ganzen Zeile, der Punkt sitzt beim Zeitraum */
+@media (max-width: 40rem) {
+	/* Punkt ragt 8 px nach links über die Linie; die Zeitleiste rückt so weit ein, dass er innerhalb der Leiste bleibt und beim Scrollen hinter ihr verschwindet */
+	.ps-tl-liste { padding-left: var(--kern-metric-space-small, 8px); }
+	.ps-tl { --ps-tl-mitte: calc(var(--kern-typography-line-height-medium-static, 24px) / 2); }
+	.ps-row { display: block; position: relative; border-left: var(--kern-metric-border-width-default, 2px) solid var(--kern-color-decorative-border-contextual, #c0c3d5); padding: 0 0 var(--kern-metric-space-large, 24px) var(--kern-metric-space-large, 24px); }
+	.ps-row:last-child { padding-bottom: var(--kern-metric-space-x-small, 4px); }
+	.ps-row--erste { border-image: linear-gradient(transparent var(--ps-tl-mitte), var(--kern-color-decorative-border-contextual, #c0c3d5) var(--ps-tl-mitte)) 1; }
+	.ps-row--letzte { border-image: linear-gradient(var(--kern-color-decorative-border-contextual, #c0c3d5) var(--ps-tl-mitte), transparent var(--ps-tl-mitte)) 1; }
+	.ps-row--erste.ps-row--letzte { border-image: none; border-color: transparent; }
+	.ps-row--erste .ps-tl-main, .ps-row--letzte .ps-tl-main { border-image: none; }
+	.ps-row::before { content: ""; position: absolute; width: var(--kern-metric-dimension-x-small, 16px); height: var(--kern-metric-dimension-x-small, 16px); left: calc(-1 * (var(--kern-metric-dimension-x-small, 16px) + var(--kern-metric-border-width-default, 2px)) / 2); top: calc(var(--ps-tl-mitte) - var(--kern-metric-dimension-x-small, 16px) / 2); border-radius: 50%; background: var(--ps-area-fg, var(--ps-area)); box-shadow: 0 0 0 var(--kern-metric-border-width-default, 2px) var(--kern-color-layout-background-default, #fff); }
+	.ps-tl-zeit { display: block; text-align: left; padding: 0 0 var(--kern-metric-space-small, 8px); }
+	.ps-tl-main { border-left: 0; border-image: none; padding: 0; }
+	.ps-tl-main::before { display: none; }
+}
+
+/* Druckansicht: keine Umschalter und Filter über den Karten, nur Titel, Einleitung und die sichtbare Ansicht
+   (gefiltert wie am Bildschirm). Karten zweispaltig ohne Seitenumbruch im Inneren, Links mit Adresse, helle Farben auch im Dunkelmodus. */
+@media print {
+  .ps .ps-kopfzeile, .ps .ps-filter, .ps .ps-view, .ps .ps-live, .ps .ps-empty, .ps [hidden] { display: none !important; }
+  .ps, .ps .kern-card { background: #fff; color: #000; box-shadow: none; }
+  .ps .ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .ps .ps-grid > .ps-col { grid-column: auto; width: auto; max-width: none; padding: 0; } /* die Kit-Spalten (span 12/6/4/3) gelten nur am Bildschirm */
+  .ps .kern-card, .ps .ps-row { break-inside: avoid; border: 1px solid #888; }
+  .ps .ps-badge { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .ps .kern-card__footer { display: block; }
+  .ps a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .8em; word-break: break-all; }
+}
