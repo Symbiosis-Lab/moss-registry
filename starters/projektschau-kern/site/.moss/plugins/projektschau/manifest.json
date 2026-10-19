@@ -1,0 +1,17 @@
+{
+  "name": "projektschau",
+  "version": "0.2.0",
+  "description": "Draws a folder as the Projektschau project board",
+  "author": "Don Ludwig (Projektschau for KERN, github.com/donludwig/projektschau-kern), ported to moss",
+  "entry": "main.js",
+  "global_name": "ProjektschauPlugin",
+  "contributes": {
+    "listing_styles": {
+      "projektschau": {
+        "label": "Project board",
+        "description": "Filterable cards and a timeline, one per page, by area and kind",
+        "content_width": "full"
+      }
+    }
+  }
+}
