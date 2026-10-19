@@ -192,6 +192,9 @@ jobs:
         id: moss
         run: echo "path=$(scripts/fetch-moss.sh)" >> "$GITHUB_OUTPUT"
 
+      - name: Test the starter checker
+        run: python3 scripts/test-check-starters.py
+
       - name: Check starters against the contract, and build them
         env:
           MOSS: ${{ steps.moss.outputs.path }}

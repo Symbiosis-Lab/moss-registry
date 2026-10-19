@@ -23,7 +23,14 @@ site="$repo_root/starters/$id/site"
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 cp -R "$site" "$scratch/site"
-"$MOSS" build "$scratch/site" --strict >/dev/null
+# The same build command check-starters and pack-starters run.
+python3 - "$repo_root/scripts" "$MOSS" "$scratch/site" "$repo_root/starters/$id/manifest.json" <<'PY'
+import json, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+from check_starters import build_command
+manifest = json.load(open(sys.argv[4], encoding="utf-8"))
+sys.exit(subprocess.run(build_command(sys.argv[2], sys.argv[3], manifest), stdout=subprocess.DEVNULL).returncode)
+PY
 
 built="$scratch/site/.moss/build.nosync/current"
 [[ -d "$built" ]] || built="$scratch/site/.moss/build/current"
