@@ -1,0 +1,31 @@
+{
+  "name": "native-fixture",
+  "display_name": "Native Fixture",
+  "version": "0.1.0",
+  "description": "A program-only plugin used to test the registry pipeline.",
+  "author": "Symbiosis Lab",
+  "capabilities": [],
+  "min_moss_version": "0.16.0",
+  "icon": "icon.svg",
+  "contributes": {
+    "derivations": {
+      "hello-text": {
+        "accepts": ["txt"],
+        "noun": { "one": "text file", "other": "text files" },
+        "fragments": { "text": "markdown" },
+        "stub": ["#text", ""],
+        "run": {
+          "binary": "native-fixture",
+          "artifact": [
+            {
+              "kind": "download",
+              "platform": "darwin-arm64",
+              "archive_format": "tar.gz",
+              "executable": "native-fixture/native-fixture"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
