@@ -12,9 +12,7 @@ Two kinds of package live here. The difference is not a label — it decides
 whether moss ever executes your code, which is why it also decides how you are
 reviewed.
 
-- A **plugin** *does* something. It is code moss runs on your machine, in a
-  sandboxed JavaScript engine with access to host functions — the network, your
-  project's files, and (when declared) native programs.
+- A **plugin** *does* something. It is code moss runs on your machine, in one of two forms: JavaScript in a sandboxed engine with access to host functions (the network, your project's files, and, when declared, native programs), or a native program moss downloads and runs for a derivation (a conversion such as PDF to text) that the manifest declares. A package is one form or the other, never both.
 - A **theme** *looks like* something. It is presentation the site build reads —
   CSS and assets. moss never executes it.
 
@@ -74,15 +72,12 @@ A **starter** is a complete small site a new moss site can begin as: real pages,
 
 ## How distribution works
 
-A plugin is a TypeScript package bundled by esbuild into a single IIFE that moss
-loads in a sandboxed QuickJS engine. End users do **not** install plugins from
-npm.
+A plugin is one of two shapes. A JavaScript plugin is a TypeScript package bundled by esbuild into a single IIFE that moss loads in a sandboxed QuickJS engine. A native plugin is only a manifest plus the source of a program: it has no `entry`, declares `contributes.derivations`, and CI builds the program from `native/` and attaches it to the release. At first use moss downloads that program, checks the sha256 the manifest pins, and runs it. End users do **not** install plugins from npm or build anything.
 
 1. You open a PR adding or updating a plugin directory.
-2. CI validates it and builds the bundle from your source.
+2. CI validates it and builds it from your source: the bundle for a JavaScript plugin, the program (on a macOS runner) for a native one.
 3. A maintainer reviews that source and merges.
-4. On merge, CI packages `<id>-<version>.zip`, attaches it to a GitHub Release,
-   and regenerates the registry index.
+4. On merge, CI packages `<id>-<version>.zip`, attaches it to a GitHub Release (a native plugin's release also carries its program archives, and the zip's manifest pins their URLs and sha256), and regenerates the registry index.
 5. moss reads that index so users can install the plugin from the app, and shows
    an update badge when a newer version is published.
 
@@ -135,12 +130,17 @@ plugins/<id>/        a published plugin
   package.json       standalone; pins @symbiosis-lab/moss-api, own lockfile
   dist/              build output — gitignored; CI builds it from src/
   .generated         only on generated dirs — source of truth is moss
+                     a native plugin has no src/, package.json or dist/; it has
+  native/            the program's source, Cargo.toml and a build-<platform>.sh per
+                     platform, and an assets/manifest.json whose artifacts carry no
+                     url or sha256 (CI fills them in)
 themes/<id>/         a published theme (planned): style.css, assets, manifest,
                      preview.png — no executable entry point
 starters/<id>/       a starter site: manifest.json, posters/, site/ (what a user's
                      new site starts as), plus .cut, fixups.sh and README.md
                      for maintainers — see starters/README.md
-scripts/             tooling for starters: cut, check, posters, pack, fetch-moss
+scripts/             tooling for starters (cut, check, posters, pack, fetch-moss) and
+                     pack-native-plugin, which builds and packages a native plugin
 registry/
   revoked.json       versions moss must refuse to load (the kill switch)
 ```
@@ -164,9 +164,7 @@ alone — moss never replaces it, and it wins over an installed theme.
 `dist/` is never committed. The artifact users install is always built by CI from
 the source in the pull request, so what a reviewer reads is what ships.
 
-Each plugin is an independent package with its own `package.json` and
-`package-lock.json` — there is no workspace, so a PR only ever touches its own
-dependency tree.
+Each JavaScript plugin is an independent package with its own `package.json` and `package-lock.json` — there is no workspace, so a PR only ever touches its own dependency tree. A native plugin carries its own `Cargo.toml` and lockfile under `native/` in the same way.
 
 ## Building a plugin locally
 

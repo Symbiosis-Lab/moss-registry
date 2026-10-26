@@ -14,7 +14,7 @@ the registry that distributes them, so a merged PR is what publishes your plugin
 
 ## Building a plugin
 
-A plugin is a TypeScript package bundled into one IIFE that moss runs in a
+A JavaScript plugin is a TypeScript package bundled into one IIFE that moss runs in a
 sandboxed QuickJS engine. It talks to moss only through
 [`@symbiosis-lab/moss-api`](https://www.npmjs.com/package/@symbiosis-lab/moss-api).
 
@@ -94,10 +94,40 @@ ln -s /path/to/moss-registry/plugins/<id>/dist ~/my-site/.moss/plugins/<id>
 moss respects symlinked plugin directories, so your rebuilds land directly.
 Reopen the folder in moss to pick up a changed bundle.
 
+## Building a native plugin
+
+A native plugin is a manifest plus a program moss downloads and runs, with no JavaScript. It declares what it does under `contributes.derivations` (a derivation turns one kind of file into another, such as PDF to text) and has no `entry`. The first use is `pdf-ocr`. A plugin is JavaScript or native, never both: CI refuses a package with an `entry` that also declares a downloaded program or has a `native/` directory.
+
+```
+plugins/<id>/
+  assets/
+    manifest.json        source manifest: artifacts have no url or sha256
+    icon.svg             optional
+  native/
+    Cargo.toml           [package] version must equal the manifest version
+    src/ ...             the program's source, with its lockfile
+    build-darwin-arm64.sh   one script per declared platform
+  README.md              required — must include a "Network access" section
+```
+
+Each `run.artifact` entry needs `kind: "download"`, a `platform` (today only `darwin-arm64`), an `archive_format` (`tar.gz` or `zip`) and an `executable`, the path of the program inside the archive (relative, no `..`). Write no `url` or `sha256`: on release CI builds the archive, then fills in the release URL and the archive's sha256 in the manifest it ships, because moss shows that sha256 to the user as part of what they consent to and runs only bytes that match it. If several derivations use the same platform they share one archive, so they share its `archive_format`.
+
+The build-script contract is the only thing the registry knows about how your program is built:
+
+- CI runs `bash native/build-<platform>.sh` with `native/` as the working directory, on a macOS runner for `darwin-arm64`. The script builds from source and packages the archive.
+- It logs to stderr and prints the archive's path, absolute or relative to `native/`, as the last line of stdout.
+- The archive is named `<id>-<version>-<platform>.<archive_format>`, for example `pdf-ocr-0.2.4-darwin-arm64.tar.gz`.
+- Every declared `executable` must be in the archive as a regular file with an execute bit, and `<executable> --version` must exit 0.
+
+You can try the whole pipeline locally on a matching machine: `scripts/pack-native-plugin plugins/<id> --out /tmp/out --repo Symbiosis-Lab/moss-registry` builds, checks and packages exactly what a release would contain, and uploads nothing.
+
+Because a native program runs on users' machines with whatever access they have, review means reading the source under `native/` and every dependency in its lockfile, and the build script itself. The PR validator flags native plugins for that reason. Your build script runs in PR CI too, in a job with a read-only token and no secrets.
+
 ## Submitting
 
 1. Bump `version` in **both** `package.json` and `assets/manifest.json` (CI
-   rejects a mismatch), and add a `CHANGELOG.md` entry.
+   rejects a mismatch), and add a `CHANGELOG.md` entry. A native plugin bumps
+   `native/Cargo.toml` and `assets/manifest.json` instead.
 2. Run `npm run build` and `npm run test:unit` locally (CI runs the unit
    scope — keep those tests free of browser, network, and moss-binary
    dependencies). Don't commit `dist/` — it is
