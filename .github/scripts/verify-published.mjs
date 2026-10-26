@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Post-publish check: re-download every starter asset through the LIVE index
-// and compare it with what the index promises.
+// Post-publish check: re-download every starter asset, and every program a
+// plugin downloads at first use, through the LIVE index and compare it with
+// what the index promises.
 //
 //   node .github/scripts/verify-published.mjs --index-url <url> [--serial N]
 //
@@ -20,7 +21,24 @@
 // Node builtins only.
 
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { artifactPlatforms, derivationArtifacts } from "./registry-rules.mjs";
+
+/** manifest.json out of a release zip's bytes. `unzip` is on every runner. */
+export function readManifestFromBytes(bytes) {
+  const dir = mkdtempSync(join(tmpdir(), "moss-verify-"));
+  try {
+    const zip = join(dir, "plugin.zip");
+    writeFileSync(zip, bytes);
+    return JSON.parse(execFileSync("unzip", ["-p", zip, "manifest.json"], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 /** The (label, url, sha256, size) of every starter asset an entry promises. */
 export function assetsOf(entry) {
@@ -58,6 +76,7 @@ export async function verifyPublished({
   delayMs = 15000,
   fetchImpl = fetch,
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  readManifest = readManifestFromBytes,
 }) {
   const failures = [];
   const warnings = [];
@@ -106,6 +125,60 @@ export async function verifyPublished({
       }
     }
   }
+
+  // A plugin that is a program moss downloads: its zip must be what the index
+  // says, and each program its manifest pins must hash to the pin. The index
+  // lists only `platforms`, so the manifest in the zip is the source of the URLs.
+  const programs = (Array.isArray(index.entries) ? index.entries : []).filter(
+    (e) => e && e.type !== "starter" && Array.isArray(e.platforms) && e.platforms.length > 0,
+  );
+  const fetchBytes = async (label, url) => {
+    try {
+      const res = await fetchImpl(url);
+      if (!res.ok) {
+        failures.push(`${label}: HTTP ${res.status} for ${url}`);
+        return null;
+      }
+      return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      failures.push(`${label}: download failed (${e.message})`);
+      return null;
+    }
+  };
+  for (const entry of programs) {
+    const where = `${entry.id}@${entry.version}`;
+    checked++;
+    const zip = await fetchBytes(`${where} zip`, entry.download_url);
+    if (!zip) continue;
+    if (createHash("sha256").update(zip).digest("hex") !== entry.sha256 || zip.length !== entry.size_bytes) {
+      failures.push(`${where} zip: bytes differ from the index's sha256/size`);
+      continue;
+    }
+    let manifest;
+    try {
+      manifest = readManifest(zip);
+    } catch (e) {
+      failures.push(`${where} zip: manifest.json unreadable (${e.message})`);
+      continue;
+    }
+    if (JSON.stringify(artifactPlatforms(manifest)) !== JSON.stringify(entry.platforms)) {
+      failures.push(`${where}: index platforms ${JSON.stringify(entry.platforms)} differ from the manifest's ${JSON.stringify(artifactPlatforms(manifest))}`);
+    }
+    for (const { derivation, artifact } of derivationArtifacts(manifest)) {
+      if (artifact.kind !== "download") continue;
+      const label = `${where} program ${derivation}/${artifact.platform}`;
+      checked++;
+      if (typeof artifact.url !== "string" || !artifact.url) {
+        failures.push(`${label}: manifest has no url`);
+        continue;
+      }
+      const bytes = await fetchBytes(label, artifact.url);
+      if (!bytes) continue;
+      const sha = createHash("sha256").update(bytes).digest("hex");
+      if (sha !== artifact.sha256) failures.push(`${label}: sha256 ${sha}, manifest pins ${artifact.sha256}`);
+      else console.log(`ok ${label} (${bytes.length} bytes)`);
+    }
+  }
   return { checked, failures, warnings };
 }
 
@@ -126,7 +199,7 @@ async function main() {
   });
   for (const w of warnings) console.log(`::warning::${w}`);
   for (const f of failures) console.log(`::error::${f}`);
-  console.log(`${checked} starter asset(s) checked, ${failures.length} problem(s)`);
+  console.log(`${checked} asset(s) checked, ${failures.length} problem(s)`);
   process.exit(failures.length ? 1 : 0);
 }
 

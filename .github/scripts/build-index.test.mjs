@@ -18,6 +18,7 @@ import {
   selectStarterReleases,
   toStarterEntry,
   buildStarterEntries,
+  verifyReleaseArtifacts,
 } from "./build-index.mjs";
 import { parseReleaseTag, cmpSemver, tagFor, assetNameFor, parseStarterTag } from "./registry-rules.mjs";
 
@@ -554,4 +555,72 @@ test("starters sort after plugins, by order then id, whatever the ids are", () =
   const s = (id, order) => ({ type: "starter", id, order });
   const index = assembleIndex([s("aaa", 2), s("zzz", 1), plugin, s("bbb", 2)], { serial: 1 });
   assert.deepEqual(index.entries.map((e) => e.id), ["github", "zzz", "aaa", "bbb"]);
+});
+
+// ------------------------------------------------- native-program plugins --
+
+const sha256 = (t) => createHash("sha256").update(t).digest("hex");
+
+/** A release of a program-only plugin: the zip plus one archive per platform. */
+function nativeRelease(archives = { "darwin-arm64": "arm64 bytes" }) {
+  const base = "https://example.invalid/prog-v1.0.0";
+  const assets = [{ name: "prog-1.0.0.zip", browser_download_url: `${base}/prog-1.0.0.zip`, url: "api" }];
+  const artifact = [];
+  for (const [platform, bytes] of Object.entries(archives)) {
+    const name = `prog-1.0.0-${platform}.tar.gz`;
+    assets.push({ name, browser_download_url: `${base}/${name}`, url: "api", bytes });
+    artifact.push({ kind: "download", platform, url: `${base}/${name}`, sha256: sha256(bytes), archive_format: "tar.gz", executable: "prog/prog" });
+  }
+  const manifest = { name: "prog", version: "1.0.0", contributes: { derivations: { run: { run: { binary: "prog", artifact } } } } };
+  const candidate = selectReleases([release("prog-v1.0.0", { assets })]).selected[0];
+  const fetchAsset = async (a) => ({ bytes: Buffer.from(assets.find((x) => x.name === a.name).bytes) });
+  return { candidate, manifest, artifact, fetchAsset };
+}
+
+test("a program-only plugin's entry lists its sorted unique platforms", () => {
+  const { candidate, manifest, artifact } = nativeRelease({ "linux-x64": "a", "darwin-arm64": "b" });
+  artifact.push({ ...artifact[0] }); // a second derivation naming the same platform
+  const entry = toEntry(candidate, manifest, { sha256: "0".repeat(64), sizeBytes: 1 });
+  assert.deepEqual(entry.platforms, ["darwin-arm64", "linux-x64"]);
+  assert.ok(!("contributes" in entry), "contributes stays out of the index");
+});
+
+test("a JavaScript plugin's entry has no platforms field", () => {
+  const candidate = selectReleases([release("github-v1.5.0")]).selected[0];
+  const entry = toEntry(candidate, { name: "github", version: "1.5.0", entry: "main.js" }, { sha256: "0".repeat(64), sizeBytes: 1 });
+  assert.ok(!("platforms" in entry));
+});
+
+test("matching programs pass, each archive downloaded once", async () => {
+  const { candidate, manifest, fetchAsset } = nativeRelease({ "darwin-arm64": "arm64 bytes" });
+  const second = JSON.parse(JSON.stringify(manifest.contributes.derivations.run));
+  manifest.contributes.derivations.again = second; // same archive, second derivation
+  const seen = [];
+  await verifyReleaseArtifacts(candidate, manifest, async (a) => (seen.push(a.name), fetchAsset(a)));
+  assert.deepEqual(seen, ["prog-1.0.0-darwin-arm64.tar.gz"]);
+});
+
+test("a wrong sha256 fails the run, naming the derivation and platform", async () => {
+  const { candidate, manifest, fetchAsset } = nativeRelease();
+  manifest.contributes.derivations.run.run.artifact[0].sha256 = sha256("something else");
+  await assert.rejects(verifyReleaseArtifacts(candidate, manifest, fetchAsset), /prog-v1\.0\.0.*derivation "run" artifact\[0\] \(darwin-arm64\).*hashes to/s);
+});
+
+test("a url that is not an asset of this release fails, even if it would download", async () => {
+  const { candidate, manifest, fetchAsset } = nativeRelease();
+  manifest.contributes.derivations.run.run.artifact[0].url = "https://example.invalid/elsewhere/prog.tar.gz";
+  await assert.rejects(verifyReleaseArtifacts(candidate, manifest, fetchAsset), /not an asset of this release/);
+});
+
+test("an artifact with no sha256 fails, and every problem is listed", async () => {
+  const { candidate, manifest, fetchAsset } = nativeRelease({ "darwin-arm64": "a", "linux-x64": "b" });
+  const [one, two] = manifest.contributes.derivations.run.run.artifact;
+  delete one.sha256;
+  two.url = "https://example.invalid/nope";
+  await assert.rejects(verifyReleaseArtifacts(candidate, manifest, fetchAsset), (e) => /sha256 is missing/.test(e.message) && /not an asset/.test(e.message));
+});
+
+test("a plugin with no downloaded program is untouched", async () => {
+  const candidate = selectReleases([release("github-v1.5.0")]).selected[0];
+  await verifyReleaseArtifacts(candidate, { name: "github", version: "1.5.0", entry: "x.js" }, async () => assert.fail("nothing to fetch"));
 });

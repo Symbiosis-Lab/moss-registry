@@ -59,10 +59,10 @@ const starter = (over = {}) => ({
   ...over,
 });
 
-const run = (entries, { liveSerial = 5, wantSerial = null, files = {} } = {}) => {
+const run = (entries, { liveSerial = 5, wantSerial = null, files = {}, readManifest } = {}) => {
   index = { schema_version: 1, serial: liveSerial, entries };
   served = { "/essays.zip": SRC, "/essays-preview.zip": PRE, "/essays-poster-light.jpg": POSTER_L, "/essays-poster-dark.jpg": POSTER_D, ...files };
-  return verifyPublished({ indexUrl: `${base}/index.json`, serial: wantSerial, attempts: 2, delayMs: 1 });
+  return verifyPublished({ indexUrl: `${base}/index.json`, serial: wantSerial, attempts: 2, delayMs: 1, ...(readManifest && { readManifest }) });
 };
 
 test("good bytes pass, both zips and both posters checked", async () => {
@@ -133,4 +133,51 @@ test("serial lag is a warning, not a failure", async () => {
   const r = await run([starter()], { liveSerial: 4, wantSerial: 5 });
   assert.deepEqual(r.failures, []);
   assert.match(r.warnings[0], /live serial is 4, expected 5/);
+});
+
+// ----------------------------------------------- program-only plugins --
+
+const PROG = Buffer.from("the program's archive bytes");
+const PLUGIN_ZIP = Buffer.from("plugin zip bytes");
+const program = (over = {}) => ({
+  type: "plugin",
+  id: "prog",
+  version: "1.0.0",
+  platforms: ["darwin-arm64"],
+  download_url: `${base}/prog.zip`,
+  sha256: sha(PLUGIN_ZIP),
+  size_bytes: PLUGIN_ZIP.length,
+  ...over,
+});
+const manifestPinning = (digest) => () => ({
+  contributes: { derivations: { d: { run: { artifact: [{ kind: "download", platform: "darwin-arm64", url: `${base}/prog.tar.gz`, sha256: digest }] } } } },
+});
+const withProgram = { "/prog.zip": PLUGIN_ZIP, "/prog.tar.gz": PROG };
+
+test("a program-only plugin passes when its zip and its program match", async () => {
+  const r = await run([program()], { files: withProgram, readManifest: manifestPinning(sha(PROG)) });
+  assert.deepEqual(r.failures, []);
+  assert.equal(r.checked, 2);
+});
+
+test("a program whose bytes changed after indexing fails", async () => {
+  const r = await run([program()], { files: { ...withProgram, "/prog.tar.gz": Buffer.from("swapped") }, readManifest: manifestPinning(sha(PROG)) });
+  assert.equal(r.failures.length, 1);
+  assert.match(r.failures[0], /prog@1\.0\.0 program d\/darwin-arm64: sha256/);
+});
+
+test("a deleted program fails with its status", async () => {
+  const r = await run([program()], { files: { ...withProgram, "/prog.tar.gz": 404 }, readManifest: manifestPinning(sha(PROG)) });
+  assert.match(r.failures[0], /HTTP 404/);
+});
+
+test("platforms in the index must agree with the manifest in the zip", async () => {
+  const r = await run([program({ platforms: ["linux-x64"] })], { files: withProgram, readManifest: manifestPinning(sha(PROG)) });
+  assert.match(r.failures.join("\n"), /index platforms .*linux-x64.* differ/);
+});
+
+test("a plugin without platforms is not downloaded at all", async () => {
+  const r = await run([program({ platforms: undefined })], { files: {}, readManifest: () => assert.fail("no manifest read") });
+  assert.deepEqual(r.failures, []);
+  assert.equal(r.checked, 0);
 });
