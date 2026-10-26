@@ -3,6 +3,9 @@
   "display_name": "PDF OCR",
   "version": "0.2.4",
   "description": "Shows a folder's PDFs as pages: extracts each document's text, reading scanned pages by OCR.",
+  "author": "Symbiosis Lab",
+  "repository": "https://github.com/Symbiosis-Lab/moss-registry/tree/main/plugins/pdf-ocr",
+  "capabilities": [],
   "contributes": {
     "derivations": {
       "pdf-pages": {
@@ -21,15 +24,13 @@
           ""
         ],
         "run": {
-          "binary": "moss-docs",
+          "binary": "pdf-ocr",
           "artifact": [
             {
               "kind": "download",
               "platform": "darwin-arm64",
-              "url": "https://github.com/Symbiosis-Lab/moss-docs/releases/download/v0.2.4/moss-docs-0.2.4-darwin-arm64.tar.gz",
-              "sha256": "279ef323d831c5c7fb79b4e3bec7d018d2b6b14caa0cccd6f30bcaf0cc750915",
               "archive_format": "tar.gz",
-              "executable": "moss-docs/moss-docs"
+              "executable": "pdf-ocr/pdf-ocr"
             }
           ]
         }
