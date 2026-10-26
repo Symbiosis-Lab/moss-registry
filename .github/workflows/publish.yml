@@ -75,6 +75,13 @@ jobs:
             manifest="$dir/assets/manifest.json"
             [ -f "$manifest" ] || { echo "$id: no assets/manifest.json, skipping"; continue; }
 
+            # No entry means a program-only plugin, which the macOS `native`
+            # job builds; there is no bundle for this job to make.
+            if ! jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then
+              echo "$id: native plugin, released by the native job"
+              continue
+            fi
+
             version="$(jq -r '.version' "$manifest")"
             tag="${id}-v${version}"
 
@@ -207,20 +214,93 @@ jobs:
           echo "released $published starter(s)"
           exit "$failed"
 
+  # Plugins that are only a manifest plus a native program are built here, on
+  # macOS, by each plugin's own native/build-<platform>.sh. Like starters this is
+  # a job of its own with a timeout, so a slow or failing build can neither stop
+  # the JavaScript plugins from being released nor hold back the index.
+  #
+  # The release carries the archives next to the zip, and the zip's manifest pins
+  # each archive's sha256 and URL. The index builder re-downloads the archives
+  # and refuses an entry whose pins do not match, so a release that is only
+  # half uploaded fails the run loudly instead of publishing a plugin that
+  # cannot work. A released version is final, as everywhere else.
+  native:
+    name: cut missing native plugin releases
+    runs-on: macos-14
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags are the version record
+
+      - name: Build and release every native plugin whose tag is missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          # One plugin failing must not stop the others.
+          failed=0
+          published=0
+          for dir in plugins/*/; do
+            dir="${dir%/}"
+            id="$(basename "$dir")"
+            manifest="$dir/assets/manifest.json"
+            [ -f "$manifest" ] || continue
+            if jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then continue; fi
+
+            version="$(jq -r '.version' "$manifest")"
+            tag="${id}-v${version}"
+
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$id: $tag already released"
+              continue
+            fi
+
+            echo "::group::$id -> $tag"
+            out="$RUNNER_TEMP/native-$id"
+            if ! scripts/pack-native-plugin "$dir" --out "$out" --repo "$GITHUB_REPOSITORY"; then
+              echo "::error::$id: building or packing failed"
+              echo "::endgroup::"
+              failed=1
+              continue
+            fi
+
+            files=("$out"/*)
+            if gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+                 --title "$id $version" \
+                 --notes "Built from \`$dir\` at ${GITHUB_SHA}. See the plugin's README.md for what it does."; then
+              published=$((published + 1))
+            else
+              echo "::error::$id: gh release create failed"
+              # A release left half-uploaded would be indexed as final and fail
+              # the index; removing it (the tag stays) lets a re-run retry.
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes || true
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "released $published native plugin(s)"
+          exit "$failed"
+
   index:
     name: index and deploy
     # Always: the index must be regenerated even when nothing new was cut, since
     # a dispatch from moss arrives without this repo changing at all.
     #
     # Runs when the plugin release job did not fail, exactly as before starters
-    # existed. The starters job is waited for (so a starter cut in this run is
+    # existed. The native and starters jobs are waited for (so a starter cut in this run is
     # indexed in this run) but its failure or skip is tolerated: only a
     # cancelled run stops here. A starters job that timed out reports `failure`,
     # so it is tolerated like any other starter failure. The index builder treats starters as optional
     # too, so a starter problem can never keep index.json or revoked.json from
     # deploying.
-    needs: [release, starters]
-    if: always() && needs.release.result != 'failure' && needs.starters.result != 'cancelled'
+    needs: [release, native, starters]
+    if: always() && needs.release.result != 'failure' && needs.native.result != 'cancelled' && needs.starters.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       contents: read
