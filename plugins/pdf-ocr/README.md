@@ -11,6 +11,8 @@ Choose the folders in `.moss/config.toml`:
 
 A PDF added to a chosen folder gets its page at once; the text follows when the reading finishes, and a site cannot be published while a reading is still running. A page you delete stays deleted.
 
+PDF OCR is a preview plugin: the moss app's plugin catalog lists it once **Preview features** is on in the app's settings. A site that already has it keeps running it with the setting off.
+
 Runs on macOS on Apple silicon. moss downloads the program the first time a site needs it (about 12 MB: pdf-ocr, pdfium and Tesseract with English language data) and checks it against the sha256 in the manifest; nothing else needs installing.
 
 ## Network access
