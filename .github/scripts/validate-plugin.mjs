@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Validate one plugin directory against the registry's submission rules.
-// Run AFTER `npm run build` in that directory — several checks read dist/.
+// A JavaScript plugin is validated AFTER `npm run build` in that directory —
+// several checks read dist/. A native plugin (no `entry`; a program moss
+// downloads) needs no build to be validated.
 //
 //   node .github/scripts/validate-plugin.mjs <plugin-dir>
 //
@@ -18,6 +20,10 @@ import {
   parseReleaseTag,
   classifyRequirement,
   REQUIRES_GRAMMAR,
+  NATIVE_PLATFORMS,
+  ARCHIVE_FORMATS,
+  buildScriptFor,
+  derivationArtifacts,
 } from "./registry-rules.mjs";
 
 const failures = [];
@@ -49,8 +55,12 @@ if (!existsSync(manifestPath)) {
 }
 const manifest = existsSync(manifestPath) ? readJson(manifestPath) : null;
 
+// A plugin is native exactly when its manifest has no `entry`: moss then has
+// no JavaScript to load and runs what `contributes.derivations` declares.
+const native = manifest !== null && manifest.entry === undefined;
+
 if (manifest) {
-  for (const field of ["name", "version", "entry"]) {
+  for (const field of native ? ["name", "version"] : ["name", "version", "entry"]) {
     if (typeof manifest[field] !== "string" || !manifest[field]) {
       fail(`${id}: manifest.${field} is required and must be a non-empty string`);
     }
@@ -90,29 +100,10 @@ if (manifest) {
     );
   }
 
-  // package.json must agree, or the published zip and the npm package drift.
-  const pkgPath = join(dir, "package.json");
-  const pkg = existsSync(pkgPath) ? readJson(pkgPath) : null;
-  if (!pkg) {
-    fail(`${id}: missing package.json`);
+  if (native) {
+    validateNative();
   } else {
-    if (pkg.version !== manifest.version) {
-      fail(`${id}: package.json version "${pkg.version}" != manifest version "${manifest.version}"`);
-    }
-    const deps = pkg.dependencies ?? {};
-    const devDeps = pkg.devDependencies ?? {};
-    for (const [name, range] of Object.entries({ ...deps, ...devDeps })) {
-      if (typeof range === "string" && range.startsWith("workspace:")) {
-        fail(`${id}: dependency "${name}" uses "${range}" — workspace protocol does not resolve outside the monorepo; pin a published version`);
-      }
-    }
-    if (Object.keys(deps).length > 0) {
-      note(`${id}: has ${Object.keys(deps).length} runtime dependency/ies — they are bundled into the shipped artifact and must be reviewed`);
-    }
-  }
-
-  if (!existsSync(join(dir, "package-lock.json"))) {
-    fail(`${id}: missing package-lock.json — commit it so CI installs are reproducible`);
+    validateJsPackage();
   }
 
   // Version must move forward relative to what has already been released.
@@ -139,6 +130,144 @@ if (manifest) {
       note(`${id}: version ${manifest.version} matches the latest release — merging will NOT publish a new version. Bump it if you intended to ship a change.`);
     }
   }
+}
+
+/** The JavaScript half: package.json agrees with the manifest, and a lockfile is committed. */
+function validateJsPackage() {
+  // package.json must agree, or the published zip and the npm package drift.
+  const pkgPath = join(dir, "package.json");
+  const pkg = existsSync(pkgPath) ? readJson(pkgPath) : null;
+  if (!pkg) {
+    fail(`${id}: missing package.json`);
+  } else {
+    if (pkg.version !== manifest.version) {
+      fail(`${id}: package.json version "${pkg.version}" != manifest version "${manifest.version}"`);
+    }
+    const deps = pkg.dependencies ?? {};
+    const devDeps = pkg.devDependencies ?? {};
+    for (const [name, range] of Object.entries({ ...deps, ...devDeps })) {
+      if (typeof range === "string" && range.startsWith("workspace:")) {
+        fail(`${id}: dependency "${name}" uses "${range}" — workspace protocol does not resolve outside the monorepo; pin a published version`);
+      }
+    }
+    if (Object.keys(deps).length > 0) {
+      note(`${id}: has ${Object.keys(deps).length} runtime dependency/ies — they are bundled into the shipped artifact and must be reviewed`);
+    }
+  }
+
+  if (!existsSync(join(dir, "package-lock.json"))) {
+    fail(`${id}: missing package-lock.json — commit it so CI installs are reproducible`);
+  }
+
+  if (manifest.contributes?.derivations && derivationArtifacts(manifest).some(({ artifact }) => artifact.kind === "download")) {
+    fail(
+      `${id}: has an "entry" and also derivations that download a program. A plugin is either JavaScript or a native program, not both: the publisher builds one or the other. Split it into two plugins, or drop "entry".`,
+    );
+  }
+  if (existsSync(join(dir, "native"))) {
+    fail(`${id}: has a native/ directory and an "entry". A native plugin has no entry; a JavaScript plugin has no native/.`);
+  }
+}
+
+/** The text of `version = "x"` in Cargo.toml's [package] table, or null. */
+function cargoPackageVersion(text) {
+  const table = text.split(/^\[/m).find((t) => t.startsWith("package]"));
+  return table?.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? null;
+}
+
+/** A relative path with no way out of the archive. */
+function isRelativeInside(p) {
+  return (
+    typeof p === "string" &&
+    p !== "" &&
+    !p.startsWith("/") &&
+    !/^[A-Za-z]:/.test(p) &&
+    !p.includes("\\") &&
+    !p.split("/").some((part) => part === ".." || part === "")
+  );
+}
+
+/** The native half: a manifest that declares downloads, the source that builds them, a script per platform. */
+function validateNative() {
+  if (manifest.global_name !== undefined) {
+    fail(`${id}: manifest.global_name belongs to a JavaScript bundle, but this plugin has no "entry"`);
+  }
+
+  const derivations = manifest.contributes?.derivations;
+  if (!derivations || typeof derivations !== "object" || Array.isArray(derivations) || Object.keys(derivations).length === 0) {
+    fail(`${id}: no "entry" and no contributes.derivations — a plugin needs JavaScript to load or a program to run`);
+    return;
+  }
+
+  const nativeDir = join(dir, "native");
+  if (!existsSync(nativeDir)) {
+    fail(`${id}: contributes.derivations but no native/ directory — the registry builds the program from source under native/`);
+  } else {
+    const cargoPath = join(nativeDir, "Cargo.toml");
+    if (!existsSync(cargoPath)) {
+      fail(`${id}: missing native/Cargo.toml`);
+    } else {
+      const cargoVersion = cargoPackageVersion(readFileSync(cargoPath, "utf8"));
+      if (cargoVersion === null) {
+        fail(`${id}: native/Cargo.toml has no literal [package] version`);
+      } else if (cargoVersion !== manifest.version) {
+        fail(`${id}: native/Cargo.toml version "${cargoVersion}" != manifest version "${manifest.version}"`);
+      }
+    }
+  }
+
+  const formatByPlatform = new Map();
+  for (const [name, d] of Object.entries(derivations)) {
+    const where = `${id}: derivation "${name}"`;
+    const artifacts = d?.run?.artifact;
+    if (!Array.isArray(artifacts) || artifacts.length === 0) {
+      fail(`${where}: run.artifact must list the downloads the registry will build`);
+      continue;
+    }
+    const seen = new Set();
+    artifacts.forEach((a, i) => {
+      const at = `${where} artifact[${i}]`;
+      if (!a || typeof a !== "object") {
+        fail(`${at}: must be an object`);
+        return;
+      }
+      if (a.kind !== "download") fail(`${at}: kind must be "download", got ${JSON.stringify(a.kind)}`);
+      if (!NATIVE_PLATFORMS.includes(a.platform)) {
+        fail(`${at}: unknown platform ${JSON.stringify(a.platform)} (known: ${NATIVE_PLATFORMS.join(", ")})`);
+      } else if (seen.has(a.platform)) {
+        fail(`${at}: platform ${a.platform} is listed twice in this derivation`);
+      } else {
+        seen.add(a.platform);
+      }
+      if (!ARCHIVE_FORMATS.includes(a.archive_format)) {
+        fail(`${at}: archive_format must be one of ${ARCHIVE_FORMATS.join(", ")}, got ${JSON.stringify(a.archive_format)}`);
+      } else if (NATIVE_PLATFORMS.includes(a.platform)) {
+        // One archive per platform is built, so derivations that share a
+        // platform share its format.
+        const first = formatByPlatform.get(a.platform);
+        if (first === undefined) formatByPlatform.set(a.platform, a.archive_format);
+        else if (first !== a.archive_format) {
+          fail(`${at}: archive_format "${a.archive_format}" differs from "${first}" declared for ${a.platform} elsewhere — one archive is built per platform`);
+        }
+      }
+      if (!isRelativeInside(a.executable)) {
+        fail(`${at}: executable must be a relative path inside the archive (no leading /, no ".."), got ${JSON.stringify(a.executable)}`);
+      }
+      for (const key of ["url", "sha256"]) {
+        if (a[key] !== undefined) {
+          fail(`${at}: must not carry "${key}" in source — CI fills it in from the archive it builds, so a hand-written one could never match what ships`);
+        }
+      }
+    });
+  }
+
+  for (const platform of formatByPlatform.keys()) {
+    const script = join(nativeDir, buildScriptFor(platform));
+    if (!existsSync(script)) {
+      fail(`${id}: missing native/${buildScriptFor(platform)} — CI builds ${platform} only by running it`);
+    }
+  }
+  note(`${id}: native plugin (${[...formatByPlatform.keys()].join(", ")}) — REVIEWER: read native/ and every dependency in its lockfile; it runs as a native program on users' machines`);
 }
 
 // ------------------------------------------------------------------ README --

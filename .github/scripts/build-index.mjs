@@ -22,6 +22,8 @@ import {
   assetNameFor,
   iconAssetPrefixFor,
   parseStarterTag,
+  artifactPlatforms,
+  derivationArtifacts,
   starterSourceAssetFor,
   starterPreviewAssetFor,
   starterMetaAssetFor,
@@ -80,7 +82,7 @@ export function selectReleases(releases) {
       continue;
     }
     if (previous) skipped.push({ tag: previous.tag, reason: `superseded by ${tag}` });
-    best.set(id, { id, version, tag, zip, icon });
+    best.set(id, { id, version, tag, zip, icon, assets: release.assets ?? [] });
   }
 
   return { selected: [...best.values()].sort((a, b) => a.id.localeCompare(b.id)), skipped };
@@ -135,6 +137,11 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   if (manifest.min_moss_version) entry.min_moss_version = manifest.min_moss_version;
   if (manifest.requires?.length) entry.requires = manifest.requires;
   if (icon) entry.icon_url = icon.browser_download_url;
+  // A plugin that is a program moss downloads says which platforms it has
+  // one for, so the catalog can hide it where it cannot run. Omitted for a
+  // JavaScript plugin, whose entry is byte-identical to before.
+  const platforms = artifactPlatforms(manifest);
+  if (platforms.length) entry.platforms = platforms;
 
   // Catalog-presentation bits, re-emitted from the manifest so a remote row
   // renders exactly like a bundled one. `preview` says the publisher does not
@@ -152,6 +159,45 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   if (manifest.requires_stack === true) entry.requires_stack = true;
 
   return entry;
+}
+
+/**
+ * Check that every program a plugin's derivations download is a file of THIS
+ * release whose bytes match the sha256 the manifest pins.
+ *
+ * moss verifies that pin at first use, on the user's machine, where a wrong one
+ * is a failed feature with no way to fix it. So a mismatch here throws, like a
+ * manifest that disagrees with its tag: the run goes red and the index stays as
+ * it was, rather than publishing an entry whose plugin cannot work. Every
+ * problem is listed, not just the first. `fetchAsset(asset)` returns
+ * { bytes }. A plugin with no downloaded program passes untouched.
+ */
+export async function verifyReleaseArtifacts(candidate, manifest, fetchAsset) {
+  const problems = [];
+  const checked = new Map(); // asset name -> sha256 of its bytes
+  for (const { derivation, index, artifact } of derivationArtifacts(manifest)) {
+    if (artifact.kind !== "download") continue;
+    const at = `derivation "${derivation}" artifact[${index}] (${artifact.platform})`;
+    const asset = (candidate.assets ?? []).find((a) => a.browser_download_url === artifact.url);
+    if (typeof artifact.url !== "string" || !asset) {
+      problems.push(`${at}: url ${JSON.stringify(artifact.url)} is not an asset of this release`);
+      continue;
+    }
+    if (typeof artifact.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(artifact.sha256)) {
+      problems.push(`${at}: sha256 is missing or not 64 lowercase hex digits`);
+      continue;
+    }
+    if (!checked.has(asset.name)) {
+      const { bytes } = await fetchAsset(asset);
+      checked.set(asset.name, createHash("sha256").update(bytes).digest("hex"));
+    }
+    if (checked.get(asset.name) !== artifact.sha256) {
+      problems.push(`${at}: ${asset.name} hashes to ${checked.get(asset.name)}, the manifest pins ${artifact.sha256}`);
+    }
+  }
+  if (problems.length) {
+    throw new Error(`${candidate.tag}: the manifest's downloaded programs do not match the release:\n  ${problems.join("\n  ")}`);
+  }
 }
 
 /**
@@ -456,6 +502,7 @@ async function main(argv) {
     const { path, bytes } = await downloadAsset(candidate.zip, token, dir);
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const manifest = readManifestFromZip(path);
+    await verifyReleaseArtifacts(candidate, manifest, (asset) => downloadAsset(asset, token, dir));
     entries.push(toEntry(candidate, manifest, { sha256, sizeBytes: bytes.length }));
     console.log(`index ${candidate.tag} (${bytes.length} bytes, sha256 ${sha256.slice(0, 12)}…)`);
   }

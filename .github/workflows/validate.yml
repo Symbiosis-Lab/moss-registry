@@ -23,6 +23,10 @@ jobs:
     outputs:
       plugins: ${{ steps.detect.outputs.plugins }}
       any: ${{ steps.detect.outputs.any }}
+      js_plugins: ${{ steps.detect.outputs.js_plugins }}
+      js: ${{ steps.detect.outputs.js }}
+      native_plugins: ${{ steps.detect.outputs.native_plugins }}
+      native: ${{ steps.detect.outputs.native }}
       revocations: ${{ steps.detect.outputs.revocations }}
       starters: ${{ steps.detect.outputs.starters }}
     steps:
@@ -68,6 +72,30 @@ jobs:
             echo "plugins=$json" >> "$GITHUB_OUTPUT"
           fi
 
+          # A manifest with no `entry` is a program-only (native) plugin: there
+          # is no JavaScript to install or bundle, and it needs a macOS runner
+          # to build. A manifest jq cannot read lands on the JavaScript side,
+          # where the validator reports it.
+          js_list=""
+          native_list=""
+          for dir in $selected; do
+            if jq -e '(.entry // "") == ""' "$dir/assets/manifest.json" >/dev/null 2>&1; then
+              native_list="${native_list}${dir}"$'\n'
+            else
+              js_list="${js_list}${dir}"$'\n'
+            fi
+          done
+          for kind in js native; do
+            list="${kind}_list"
+            if [ -z "${!list}" ]; then
+              echo "${kind}=false" >> "$GITHUB_OUTPUT"
+              echo "${kind}_plugins=[]" >> "$GITHUB_OUTPUT"
+            else
+              echo "${kind}=true" >> "$GITHUB_OUTPUT"
+              echo "${kind}_plugins=$(printf '%s' "${!list}" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
           # revoked.json is not inside any plugin directory, so it used to fall
           # through every filter above and land in a PR with no checks at all —
           # the one file whose mistakes are silent on the client.
@@ -91,12 +119,12 @@ jobs:
   validate:
     name: ${{ matrix.plugin }}
     needs: detect
-    if: needs.detect.outputs.any == 'true'
+    if: needs.detect.outputs.js == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        plugin: ${{ fromJSON(needs.detect.outputs.plugins) }}
+        plugin: ${{ fromJSON(needs.detect.outputs.js_plugins) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,6 +164,40 @@ jobs:
       # under review — there is no committed build that could drift from it.
       - name: Validate against registry rules
         run: node .github/scripts/validate-plugin.mjs "${{ matrix.plugin }}"
+
+  # A plugin that is only a manifest plus a native program has nothing to npm
+  # install. The registry builds it by running the plugin's own
+  # native/build-<platform>.sh on a macOS runner, then checks the archive holds
+  # each declared executable and that it runs. Nothing is published from here:
+  # the token is read-only and no step receives a secret. The build script is
+  # contributor code, which is why it runs only in this powerless job.
+  native:
+    name: ${{ matrix.plugin }} (native)
+    needs: detect
+    if: needs.detect.outputs.native == 'true'
+    runs-on: macos-14
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.detect.outputs.native_plugins) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags: the validator compares against released versions
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate against registry rules
+        run: node .github/scripts/validate-plugin.mjs "${{ matrix.plugin }}"
+
+      - name: Build, package and run the program (dry run of what publish releases)
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+          REPO: ${{ github.repository }}
+        run: scripts/pack-native-plugin "$PLUGIN" --out "$RUNNER_TEMP/native-out" --repo "$REPO"
 
   revocations:
     name: revoked.json
@@ -292,7 +354,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, revocations, scripts, generated, starters]
+    needs: [detect, validate, native, revocations, scripts, generated, starters]
     if: always()
     runs-on: ubuntu-latest
     steps:

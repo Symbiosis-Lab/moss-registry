@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""pack-native-plugin -- build and package a plugin that is only a manifest plus a native program.
+
+Usage: scripts/pack-native-plugin <plugin-dir> --out <dir> --repo <owner/name> [--skip-run]
+
+For every platform the manifest declares, runs native/build-<platform>.sh (the
+only thing this registry knows about how a program is built), then writes into
+<dir> exactly the assets of the plugin's release:
+
+  <id>-<version>-<platform>.<format>  the archive the build script made
+  <id>-<version>.zip                  manifest.json (with url and sha256 filled
+                                      in for every artifact), README.md, the icon
+  <id>-<version>-icon.<ext>           the icon again, for the catalog
+
+The build script's contract: run with native/ as the working directory, log to
+stderr, and print the path of the finished archive as the LAST line of stdout.
+The archive must be named <id>-<version>-<platform>.<archive_format>.
+
+Before anything is written the archive is checked to hold every declared
+executable (a regular file with an execute bit), and each executable is run
+with --version, which must exit 0. Running needs the target platform's host;
+--skip-run is for tests on any other.
+
+The zip is deterministic: sorted entries, fixed timestamps and permissions.
+Nothing is uploaded; the caller creates the release.
+"""
+import argparse
+import copy
+import hashlib
+import json
+import platform as host
+import posixpath
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import zipfile
+from pathlib import Path
+
+STAMP = (1980, 1, 1, 0, 0, 0)  # the earliest time a zip can store
+ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def die(msg):
+    sys.exit(f"pack-native-plugin: {msg}")
+
+
+def sha256_of(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def artifacts_of(manifest):
+    for d in manifest["contributes"]["derivations"].values():
+        yield from d["run"]["artifact"]
+
+
+def build(native: Path, plat: str, prefix: str, fmt: str) -> Path:
+    script = native / f"build-{plat}.sh"
+    if not script.is_file():
+        die(f"missing {script}")
+    # bash, not exec: a script committed without its execute bit still builds.
+    r = subprocess.run(["bash", str(script)], cwd=native, stdout=subprocess.PIPE, text=True)
+    lines = [l for l in r.stdout.splitlines() if l.strip()]
+    for l in lines[:-1]:
+        print(l, file=sys.stderr)
+    if r.returncode != 0:
+        die(f"{script.name} exited {r.returncode}")
+    if not lines:
+        die(f"{script.name} printed no archive path on stdout")
+    archive = (native / lines[-1].strip()).resolve()
+    if not archive.is_file():
+        die(f"{script.name} printed {lines[-1]!r}, which is not a file")
+    if not ASSET_NAME.match(archive.name) or not archive.name.startswith(prefix) or not archive.name.endswith("." + fmt):
+        die(f"archive is named {archive.name!r}; it must be {prefix}{fmt}")
+    return archive
+
+
+def norm(member: str) -> str:
+    return posixpath.normpath(member)
+
+
+def check_executable(archive: Path, fmt: str, executable: str):
+    """The declared executable is a regular file with an execute bit."""
+    want = norm(executable)
+    if fmt == "tar.gz":
+        with tarfile.open(archive, "r:gz") as t:
+            found = [m for m in t.getmembers() if norm(m.name) == want]
+            if not found:
+                die(f"{archive.name} has no {executable}")
+            if not found[0].isreg():
+                die(f"{executable} in {archive.name} is not a regular file")
+            if not found[0].mode & 0o111:
+                die(f"{executable} in {archive.name} has no execute bit")
+    else:
+        with zipfile.ZipFile(archive) as z:
+            found = [i for i in z.infolist() if norm(i.filename) == want]
+            if not found:
+                die(f"{archive.name} has no {executable}")
+            if found[0].is_dir():
+                die(f"{executable} in {archive.name} is a directory")
+            if not (found[0].external_attr >> 16) & 0o111:
+                die(f"{executable} in {archive.name} has no execute bit")
+
+
+def run_executable(archive: Path, fmt: str, executable: str):
+    """Unpack into a scratch dir and run `<executable> --version`."""
+    with tempfile.TemporaryDirectory(prefix="native-plugin-run-") as tmp:
+        if fmt == "tar.gz":
+            with tarfile.open(archive, "r:gz") as t:
+                if hasattr(tarfile, "data_filter"):
+                    t.extractall(tmp, filter="data")
+                else:
+                    for m in t.getmembers():
+                        if norm(m.name).startswith(("/", "..")):
+                            die(f"{archive.name} has an unsafe member {m.name!r}")
+                    t.extractall(tmp)
+        else:
+            with zipfile.ZipFile(archive) as z:
+                for i in z.infolist():
+                    if norm(i.filename).startswith(("/", "..")):
+                        die(f"{archive.name} has an unsafe member {i.filename!r}")
+                z.extractall(tmp)
+            (Path(tmp) / executable).chmod(0o755)
+        r = subprocess.run([str(Path(tmp) / executable), "--version"], capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            die(f"{executable} --version exited {r.returncode}: {(r.stderr or r.stdout).strip()[:300]}")
+        print(f"ran {executable} --version: {r.stdout.strip()[:100]}")
+
+
+def on_host(plat: str) -> bool:
+    os_, _, arch = plat.partition("-")
+    return host.system().lower() == os_ and host.machine().lower() in (arch, "aarch64" if arch == "arm64" else arch)
+
+
+def write_zip(zpath: Path, entries):
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for name, data in sorted(entries):
+            info = zipfile.ZipInfo(name, STAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            info.create_system = 3  # unix, so the same on every host
+            z.writestr(info, data, compresslevel=9)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Build and package a native plugin.")
+    ap.add_argument("plugin")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--repo", required=True, help="owner/name; release URLs are built from it")
+    ap.add_argument("--skip-run", action="store_true")
+    args = ap.parse_args()
+
+    plugin = Path(args.plugin).resolve()
+    pid = plugin.name
+    manifest = json.loads((plugin / "assets" / "manifest.json").read_text(encoding="utf-8"))
+    version = manifest["version"]
+    tag = f"{pid}-v{version}"
+    out = Path(args.out).resolve()
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+
+    plats = sorted({a["platform"] for a in artifacts_of(manifest)})
+    built = {}  # platform -> (asset name, sha256)
+    for plat in plats:
+        fmt = next(a["archive_format"] for a in artifacts_of(manifest) if a["platform"] == plat)
+        prefix = f"{pid}-{version}-{plat}."
+        archive = build(plugin / "native", plat, prefix, fmt)
+        for a in artifacts_of(manifest):
+            if a["platform"] == plat:
+                check_executable(archive, fmt, a["executable"])
+        if args.skip_run:
+            print(f"--skip-run: not running the {plat} executables")
+        elif on_host(plat):
+            for a in artifacts_of(manifest):
+                if a["platform"] == plat:
+                    run_executable(archive, fmt, a["executable"])
+        else:
+            die(f"cannot run {plat} programs on {host.system()} {host.machine()}; run this on a {plat} host")
+        shutil.copyfile(archive, out / archive.name)
+        built[plat] = (archive.name, sha256_of(out / archive.name))
+        print(f"{archive.name}  sha256={built[plat][1]}")
+
+    filled = copy.deepcopy(manifest)
+    for d in filled["contributes"]["derivations"].values():
+        for i, a in enumerate(d["run"]["artifact"]):
+            name, digest = built[a["platform"]]
+            url = f"https://github.com/{args.repo}/releases/download/{tag}/{name}"
+            rest = {k: v for k, v in a.items() if k not in ("kind", "platform")}
+            d["run"]["artifact"][i] = {"kind": a["kind"], "platform": a["platform"], "url": url, "sha256": digest, **rest}
+
+    entries = [
+        ("manifest.json", (json.dumps(filled, indent=2, ensure_ascii=False) + "\n").encode("utf-8")),
+        ("README.md", (plugin / "README.md").read_bytes()),
+    ]
+    icon = manifest.get("icon", "icon.svg")
+    icon_path = plugin / "assets" / icon
+    if icon_path.is_file():
+        entries.append((icon, icon_path.read_bytes()))
+        shutil.copyfile(icon_path, out / f"{pid}-{version}-icon.{icon.rsplit('.', 1)[-1]}")
+    elif "icon" in manifest:
+        print(f"::warning::{pid} declares icon {icon!r} but assets/ has no such file; packing without one")
+    zname = f"{pid}-{version}.zip"
+    write_zip(out / zname, entries)
+    print(f"{zname}  sha256={sha256_of(out / zname)}")
+
+
+if __name__ == "__main__":
+    main()

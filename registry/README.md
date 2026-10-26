@@ -87,7 +87,7 @@ fields (`config_schema`, `contributes`, `domain`, `domains`, `entry`,
 authoritative for those.
 
 Two optional booleans, both omitted when false so older entries serialize
-unchanged:
+unchanged, and one optional list:
 
 - **`preview`** — the publisher says this version is not ready to be offered
   by default. This is *presentation, never a safety mechanism*: safety is
@@ -99,3 +99,4 @@ unchanged:
   readiness change requires publishing a new version.**
 - **`requires_stack`** — first install pulls a machine-wide companion runtime;
   clients use it to show a download-consent surface before install.
+- **`platforms`** — present only on a plugin that is a program moss downloads (no `entry`, `contributes.derivations` with downloaded artifacts): the sorted, unique `platform` values of those artifacts, such as `["darwin-arm64"]`. A client can hide the plugin on a machine it has no program for. It is omitted for a JavaScript plugin, so those entries are unchanged. The index builder only emits it after checking that every artifact URL in the manifest is an asset of the same release and that the bytes match the manifest's sha256; a mismatch fails the run (like a manifest that disagrees with its tag) instead of listing a plugin that would fail at first use.

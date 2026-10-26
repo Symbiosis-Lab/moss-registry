@@ -66,6 +66,55 @@ export function parseReleaseTag(tag) {
   return { id, version };
 }
 
+// ----------------------------------------------------------------- native --
+// A plugin can be only a manifest plus a native program moss downloads and
+// runs: no `entry`, one or more `contributes.derivations`, each naming
+// `run.artifact` downloads. The source manifest leaves `url` and `sha256` out;
+// the publisher fills them from the archives it builds.
+
+/** Platforms a native plugin may build for. Each needs `native/build-<platform>.sh`. */
+export const NATIVE_PLATFORMS = ["darwin-arm64"];
+
+/** Archive formats moss can unpack, as written in `archive_format`. */
+export const ARCHIVE_FORMATS = ["tar.gz", "zip"];
+
+/** The script CI calls to build and package one platform's archive. */
+export function buildScriptFor(platform) {
+  return `build-${platform}.sh`;
+}
+
+/** The file name a platform's archive must have: `<id>-<version>-<platform>.<format>`. */
+export function nativeArchivePrefixFor(id, version, platform) {
+  return `${id}-${version}-${platform}.`;
+}
+
+/**
+ * Every `run.artifact` entry of every derivation, with where it came from.
+ * Pure and tolerant of malformed manifests (returns what is there); judging
+ * them is the validator's job.
+ */
+export function derivationArtifacts(manifest) {
+  const out = [];
+  const derivations = manifest?.contributes?.derivations;
+  if (!derivations || typeof derivations !== "object") return out;
+  for (const [derivation, d] of Object.entries(derivations)) {
+    const artifacts = d?.run?.artifact;
+    if (!Array.isArray(artifacts)) continue;
+    artifacts.forEach((artifact, index) => {
+      if (artifact && typeof artifact === "object") out.push({ derivation, index, artifact });
+    });
+  }
+  return out;
+}
+
+/** Sorted unique platforms of the downloadable artifacts, for the index's `platforms`. */
+export function artifactPlatforms(manifest) {
+  const platforms = derivationArtifacts(manifest)
+    .filter(({ artifact }) => artifact.kind === "download" && typeof artifact.platform === "string")
+    .map(({ artifact }) => artifact.platform);
+  return [...new Set(platforms)].sort();
+}
+
 // ---------------------------------------------------------------- starters --
 // A starter version is a release tagged `starter-<id>-v<semver>` with up to
 // five assets. These helpers are separate from the plugin ones above on
