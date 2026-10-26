@@ -200,7 +200,7 @@ def main():
     if icon_path.is_file():
         entries.append((icon, icon_path.read_bytes()))
         shutil.copyfile(icon_path, out / f"{pid}-{version}-icon.{icon.rsplit('.', 1)[-1]}")
-    else:
+    elif "icon" in manifest:
         print(f"::warning::{pid} declares icon {icon!r} but assets/ has no such file; packing without one")
     zname = f"{pid}-{version}.zip"
     write_zip(out / zname, entries)
