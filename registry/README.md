@@ -54,6 +54,8 @@ https://symbiosis-lab.org/moss-registry/index.json
 https://symbiosis-lab.org/moss-registry/revoked.json
 ```
 
+The same two documents are also published as the assets of this repository's Latest release, at `https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/index.json` and `.../revoked.json`, as a second address the app falls back to.
+
 That origin is a trust anchor, not a deployment detail. v1 files are unsigned, so
 whoever serves the bytes is trusted — which is why there is exactly one origin,
 no mirrors and no fallbacks.
