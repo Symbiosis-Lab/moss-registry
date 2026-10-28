@@ -47,16 +47,16 @@ cannot describe something other than the bytes it points at.
 
 The index also lists starters, as entries with `"type": "starter"` beside the plugin entries; they carry the same `id`, `version`, `display_name`, `download_url` and `sha256` fields plus a description, a tour and preview download fields (see [`starters/README.md`](../starters/README.md)). Clients skip entry types they do not know, so these entries change nothing for an app that predates them.
 
-moss fetches both files from one pinned origin:
+moss fetches both files from a pinned origin:
 
 ```
 https://symbiosis-lab.org/moss-registry/index.json
 https://symbiosis-lab.org/moss-registry/revoked.json
 ```
 
-That origin is a trust anchor, not a deployment detail. v1 files are unsigned, so
-whoever serves the bytes is trusted — which is why there is exactly one origin,
-no mirrors and no fallbacks.
+The publish workflow also attaches the same two files to a new release, `index-<serial>`, marked Latest, so they are at `https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/index.json` and `.../revoked.json`. moss asks that address only when the origin above gives no usable document. A new release is cut each time, never an asset replaced, because replacing deletes first and leaves the address answering 404; plugin and starter releases are created with `--latest=false` so none of them can take the badge.
+
+Both addresses are a trust anchor, not a deployment detail. The files are unsigned, so whoever serves the bytes is trusted. Both are GitHub hosting of this one repository, so the people who can publish to one can publish to the other, and moss holds either to the same serial and revocation rules, so a stale copy is refused. No other mirror is allowed.
 
 **Pin that host, not `symbiosis-lab.github.io`.** The organization serves Pages
 under its own domain, so the `github.io` form answers `301` and redirects here.

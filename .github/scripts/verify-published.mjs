@@ -3,7 +3,7 @@
 // plugin downloads at first use, through the LIVE index and compare it with
 // what the index promises.
 //
-//   node .github/scripts/verify-published.mjs --index-url <url> [--serial N]
+//   node .github/scripts/verify-published.mjs --index-url <url> [--serial N] [--revoked-url <url>]
 //
 // build-index.mjs hashes the assets it saw when it built the index; nothing
 // afterwards looks at what a client will actually download. A release asset
@@ -182,6 +182,19 @@ export async function verifyPublished({
   return { checked, failures, warnings };
 }
 
+/** revoked.json at `url` must be JSON carrying a numeric serial. Returns problems. */
+export async function verifyRevoked({ revokedUrl, fetchImpl = fetch }) {
+  try {
+    const res = await fetchImpl(`${revokedUrl}?t=${Date.now()}`);
+    if (!res.ok) return [`revoked.json: HTTP ${res.status} for ${revokedUrl}`];
+    const doc = await res.json();
+    if (!Number.isInteger(doc?.serial)) return [`revoked.json at ${revokedUrl} has no integer serial`];
+    return [];
+  } catch (e) {
+    return [`revoked.json: unreadable at ${revokedUrl} (${e.message})`];
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const arg = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
@@ -197,6 +210,8 @@ async function main() {
     ...(arg("--attempts") && { attempts: Number(arg("--attempts")) }),
     ...(arg("--delay-ms") && { delayMs: Number(arg("--delay-ms")) }),
   });
+  const revokedUrl = arg("--revoked-url");
+  if (revokedUrl) failures.push(...(await verifyRevoked({ revokedUrl })));
   for (const w of warnings) console.log(`::warning::${w}`);
   for (const f of failures) console.log(`::error::${f}`);
   console.log(`${checked} asset(s) checked, ${failures.length} problem(s)`);
