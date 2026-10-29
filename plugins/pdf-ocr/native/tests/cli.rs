@@ -68,10 +68,10 @@ fn text_pdf_markdown() {
     assert!(!t.lines().any(|l| l.starts_with("- ") || l.starts_with("1. ")), "{t}");
     // numbered items "Corrective Action #N" stay in the text
     assert!(t.contains("Corrective Action #1:") && t.contains("Corrective Action #2:"));
-    // running header/footer and page numbers stripped
-    for gone in ["Confidential Draft", "Example Agency Audit Division", "Page 1 of 3", "Page 3 of 3"] {
-        assert!(!t.contains(gone), "{gone} should be stripped:\n{t}");
-    }
+    // the running header stays once at the start and the footer, as printed, once at the end
+    assert!(t.starts_with("Example Agency Audit Division\n\n") && t.matches("Example Agency Audit Division").count() == 1, "{t}");
+    assert!(t.ends_with("\n\nConfidential Draft Page 3 of 3") && t.matches("Confidential Draft").count() == 1, "{t}");
+    assert!(!t.contains("Page 1 of 3") && !t.contains("Page 2 of 3"), "{t}");
 }
 
 #[test]

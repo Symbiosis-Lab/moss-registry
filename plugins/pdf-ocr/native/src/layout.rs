@@ -178,7 +178,8 @@ pub fn join_wrapped(a: &mut String, b: &str, vocab: &Vocab) {
 }
 
 /// OCR has no geometry, so the running header/footer is whatever first or last
-/// line repeats (digits normalised) on at least half of the scanned pages.
+/// line repeats (digits normalised) on at least half of the scanned pages. Like
+/// `strip_running`, it stays once: the header on the first page, the footer on the last.
 fn strip_ocr_running(pages: &mut [&mut String]) {
     let edge = |t: &str, first: bool| -> Option<usize> {
         let mut idx = t.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()).map(|(i, _)| i);
@@ -194,14 +195,19 @@ fn strip_ocr_running(pages: &mut [&mut String]) {
             }
         }
     }
-    for p in pages.iter_mut() {
+    for (pi, p) in pages.iter_mut().enumerate() {
         for first in [true, false] {
             if let Some(i) = edge(p, first) {
                 let line = p.lines().nth(i).unwrap().to_string();
-                let repeated = n >= 2 && counts.get(&(norm_key(&line), first)).copied().unwrap_or(0) >= need;
-                if repeated || is_page_number(&line) {
+                let kept_once = if first { pi == 0 } else { pi + 1 == n };
+                let running = n >= 2 && counts.get(&(norm_key(&line), first)).copied().unwrap_or(0) >= need;
+                if (running && !kept_once) || is_page_number(&line) {
                     let kept: Vec<&str> = p.lines().enumerate().filter(|(j, _)| *j != i).map(|(_, l)| l).collect();
                     **p = kept.join("\n");
+                } else if running {
+                    // its own paragraph, not joined to the body text next to it
+                    let lines: Vec<String> = p.lines().enumerate().map(|(j, l)| if j == i { format!("\n{l}\n") } else { l.to_string() }).collect();
+                    **p = lines.join("\n");
                 }
             }
         }
@@ -310,7 +316,11 @@ fn mode_size(pages: &[&Page]) -> f32 {
     m.into_iter().max_by_key(|(k, n)| (*n, -*k)).map(|(k, _)| k as f32 / 2.0).unwrap_or(11.0)
 }
 
-fn strip_running(pages: &mut [&mut Page]) {
+/// A running header or footer is deleted from every page but one: the first page
+/// keeps its header and the last its footer, because they can carry what the
+/// document says about itself (a code, a classification, a date). Returns the
+/// header lines the first page kept.
+fn strip_running(pages: &mut [&mut Page]) -> HashSet<String> {
     let n = pages.len();
     // bare page numbers in the margins
     for p in pages.iter_mut() {
@@ -321,7 +331,7 @@ fn strip_running(pages: &mut [&mut Page]) {
         });
     }
     if n < 2 {
-        return;
+        return HashSet::new();
     }
     let mut seen: HashMap<(String, bool, i32), HashSet<usize>> = HashMap::new();
     let zone = |h: f32, base: f32| -> Option<(bool, i32)> {
@@ -351,13 +361,20 @@ fn strip_running(pages: &mut [&mut Page]) {
         }
         u.len()
     };
-    for p in pages.iter_mut() {
+    let mut header = HashSet::new();
+    for (pi, p) in pages.iter_mut().enumerate() {
         let h = p.height;
         p.lines.retain(|l| match zone(h, l.base) {
-            Some((top, b)) => count(&norm_key(&l.text), top, b) < need,
-            None => true,
+            Some((top, b)) if count(&norm_key(&l.text), top, b) >= need => {
+                if top && pi == 0 {
+                    header.insert(l.text.clone());
+                }
+                if top { pi == 0 } else { pi + 1 == n }
+            }
+            _ => true,
         });
     }
+    header
 }
 
 fn right_margin(lines: &[Line]) -> f32 {
@@ -539,15 +556,26 @@ const NOTE_LEAD_ALL: &str = "This text was read by machine from a scan and can c
 const NOTE_LEAD_SOME: &str = "Parts of this text were read by machine from scanned pages and can contain errors.";
 
 pub fn render(contents: Vec<Content>, meta_title: Option<String>, file_name: &str) -> Rendered {
+    let spec = {
+        let raw: Vec<Vec<&str>> = contents
+            .iter()
+            .map(|c| match c {
+                Content::Lines(p) => sorted_lines(p).into_iter().map(|l| l.text.as_str()).collect(),
+                Content::Ocr(t) => t.lines().collect(),
+            })
+            .collect();
+        front::title_specification(&raw)
+    };
+
     // 1. running headers/footers over the text pages
     let mut contents = contents;
-    {
+    let header = {
         let mut refs: Vec<&mut Page> = contents
             .iter_mut()
             .filter_map(|c| if let Content::Lines(p) = c { Some(p) } else { None })
             .collect();
-        strip_running(&mut refs);
-    }
+        strip_running(&mut refs)
+    };
     {
         let mut refs: Vec<&mut String> = contents.iter_mut().filter_map(|c| if let Content::Ocr(t) = c { Some(t) } else { None }).collect();
         strip_ocr_running(&mut refs);
@@ -574,7 +602,7 @@ pub fn render(contents: Vec<Content>, meta_title: Option<String>, file_name: &st
         is_ocr.push(matches!(c, Content::Ocr(_)));
     }
 
-    // 3. title: the first page's subject line, else its largest type, else metadata, else the file name
+    // 3. title: a title specification's, else the first page's subject line, else its largest type, else metadata, else the file name
     let first_page: Vec<&[String]> = page_blocks
         .iter()
         .find(|b| !b.is_empty())
@@ -583,8 +611,9 @@ pub fn render(contents: Vec<Content>, meta_title: Option<String>, file_name: &st
     let whole: Vec<&[String]> = page_blocks.iter().flat_map(|b| b.iter().map(|b| b.logical.as_slice())).collect();
     let subject = front::subject_title(&first_page);
     // A letter that bundles later approvals (a preliminary and a final determination) keeps its own date.
-    let date = if subject.is_some() { None } else { front::approval_date(&whole) }.or_else(|| front::first_date(&first_page));
-    let mut title: Option<String> = subject.or_else(|| front::resolution_title(&whole));
+    let (spec_title, spec_date) = spec.map_or((None, None), |s| (Some(s.title), s.date));
+    let date = spec_date.or_else(|| if subject.is_some() { None } else { front::approval_date(&whole) }).or_else(|| front::first_date(&first_page));
+    let mut title: Option<String> = spec_title.or(subject).or_else(|| front::resolution_title(&whole));
     let mut drop_title: Option<(usize, usize)> = None;
     if let (None, Some((pi, bl))) = (&title, page_blocks.iter().enumerate().find(|(i, b)| !is_ocr[*i] && !b.is_empty())) {
         let mut cands: Vec<(usize, &Blk)> = bl.iter().enumerate().filter(|(_, b)| b.size >= 1.2 * body && title_candidate(b)).collect();
@@ -593,7 +622,8 @@ pub fn render(contents: Vec<Content>, meta_title: Option<String>, file_name: &st
             let t = b.logical.join(" ");
             if t.chars().count() <= 120 && !is_generic_title(&t) && !front::is_letterhead(&t) {
                 title = Some(t);
-                if bi == 0 {
+                // a title that opens the page, below at most the running header, is not repeated in the text
+                if bl[..bi].iter().all(|b| b.logical.iter().all(|l| header.contains(l))) {
                     drop_title = Some((pi, bi));
                 }
                 break;
@@ -698,6 +728,20 @@ mod tests {
     fn ocr_widow_line_rejoins_its_paragraph() {
         let md = ocr(&["First paragraph that runs on and on and\n\ncandidates.\n\nNew paragraph."]);
         assert_eq!(note_free(&md), "First paragraph that runs on and on and candidates.\n\nNew paragraph.");
+    }
+
+    #[test]
+    fn a_running_header_stays_on_the_first_page_and_a_footer_on_the_last() {
+        let page = |n: usize, body: &str| format!("NC -X, PART I CODE NO. M95063\n{body}\nR 02.24.2020 PAGE {n} OF 2");
+        let md = ocr(&[&page(1, "First page text."), &page(2, "Second page text.")]);
+        assert_eq!(note_free(&md), "NC -X, PART I CODE NO. M95063\n\nFirst page text.\n\n[p. 2](x.pdf#page=2) Second page text.\n\nR 02.24.2020 PAGE 2 OF 2");
+    }
+
+    #[test]
+    fn a_title_specification_names_and_dates_itself() {
+        let page = "NC -X, PART I CODE NO. M95063\nADMINISTRATION FOR CHILDREN’S SERVICES (067)\n\nASSOCIATE COMMISSIONER (ACS)\n\nDuties and Responsibilities\n\nThis is a management class of positions.\n\n02.24.2020 PAGE 1 OF 1";
+        let r = render(vec![Content::Ocr(page.into())], None, "95063.pdf");
+        assert_eq!((r.title.as_deref(), r.date.as_deref()), (Some("ASSOCIATE COMMISSIONER (ACS)"), Some("2020-02-24")));
     }
 
     #[test]

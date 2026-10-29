@@ -1,7 +1,7 @@
 {
   "name": "pdf-ocr",
   "display_name": "PDF OCR",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Shows a folder's PDFs as pages: extracts each document's text, reading scanned pages by OCR.",
   "author": "Symbiosis Lab",
   "repository": "https://github.com/Symbiosis-Lab/moss-registry/tree/main/plugins/pdf-ocr",
