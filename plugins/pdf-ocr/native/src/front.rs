@@ -1,6 +1,6 @@
 //! What a first page states about itself: a letter's subject line and its date,
-//! plus the letterhead lines that must not pass for a title. Pure text rules,
-//! the same for a text layer and for OCR.
+//! a title specification's title and date, plus the letterhead lines that must
+//! not pass for a title. Pure text rules, the same for a text layer and for OCR.
 
 const LABELS: [&str; 3] = ["audit status", "subject", "re"];
 
@@ -299,6 +299,105 @@ pub fn resolution_title(blocks: &[&[String]]) -> Option<String> {
     trim_subject(&rest[..cut.unwrap_or(rest.len())].join(" "))
 }
 
+// ---------- a civil service title specification ----------
+
+/// The five-digit title code a header prints: "CODE NO. M95063", "CODE NO. M 10019",
+/// "CODE NO. 10217", "TC 13229".
+fn title_code(line: &str) -> Option<&str> {
+    let toks: Vec<&str> = line.split_whitespace().collect();
+    let five = |t: &str| t.len() == 5 && t.bytes().all(|b| b.is_ascii_digit());
+    (0..toks.len()).find_map(|i| {
+        let at = |k: usize| toks.get(i + k).copied().unwrap_or("");
+        let code = if toks[i] == "CODE" && clean(at(1)).eq_ignore_ascii_case("no") {
+            match at(2) {
+                "M" => at(3),
+                t => t.strip_prefix('M').unwrap_or(t),
+            }
+        } else if toks[i] == "TC" {
+            at(1)
+        } else {
+            ""
+        };
+        five(code).then_some(code)
+    })
+}
+
+/// A footer date as printed, month.day.year: "02.24.2020", "12.21.94", "9.3.2014".
+fn dotted_date(t: &str) -> Option<String> {
+    let [m, d, y] = clean(t).split('.').collect::<Vec<_>>()[..] else { return None };
+    let digits = |x: &str| x.bytes().all(|b| b.is_ascii_digit());
+    if !(1..=2).contains(&m.len()) || !(1..=2).contains(&d.len()) || ![2, 4].contains(&y.len()) || !(digits(m) && digits(d) && digits(y)) {
+        return None;
+    }
+    let y: u32 = y.parse().ok()?;
+    let y = match y {
+        0..=49 => 2000 + y,
+        50..=99 => 1900 + y,
+        _ => y,
+    };
+    iso(y, m.parse().ok()?, d.parse().ok()?)
+}
+
+pub struct TitleSpecification {
+    pub title: String,
+    pub date: Option<String>,
+}
+
+/// "ADMINISTRATION FOR CHILDREN’S SERVICES (067)", "OCCUPATIONAL GROUP [277]",
+/// "(TRIBOROUGH BRIDGE AND TUNNEL AUTHORITY) [043.1]": a header line that ends
+/// in an agency, service or occupational group code.
+fn coded_line(l: &str) -> bool {
+    let inner = l.strip_suffix(')').and_then(|r| r.rsplit_once('(')).or_else(|| l.strip_suffix(']').and_then(|r| r.rsplit_once('[')));
+    inner.map(|(_, c)| c.trim()).is_some_and(|c| c.len() >= 3 && c[..3].bytes().all(|b| b.is_ascii_digit()) && c.bytes().all(|b| b.is_ascii_digit() || b == b'.'))
+}
+
+/// "Duties and Responsibilities", "Duties and Responsibilities:", "General Statement of Duties and Responsibilities".
+fn duties_heading(l: &str) -> bool {
+    l.to_ascii_lowercase().contains("duties and responsibilities") && l.split_whitespace().count() <= 7
+}
+
+/// A New York City civil service title specification, as described in
+/// public-document-formats (`formats/nyc-dcas-title-specification`): a header
+/// with the title code, the title in the lines above "Duties and
+/// Responsibilities" (or right below the code when there are no sections), and
+/// a footer dated month.day.year. `pages` are each page's lines in reading
+/// order, blank lines between paragraphs included, before running headers and
+/// footers are removed.
+pub fn title_specification(pages: &[Vec<&str>]) -> Option<TitleSpecification> {
+    let lines: Vec<&str> = pages.first()?.iter().map(|l| l.trim()).collect();
+    let filled: Vec<usize> = (0..lines.len()).filter(|&i| !lines[i].is_empty()).collect();
+    let code_at = *filled.iter().take(4).find(|&&i| title_code(lines[i]).is_some())?;
+    let mut title = match lines.iter().position(|l| duties_heading(l)) {
+        Some(h) => {
+            // The paragraph above the heading, below the header. The header's
+            // second line (agency or service) is not the title even without a
+            // code, unless nothing else stands between it and the heading.
+            let second = *filled.iter().find(|&&i| i > code_at)?;
+            let mut end = h;
+            while end > code_at + 1 && lines[end - 1].is_empty() {
+                end -= 1;
+            }
+            let mut top = end;
+            while top > code_at + 1 && !lines[top - 1].is_empty() && !coded_line(lines[top - 1]) && !(top - 1 == second && top < end) {
+                top -= 1;
+            }
+            lines[top..end].join(" ")
+        }
+        None => lines[*filled.iter().find(|&&i| i > code_at)?].to_string(),
+    };
+    // Later pages repeat the title before "(continued)", free of any margin note
+    // the first page's line picked up ("SANITARIAN E" for "SANITARIAN").
+    let later = pages.iter().skip(1).flatten().filter_map(|l| l.trim().strip_suffix("(continued)").map(str::trim));
+    if let Some(stem) = later.filter(|s| !s.is_empty()).find(|s| title.strip_prefix(s).is_some_and(|r| r.starts_with(' '))) {
+        title = stem.to_string();
+    }
+    let date = pages.iter().find_map(|p| {
+        let tail = p.iter().rev().filter(|l| !l.trim().is_empty()).take(3);
+        tail.flat_map(|l| l.split_whitespace()).find_map(dotted_date)
+    });
+    ((3..=120).contains(&title.chars().count()) && title.chars().any(char::is_alphabetic)).then_some(TitleSpecification { title, date })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,5 +558,84 @@ mod tests {
         let owned = blocks(b);
         let refs: Vec<&[String]> = owned.iter().map(Vec::as_slice).collect();
         resolution_title(&refs)
+    }
+
+    fn spec(pages: &[&[&str]]) -> Option<(String, Option<String>)> {
+        let pages: Vec<Vec<&str>> = pages.iter().map(|p| p.to_vec()).collect();
+        title_specification(&pages).map(|s| (s.title, s.date))
+    }
+
+    #[test]
+    fn a_title_specification_takes_its_title_and_footer_date() {
+        let p1: &[&str] = &[
+            "NC -X, PART I CODE NO. M95063",
+            "ADMINISTRATION FOR CHILDREN’S SERVICES (067)",
+            "ASSOCIATE COMMISSIONER FOR JUVENILE JUSTICE PROGRAMS (ACS)",
+            "Duties and Responsibilities",
+            "This is a management class of positions.",
+            "02.24.2020 PAGE 1 OF 4",
+        ];
+        let want = Some(("ASSOCIATE COMMISSIONER FOR JUVENILE JUSTICE PROGRAMS (ACS)".to_string(), Some("2020-02-24".to_string())));
+        assert_eq!(spec(&[p1]), want);
+        let p1: &[&str] = &["C-X CODE NO. M 10019", "THE MANAGERIAL SERVICE [061]", "ADMINISTRATIVE HOUSING SUPERINTENDENT", "Duties and Responsibilities", "R 05.08.1985 PAGE 1 OF 2"];
+        assert_eq!(spec(&[p1]), Some(("ADMINISTRATIVE HOUSING SUPERINTENDENT".to_string(), Some("1985-05-08".to_string()))));
+    }
+
+    #[test]
+    fn a_margin_note_on_the_title_line_gives_way_to_the_continued_title() {
+        let p1: &[&str] = &["C-X CODE NO. M82989", "", "THE MANAGERIAL SERVICE [061]", "FLSA CODE", "", "ADMINISTRATIVE PUBLIC HEALTH SANITARIAN E", "", "Duties and Responsibilities", "12.21.94", "Page | of 2"];
+        let p2: &[&str] = &["C-X CODE NO. M82989", "ADMINISTRATIVE PUBLIC HEALTH SANITARIAN (continued)", "Qualification Requirements"];
+        assert_eq!(spec(&[p1, p2]), Some(("ADMINISTRATIVE PUBLIC HEALTH SANITARIAN".to_string(), Some("1994-12-21".to_string()))));
+    }
+
+    #[test]
+    fn a_title_wrapped_over_two_lines_is_one_title() {
+        let p1: &[&str] = &[
+            "NC -X, PART I CODE NO. M95061",
+            "ADMINISTRATION FOR CHILDREN’S SERVICES (067)",
+            "",
+            "ASSOCIATE COMMISSIONER OF POLICY, PLANNING, AND",
+            "PERFORMANCE (ACS)",
+            "",
+            "Duties and Responsibilities",
+        ];
+        let p2: &[&str] = &["ASSOCIATE COMMISSIONER OF POLICY, PLANNING, AND PERFORMANCE", "(ACS) (continued)", "PLANNING, AND PERFORMANCE (ACS) (continued)"];
+        let want = "ASSOCIATE COMMISSIONER OF POLICY, PLANNING, AND PERFORMANCE (ACS)";
+        assert_eq!(spec(&[p1, p2]).map(|s| s.0), Some(want.to_string()));
+        // a text layer has no blank lines: the header lines bound the title
+        let p1: &[&str] = &["C-X", "CODE NO. M 10019", "THE MANAGERIAL SERVICE [061]", "ADMINISTRATIVE HOUSING", "SUPERINTENDENT", "Duties and Responsibilities"];
+        assert_eq!(spec(&[p1]).map(|s| s.0), Some("ADMINISTRATIVE HOUSING SUPERINTENDENT".to_string()));
+    }
+
+    #[test]
+    fn competitive_titles_occupational_groups_and_a_general_statement_heading() {
+        let p1: &[&str] = &["C ‐ XI CODE NO. 10217 STENOGRAPHER/SECRETARY", "OCCUPATIONAL GROUP [277]", "STENOGRAPHIC SPECIALIST", "Duties and Responsibilities:"];
+        assert_eq!(spec(&[p1]).map(|s| s.0), Some("STENOGRAPHIC SPECIALIST".to_string()));
+        let p1: &[&str] = &[
+            "C - X CODE NO. 70760 THE BRIDGE AND TUNNEL SERVICE",
+            "(TRIBOROUGH BRIDGE AND TUNNEL AUTHORITY) [043.1]",
+            "BRIDGE AND TUNNEL LIEUTENANT",
+            "General Statement of Duties and Responsibilities",
+        ];
+        assert_eq!(spec(&[p1]).map(|s| s.0), Some("BRIDGE AND TUNNEL LIEUTENANT".to_string()));
+        let p1: &[&str] = &["NC - X, PART II", "CODE NO. 54610", "VARIOUS CITY DEPARTMENTS", "CHAPLAIN", "General Statement of Duties and Responsibilities", "9.3.2014"];
+        assert_eq!(spec(&[p1]), Some(("CHAPLAIN".to_string(), Some("2014-09-03".to_string()))));
+        let p1: &[&str] = &["NC – X, PART I CODE NO. M95090", "DEPARTMENT OF CORRECTION [ 072]", "FACILITY SUPERVISOR (CORRECTION)", "Duties and Responsibilities"];
+        assert_eq!(spec(&[p1]).map(|s| s.0), Some("FACILITY SUPERVISOR (CORRECTION)".to_string()));
+    }
+
+    #[test]
+    fn a_specification_without_sections_takes_the_line_below_its_code() {
+        let p1: &[&str] = &["EXEMPT MANAGERIAL", "RULE-10 TC 13229", "Confidential Assistant to the Comptroller", "Acts as confidential aide to the Comptroller."];
+        assert_eq!(spec(&[p1]), Some(("Confidential Assistant to the Comptroller".to_string(), None)));
+    }
+
+    #[test]
+    fn other_documents_are_not_title_specifications() {
+        assert_eq!(spec(&[&["EQUAL EMPLOYMENT PRACTICES COMMISSION", "CITY OF NEW YORK", "Re: Annual Hiring Review", "Duties and Responsibilities"]]), None);
+        // a code deep in the page is a mention, not a header
+        assert_eq!(spec(&[&["Minutes", "Present:", "Agenda", "Old business", "Title code TC 13229 was discussed."]]), None);
+        assert_eq!(dotted_date("1.2.3"), None);
+        assert_eq!(dotted_date("13.01.2020"), None);
     }
 }

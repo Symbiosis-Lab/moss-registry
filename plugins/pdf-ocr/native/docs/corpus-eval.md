@@ -40,3 +40,7 @@ About fifteen outputs: meeting agendas and minutes, audit letters, two scanned a
 ## Second pass (side columns, section titles)
 
 Re-run over all 373 PDFs: 372 derived, 1 skip, 0 failures; output is byte-identical across repeated runs. Headings (`##` to `####`) across the corpus rose from 5,162 to about 7,000, mostly the standard sections of audit determinations (Purpose, Scope, Methodology, Next Steps).
+
+## Third pass (header and footer kept once, title specifications)
+
+Run on 2026-10-29 against 0.2.5 over the same 372 documents, plus the 11 scanned and 40 text-layer New York City title specifications. On the agency records no title or date changed, and 57 texts gained their first page's running header (mostly the letterhead line "EQUAL EMPLOYMENT PRACTICES COMMISSION") or their last page's footer. On the 11 scans the title fact went from 0 right to 11, the date from none to all 10 that print one, and the code and classification now appear in the text. On the 40 text-layer specifications the title went from 0 to 40 right, checked by hand where the title viewer's own data disagrees (it cuts titles at 30 characters and sometimes takes header text), and the date matches its effective date in 37 of the 37 that have one.
