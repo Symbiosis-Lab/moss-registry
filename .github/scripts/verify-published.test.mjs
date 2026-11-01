@@ -181,3 +181,11 @@ test("a plugin without platforms is not downloaded at all", async () => {
   assert.deepEqual(r.failures, []);
   assert.equal(r.checked, 0);
 });
+
+test("revoked.json must be JSON with a serial", async () => {
+  const { verifyRevoked } = await import("./verify-published.mjs");
+  const reply = (status, body) => async () => ({ ok: status < 400, status, json: async () => body });
+  assert.deepEqual(await verifyRevoked({ revokedUrl: "u", fetchImpl: reply(200, { serial: 1, revoked: [] }) }), []);
+  assert.equal((await verifyRevoked({ revokedUrl: "u", fetchImpl: reply(404) })).length, 1);
+  assert.equal((await verifyRevoked({ revokedUrl: "u", fetchImpl: reply(200, { revoked: [] }) })).length, 1);
+});

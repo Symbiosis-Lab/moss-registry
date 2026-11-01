@@ -84,6 +84,7 @@ A plugin is one of two shapes. A JavaScript plugin is a TypeScript package bundl
 The index is served from a single pinned origin,
 [`symbiosis-lab.org/moss-registry/index.json`](https://symbiosis-lab.org/moss-registry/index.json)
 — see [`registry/`](registry/) for what it contains and how a package is retired.
+The same two documents are also published as the assets of this repository's Latest release, at `https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/index.json` and `.../revoked.json`, as a second address the app falls back to.
 
 Updates are never applied silently — the user chooses when to update. If a
 version turns out to be harmful it can be revoked via
