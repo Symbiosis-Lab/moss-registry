@@ -4,7 +4,6 @@ set -eu
 cd "$(dirname "$0")/.."
 ./scripts/fetch-pdfium.sh
 cargo build --release
-lib=libpdfium.so; [ "$(uname -s)" = Darwin ] && lib=libpdfium.dylib
 out="${CARGO_TARGET_DIR:-target}/release"
-cp "vendor/$lib" "$out/$lib"
+cp vendor/libpdfium.* "$out/"
 echo "built: $out/pdf-ocr"
