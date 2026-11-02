@@ -110,16 +110,16 @@ plugins/<id>/
   README.md              required — must include a "Network access" section
 ```
 
-Each `run.artifact` entry needs `kind: "download"`, a `platform` (today only `darwin-arm64`), an `archive_format` (`tar.gz` or `zip`) and an `executable`, the path of the program inside the archive (relative, no `..`). Write no `url` or `sha256`: on release CI builds the archive, then fills in the release URL and the archive's sha256 in the manifest it ships, because moss shows that sha256 to the user as part of what they consent to and runs only bytes that match it. If several derivations use the same platform they share one archive, so they share its `archive_format`.
+Each `run.artifact` entry needs `kind: "download"`, a `platform` (`darwin-arm64`, `linux-x64` or `linux-arm64`, the names moss uses), an `archive_format` (`tar.gz` or `zip`) and an `executable`, the path of the program inside the archive (relative, no `..`). Write no `url` or `sha256`: on release CI builds the archive, then fills in the release URL and the archive's sha256 in the manifest it ships, because moss shows that sha256 to the user as part of what they consent to and runs only bytes that match it. If several derivations use the same platform they share one archive, so they share its `archive_format`.
 
 The build-script contract is the only thing the registry knows about how your program is built:
 
-- CI runs `bash native/build-<platform>.sh` with `native/` as the working directory, on a macOS runner for `darwin-arm64`. The script builds from source and packages the archive.
+- CI runs `bash native/build-<platform>.sh` with `native/` as the working directory, on a runner of that platform: macOS 14 for `darwin-arm64`, Ubuntu 22.04 for `linux-x64` and `linux-arm64`. The script builds from source and packages the archive. A Linux program runs on the glibc it was built against or newer, so 2.35 is the floor.
 - It logs to stderr and prints the archive's path, absolute or relative to `native/`, as the last line of stdout.
 - The archive is named `<id>-<version>-<platform>.<archive_format>`, for example `pdf-ocr-0.2.4-darwin-arm64.tar.gz`.
 - Every declared `executable` must be in the archive as a regular file with an execute bit, and `<executable> --version` must exit 0.
 
-You can try the whole pipeline locally on a matching machine: `scripts/pack-native-plugin plugins/<id> --out /tmp/out --repo Symbiosis-Lab/moss-registry` builds, checks and packages exactly what a release would contain, and uploads nothing.
+You can try the pipeline locally: `scripts/pack-native-plugin plugins/<id> --platform <platform> --out /tmp/archive` builds and checks one platform's archive on a machine of that platform, and `scripts/pack-native-plugin plugins/<id> --prebuilt /tmp/archive --out /tmp/out --repo Symbiosis-Lab/moss-registry` packs exactly what a release would contain from every platform's archive. Neither uploads anything. A PR's checks also upload what merging would release, as the artifact `release-<id>`.
 
 Because a native program runs on users' machines with whatever access they have, review means reading the source under `native/` and every dependency in its lockfile, and the build script itself. The PR validator flags native plugins for that reason. Your build script runs in PR CI too, in a job with a read-only token and no secrets.
 

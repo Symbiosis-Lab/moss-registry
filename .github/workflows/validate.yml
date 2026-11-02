@@ -27,6 +27,7 @@ jobs:
       js: ${{ steps.detect.outputs.js }}
       native_plugins: ${{ steps.detect.outputs.native_plugins }}
       native: ${{ steps.detect.outputs.native }}
+      native_matrix: ${{ steps.detect.outputs.native_matrix }}
       revocations: ${{ steps.detect.outputs.revocations }}
       starters: ${{ steps.detect.outputs.starters }}
     steps:
@@ -73,9 +74,9 @@ jobs:
           fi
 
           # A manifest with no `entry` is a program-only (native) plugin: there
-          # is no JavaScript to install or bundle, and it needs a macOS runner
-          # to build. A manifest jq cannot read lands on the JavaScript side,
-          # where the validator reports it.
+          # is no JavaScript to install or bundle, and each platform it
+          # declares builds on a runner of that platform. A manifest jq cannot
+          # read lands on the JavaScript side, where the validator reports it.
           js_list=""
           native_list=""
           for dir in $selected; do
@@ -95,6 +96,8 @@ jobs:
               echo "${kind}_plugins=$(printf '%s' "${!list}" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
             fi
           done
+          # shellcheck disable=SC2086
+          echo "native_matrix=$(node .github/scripts/native-matrix.mjs $native_list)" >> "$GITHUB_OUTPUT"
 
           # revoked.json is not inside any plugin directory, so it used to fall
           # through every filter above and land in a PR with no checks at all —
@@ -167,16 +170,43 @@ jobs:
 
   # A plugin that is only a manifest plus a native program has nothing to npm
   # install. The registry builds it by running the plugin's own
-  # native/build-<platform>.sh on a macOS runner, then checks the archive holds
-  # each declared executable and that it runs. Nothing is published from here:
-  # the token is read-only and no step receives a secret. The build script is
-  # contributor code, which is why it runs only in this powerless job.
+  # native/build-<platform>.sh on a runner of each platform it declares, checks
+  # the archive holds each declared executable and that it runs there, then packs
+  # the release from all the archives. Nothing is published from here: the token
+  # is read-only and no step receives a secret. The build script is contributor
+  # code, which is why it runs only in these powerless jobs.
+  native-build:
+    name: ${{ matrix.id }} (${{ matrix.platform }})
+    needs: detect
+    if: needs.detect.outputs.native == 'true' && needs.detect.outputs.native_matrix != '[]'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.detect.outputs.native_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run the ${{ matrix.platform }} program
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+          PLATFORM: ${{ matrix.platform }}
+        run: scripts/pack-native-plugin "$PLUGIN" --platform "$PLATFORM" --out "$RUNNER_TEMP/archive"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.id }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/archive/*
+          retention-days: 7
+
   native:
     name: ${{ matrix.plugin }} (native)
-    needs: detect
-    if: needs.detect.outputs.native == 'true'
-    runs-on: macos-14
-    timeout-minutes: 45
+    needs: [detect, native-build]
+    # Also when no build ran (no platform the registry knows), so the validator
+    # is what says so.
+    if: always() && needs.detect.outputs.native == 'true' && (needs.native-build.result == 'success' || needs.native-build.result == 'skipped')
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -193,11 +223,27 @@ jobs:
       - name: Validate against registry rules
         run: node .github/scripts/validate-plugin.mjs "${{ matrix.plugin }}"
 
-      - name: Build, package and run the program (dry run of what publish releases)
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/archives
+
+      - id: pack
+        name: Pack the release from every platform's archive (dry run of what publish releases)
         env:
           PLUGIN: ${{ matrix.plugin }}
           REPO: ${{ github.repository }}
-        run: scripts/pack-native-plugin "$PLUGIN" --out "$RUNNER_TEMP/native-out" --repo "$REPO"
+        run: |
+          scripts/pack-native-plugin "$PLUGIN" --prebuilt "$RUNNER_TEMP/archives" --out "$RUNNER_TEMP/release" --repo "$REPO"
+          echo "id=$(basename "$PLUGIN")" >> "$GITHUB_OUTPUT"
+
+      # What merging would release, for a reviewer to download and try.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.pack.outputs.id }}
+          path: ${{ runner.temp }}/release/*
+          retention-days: 14
 
   revocations:
     name: revoked.json
@@ -354,7 +400,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, native, revocations, scripts, generated, starters]
+    needs: [detect, validate, native-build, native, revocations, scripts, generated, starters]
     if: always()
     runs-on: ubuntu-latest
     steps:
