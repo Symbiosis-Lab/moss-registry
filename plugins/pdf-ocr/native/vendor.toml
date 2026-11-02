@@ -16,15 +16,17 @@ url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8
 sha256 = "e7e2fe4686925618330103cb167950aca5a84bb00fd977a41b86be59dd1480a2"
 
 # Inputs to the OCR fingerprint, whose first two parts are the lines
-# `tesseract 5.5.4` and ` leptonica-1.87.0` of `tesseract --version`. On macOS,
+# `tesseract 5.5.3` and ` leptonica-1.87.0` of `tesseract --version`. On macOS,
 # package-macos.py refuses any other Homebrew tesseract; on Linux,
 # package-linux.sh builds both from these sources. Both ship this traineddata
 # (tessdata_fast 4.1.0, byte-identical to Homebrew's), so every build reads a
 # page the same way and a new release keeps a site's cached readings.
+# Homebrew's last tesseract for macOS 14 is 5.5.3, so the darwin runner stays
+# on macos-14 until this pin moves; moving it redoes every cached reading.
 [tesseract]
-version = "5.5.4"
-url = "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.4.tar.gz"
-sha256 = "a8dbf8b8c8ee427ff6ad1d99116502feaf59440af1adb893caf60a6576826cf4"
+version = "5.5.3"
+url = "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz"
+sha256 = "9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884"
 
 [leptonica]
 version = "1.87.0"
