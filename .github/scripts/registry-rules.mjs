@@ -72,8 +72,17 @@ export function parseReleaseTag(tag) {
 // `run.artifact` downloads. The source manifest leaves `url` and `sha256` out;
 // the publisher fills them from the archives it builds.
 
-/** Platforms a native plugin may build for. Each needs `native/build-<platform>.sh`. */
-export const NATIVE_PLATFORMS = ["darwin-arm64"];
+/**
+ * Platforms a native plugin may build for, with the runner CI builds each on.
+ * Each needs `native/build-<platform>.sh`. Linux builds on the oldest Ubuntu
+ * runner because the glibc a program is built against is the oldest it runs on.
+ */
+export const NATIVE_RUNNERS = {
+  "darwin-arm64": "macos-14",
+  "linux-arm64": "ubuntu-22.04-arm",
+  "linux-x64": "ubuntu-22.04",
+};
+export const NATIVE_PLATFORMS = Object.keys(NATIVE_RUNNERS);
 
 /** Archive formats moss can unpack, as written in `archive_format`. */
 export const ARCHIVE_FORMATS = ["tar.gz", "zip"];
@@ -113,6 +122,19 @@ export function artifactPlatforms(manifest) {
     .filter(({ artifact }) => artifact.kind === "download" && typeof artifact.platform === "string")
     .map(({ artifact }) => artifact.platform);
   return [...new Set(platforms)].sort();
+}
+
+/**
+ * One CI build per plugin and platform: `[{plugin, id, platform, runner}]` for
+ * `[{dir, manifest}]`. Platforms without a runner are left out; the validator
+ * reports them.
+ */
+export function nativeBuildMatrix(plugins) {
+  return plugins.flatMap(({ dir, manifest }) =>
+    artifactPlatforms(manifest)
+      .filter((platform) => Object.hasOwn(NATIVE_RUNNERS, platform))
+      .map((platform) => ({ plugin: dir, id: dir.split("/").pop(), platform, runner: NATIVE_RUNNERS[platform] })),
+  );
 }
 
 // ---------------------------------------------------------------- starters --
