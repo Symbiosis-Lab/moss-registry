@@ -20,6 +20,8 @@ starters/
 
 `site/` is the product. The app builds it, previews it and copies it into a new folder byte for byte, so whatever is in `site/` is what the user gets, including `.moss/config.toml`, the theme, and `.moss/STARTER.md` (notes to the user on making the starter theirs). Everything beside `site/` is for the people who maintain the registry and never reaches a user.
 
+A starter may carry plugins in `site/.moss/plugins/<id>/`, as any site can. That is code that runs on every machine the starter is copied to, so it is reviewed in the starter's pull request like a plugin's source, and each carried plugin is declared in the manifest's `plugins` list. moss refuses a plugin that came with a folder until the user allows it once in the app, so the registry builds a starter with `--allow-plugins` only when it declares plugins, and never allows code the manifest does not name.
+
 `site/` is the whole product: the registry neither requires nor knows about any fuller version of it. A starter can be written directly in `site/`, or cut from a fuller site its author keeps elsewhere, keeping enough of each kind of page for every feature to show. `.cut`, `fixups.sh` and `scripts/cut-starter.sh` exist for that second case and are optional: `.cut` lists the paths of the fuller site, and `cut-starter.sh` rebuilds `site/` from them, so the starter can be refreshed when the fuller site improves without anyone copying files by hand.
 
 ## `manifest.json`
@@ -37,6 +39,7 @@ All fields are required unless marked. Consumers ignore fields they do not know.
 | `language` | string | BCP 47 tag of the site's language, such as `en` or `zh-Hant`. |
 | `min_moss_version` | string | The lowest moss release the starter is known to build clean on (`--strict`). |
 | `order` | integer | The picker shows starters in ascending `order`. |
+| `plugins` | array of strings, optional | The id of every plugin the starter carries in `site/.moss/plugins/`, and nothing else. A starter that declares plugins is built, previewed and photographed with `--allow-plugins`. A user's moss still asks them to allow each one when the site is first opened. |
 | `demo_url` | string, optional | An absolute `https://` URL of a live demo the author chooses to keep. It can be anything: the starter itself deployed somewhere, or a fuller site it was cut from. The registry does not host it, check it or depend on it. |
 | `tour` | array | 3 to 5 stops, each `{ "label", "path" }`. `path` is a `/`-rooted URL path to a page that exists in the built site, percent-encoded as moss writes its links (so a Chinese folder name appears as `%E7%95%AB`). The tour is what a reader is shown to see what the starter can do: the home page, a typical page, a series with previous and next, a map. |
 
@@ -50,6 +53,7 @@ All fields are required unless marked. Consumers ignore fields they do not know.
 - `.moss/config.toml` has no `domain`, no `site_id`, no `environment` and no `[channels.*]`: a starter has no address and publishes nowhere.
 - It is under 25 MB in total.
 - `.moss/STARTER.md` exists. It lives in `.moss/` so it is never built as a page.
+- Every folder in `.moss/plugins/` is declared in the manifest's `plugins`, and every declared id has its folder.
 
 Beside that, the manifest must validate, `id` must equal the folder name, both posters must exist and be exactly 1600x1000 JPEG, and every tour path must be well formed. With a moss binary available the check also builds a scratch copy of each starter with `--strict` and requires every tour path to be in the built site:
 
@@ -137,6 +141,7 @@ All of them live in `scripts/` and can be re-run safely.
 | `pack-starters [<id> …]` | Writes the zips and the index entries described above. |
 | `check-starter-versions.sh <base-ref>` | Fails if `site/` or `posters/` changed without a `version` bump since `<base-ref>`. |
 | `compress-images.py`, `prune-places.py`, `prune-sort-lists.py` | Steps of the cut. `test-compress-images.py` tests the first. |
+| `test-check-starters.py` | Tests the carried-plugin rule of `check-starters.sh` and that only a starter declaring plugins is built with `--allow-plugins`. |
 
 ## The starters
 
@@ -144,4 +149,5 @@ All of them live in `scripts/` and can be re-run safely.
 |---|---|---|---|
 | [`essays`](essays/) | Essays | en | A writer's own site: essays, talks and an about page. |
 | [`organisation`](organisation/) | Organisation | en | A society's site: a course of reading, local circles on a map, a calendar, notices. |
+| [`projektschau-kern`](projektschau-kern/) | Projektschau | en | Don Ludwig's Projektschau for KERN: a programme as a board of cards with a timeline, with a German edition. Carries the board as a plugin. |
 | [`vertical`](vertical/) | Vertical | zh-Hant | A vertical Chinese site, read right to left: writings, calligraphy, paintings. |

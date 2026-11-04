@@ -1,0 +1,18 @@
+schema_version = 6
+
+[terms.partners]
+fields = ["partners"]
+title = "Partners"
+
+[fields.kind]
+type = "choice"
+of = { Building = "Built", Service = "Founded", Programme = "Introduced", Event = "Held" }
+in = ["Education & culture", "Health", "Housing", "Sport", "Welfare", "de"]
+
+[fields.years]
+type = "period"
+in = ["Education & culture", "Health", "Housing", "Sport", "Welfare", "de"]
+
+[fields.figure]
+type = "count"
+in = ["Education & culture", "Health", "Housing", "Sport", "Welfare", "de"]

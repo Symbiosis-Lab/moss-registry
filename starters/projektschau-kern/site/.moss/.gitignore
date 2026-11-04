@@ -1,0 +1,7 @@
+identity/
+keys/
+data/*
+agents/
+history/
+build.nosync/
+cache/

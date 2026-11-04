@@ -1,0 +1,195 @@
+/* Theme: the look of KERN, the German public-sector UX standard, in its typeface Fira Sans.
+   KERN is brought in as values, not as the kit: moss's own stylesheet already resets and lays out the page, and loading
+   kern.min.css (340 KB) into the themes layer would fight it. The colours below are KERN 2.8.2's resolved tokens
+   (EUPL-1.2); the fonts are the kit's Fira Sans (SIL OFL 1.1), licence files beside them. */
+
+/* The board's KERN classes: a 68 KB cut of the kit (tokens + the rules the board's markup names),
+   imported rather than inlined so the theme's own rules stay readable. */
+@import url("kern-board.css");
+
+/* ---- Fira Sans: KERN's one typeface. Four weights: body, italic, headings/labels, bold. ---- */
+@font-face { font-family: "Fira Sans"; src: url("fonts/FiraSans-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fira Sans"; src: url("fonts/FiraSans-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Fira Sans"; src: url("fonts/FiraSans-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fira Sans"; src: url("fonts/FiraSans-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fira Sans"; src: url("fonts/FiraSans-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* ---- Tokens, light: a white page, one dark blue for every link and button. ---- */
+:root {
+  --moss-font-body: "Fira Sans", sans-serif; /* KERN sets everything in Fira Sans */
+  --moss-font-heading: "Fira Sans", sans-serif; /* one family, so headings differ by weight only */
+  --moss-font-heading-weight: 600; /* KERN's heading weight */
+  --moss-content-width: 68ch; /* the measure for running text */
+  --moss-color-bg: oklch(100% 0 0); /* KERN layout background */
+  --moss-color-surface: oklch(96.72% .0041 271.37); /* KERN neutral-025, the pale grey band and tinted surfaces */
+  --moss-color-text: oklch(20.23% .0321 277.67); /* KERN neutral-950 */
+  --moss-color-text-secondary: oklch(46.61% .0574 276.44); /* KERN neutral-650, "muted", 7:1 on white */
+  --moss-color-muted: oklch(46.61% .0574 276.44); /* same muted grey for captions */
+  --moss-color-accent: oklch(42.84% .1689 265.02); /* KERN darkblue-700: the single action colour */
+  --moss-color-ui-accent: oklch(42.84% .1689 265.02); /* chrome uses the same blue, never an area colour */
+  --moss-color-accent-hover: oklch(34.91% .1828 264.89); /* KERN darkblue-800, one step darker on hover */
+  --moss-border-light: oklch(82.04% .0253 278.29); /* KERN decorative border, neutral-200 */
+  --moss-border-medium: oklch(75.46% .0348 276.22); /* neutral-300 */
+  --moss-border-strong: oklch(56.94% .0532 275.53); /* KERN layout border, neutral-500, 3:1 for controls */
+  --moss-header-rule: oklch(82.04% .0253 278.29); /* hairline under the header (moss draws it full width) */
+  --a-radius: 4px; /* KERN radius default */
+  --a-radius-lg: 8px; /* KERN radius large, for surfaces */
+}
+
+/* ---- Tokens, dark: KERN's own dark theme (black page, light-blue actions). ---- */
+:root[data-theme="dark"] {
+  --moss-color-bg: oklch(0% 0 0); /* KERN dark background is true black */
+  --moss-color-surface: oklch(20.23% .0321 277.67); /* neutral-950 */
+  --moss-color-text: oklch(96.72% .0041 271.37); /* neutral-025 */
+  --moss-color-text-secondary: oklch(78.01% .0315 277.47); /* neutral-250 */
+  --moss-color-muted: oklch(78.01% .0315 277.47);
+  --moss-color-accent: oklch(75.39% .0772 264.66); /* KERN darkblue-300 */
+  --moss-color-ui-accent: oklch(75.39% .0772 264.66);
+  --moss-color-accent-hover: oklch(86.51% .0418 264.33); /* darkblue-150, lighter on hover in dark */
+  --moss-border-light: oklch(42.13% .0539 275.67); /* neutral-700 */
+  --moss-border-medium: oklch(50.2% .0579 276.79); /* neutral-600 */
+  --moss-border-strong: oklch(56.94% .0532 275.53);
+  --moss-header-rule: oklch(42.13% .0539 275.67);
+}
+
+/* ---- Page basics ---- */
+body {
+  font-variant-numeric: tabular-nums slashed-zero; /* KERN sets figures tabular everywhere (design rule T1) */
+}
+
+/* KERN's focus ring: a thick dark outline offset from the control, never removed. */
+:focus-visible:not(input, textarea, select) {
+  outline: 4px solid var(--moss-color-text-secondary); /* visible on both white and black */
+  outline-offset: 2px; /* KERN offset keeps the ring off the glyphs */
+  text-decoration: none; /* KERN swaps the underline for the ring on focus */
+}
+
+/* Prose links: the action blue, underlined, as KERN's link. */
+article a:not(.moss-card):not(.moss-heading-anchor) {
+  color: var(--moss-color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px; /* KERN link offset */
+  text-decoration-thickness: 1px;
+}
+article a:not(.moss-card):not(.moss-heading-anchor):hover { color: var(--moss-color-accent-hover); text-decoration-thickness: 2px; /* KERN thickens on hover */ }
+
+/* ---- Header: name left, pages and the switch right, a hairline below. ---- */
+body > header {
+  margin-block-end: var(--moss-space-lg); /* room between header and the page's first line */
+}
+.main-nav { max-inline-size: var(--moss-site-max-width, 96rem); /* header spans the page width, not the 68ch text column */ padding-block: var(--moss-space-sm); }
+.site-name { font-weight: 600; font-size: 1.125rem; /* the name is the one semi-bold thing in the header */ }
+.main-nav a { color: var(--moss-color-accent); /* KERN: every link is the action blue */ }
+.main-nav .site-name { color: var(--moss-color-text); /* except the name, which is text colour */ }
+.main-nav a.active { color: var(--moss-color-text); border-block-end: none; font-weight: 600; /* current page: text colour, semi-bold, no underline */ }
+
+/* ---- Running text: KERN body size and line height, 68ch measure from the content-width token. ---- */
+article { font-size: 1.125rem; line-height: 1.6; /* KERN medium body, 18px, comfortable leading */ }
+article h2 { font-size: 1.5rem; font-weight: 600; line-height: 1.3; /* KERN small heading, a step above body */ }
+article h3 { font-size: 1.25rem; font-weight: 600; }
+article ul, article ol { padding-inline-start: 1.5em; /* KERN list indent */ }
+
+/* ---- Project title and badge: the area names itself in colour. ---- */
+.moss-article-title { font-weight: 600; line-height: 1.15; letter-spacing: 0; /* KERN x-large heading */ }
+body[data-section] .moss-article-title { color: var(--moss-section-text); /* the area colour as moss makes it readable: 4.5:1 or more on the page in both modes */ }
+/* The parent-section link above the title (`breadcrumb: label` on the home page): a small breadcrumb by default (a partner belongs to no area), a badge filled in the area colour inside a section. */
+article a.moss-parent-label { color: var(--moss-color-accent); font-size: .875rem; letter-spacing: 0; text-transform: none; text-decoration: underline; text-underline-offset: 3px; /* KERN small link */ }
+body[data-section] article a.moss-parent-label {
+  text-decoration: none; /* a badge, not a prose link: the prose-link rule above must not underline or recolour it */
+  padding: 2px 10px;
+  border-radius: var(--a-radius); /* KERN badge radius */
+  background: color-mix(in oklab, var(--moss-section-color) 85%, black); /* the base colour as fill, deepened: white on the plain Welfare orange is 4.41:1 */
+  color: #fff;
+  font-size: 1rem; font-weight: 600; line-height: 1.5; /* a name, not a spaced-capital label */
+}
+
+/* ---- Photograph: text width, rounded, caption small grey under it, left-aligned like a museum label. ---- */
+.moss-image { margin-inline: 0; }
+.moss-image img { border-radius: var(--a-radius); width: 100%; height: auto; /* never tinted or inverted in dark (rule M1) */ }
+.moss-image figcaption { text-align: start; color: var(--moss-color-text-secondary); font-size: .875rem; font-style: normal; line-height: 1.45; margin-block-start: var(--moss-space-sm); /* KERN small static text, muted */ }
+
+/* ---- Sources: set apart by a rule above, then quieter small text. ---- */
+article h2#sources { margin-block-start: var(--moss-space-2xl); padding-block-start: var(--moss-space-lg); border-block-start: 1px solid var(--moss-border-medium); font-size: 1.125rem; /* the rule separates the evidence from the story */ }
+article h2#sources + ul { font-size: 1rem; /* sources are reference, one step smaller */ }
+article h2#sources + ul li + li { margin-block-start: var(--moss-space-sm); }
+
+/* ---- Listing cards: tinted from each card's section colour; a card with none (a person on the Partners index) falls back to the neutral border grey, which gives a pale neutral tile. ---- */
+.moss-cards[data-layout="list"] { display: grid; grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); gap: var(--moss-space-md); /* one card per row in the text column: two would leave the text beside its picture a few words wide */ }
+.moss-cards[data-layout="list"] .moss-card { border-radius: var(--a-radius-lg); border: 1px solid color-mix(in srgb, var(--moss-section-color, var(--moss-border-strong)) 35%, transparent); background: color-mix(in srgb, var(--moss-section-color, var(--moss-border-strong)) 8%, var(--moss-color-bg)); padding: var(--moss-space-md); text-decoration: none; /* tinted like Projektschau's cards */ }
+.moss-cards[data-layout="list"] .moss-card-title { color: color-mix(in oklab, var(--moss-section-text, var(--moss-color-text)) 70%, var(--moss-color-text)); font-size: 1.125rem; font-weight: 600; margin: 0; /* the area's text colour, 30% toward the body text: moss tunes it to 4.5:1 on the page, and on these tinted cards it fell just under */ }
+.moss-cards[data-layout="list"] .moss-card-description { color: var(--moss-color-text-secondary); font-size: .9375rem; margin: 4px 0 0; }
+
+/* ---- Phone header: name and switch share line one, the pages take line two. ---- */
+@media (max-width: 48rem) {
+  .nav-content .nav-right { display: contents; /* lets the three header parts be ordered as siblings */ }
+  .nav-content .nav-left { flex: 1 1 0; min-inline-size: 0; }
+  .nav-content .site-name { white-space: normal; /* a long site name wraps rather than push the switch off-screen */ }
+  .nav-content .nav-icons { order: 2; margin-inline-start: 0; }
+  .nav-content .nav-links { order: 3; flex: 1 1 100%; justify-content: flex-start; }
+}
+
+/* ---- Cards hold their whole text: moss clips a description at two lines, but a partner card's description is the role line. ---- */
+.moss-cards[data-layout="list"] .moss-card-description,
+.moss-cards[data-layout="list"] .moss-card-title { display: block; max-block-size: none; overflow: visible; -webkit-line-clamp: unset; line-clamp: unset; text-overflow: clip; white-space: normal; }
+
+/* ---- Header width: 82.5rem, the room the home page's board needs. ---- */
+:root { --moss-site-max-width: 82.5rem; /* header, wide pages and the board share one page width */ }
+
+/* The mark: four squares in the area colours, the board's one sign, drawn as one gradient so no markup is needed. */
+.site-name::before {
+  content: ""; display: inline-block; inline-size: 20px; block-size: 20px; margin-inline-end: .5rem; vertical-align: -3px;
+  background:
+    linear-gradient(#b95349, #b95349) 0 0 / 9px 9px no-repeat,
+    linear-gradient(#3c8273, #3c8273) 100% 0 / 9px 9px no-repeat,
+    linear-gradient(#b55c09, #b55c09) 0 100% / 9px 9px no-repeat,
+    linear-gradient(#467aaf, #467aaf) 100% 100% / 9px 9px no-repeat; /* housing, health, welfare, education, in that order */
+}
+
+/* ---- Partner page: role line under the name. ---- */
+.moss-byline { font-size: 1.125rem; color: var(--moss-color-text-secondary); /* the role line reads as part of the name, one size down */ }
+.moss-byline ~ .moss-cards-container { margin-block: 3.5rem 4rem; /* a partner's projects stand apart from the text above and the sources below; scoped to pages with a role line so area pages keep moss's spacing */ }
+
+/* ---- Footer: the credit line, small and muted under a rule. ---- */
+body > footer { margin-block-start: var(--moss-space-2xl); }
+body > footer p { font-size: .875rem; color: var(--moss-color-text-secondary); max-inline-size: 90ch; /* the prototype's credit line: small, muted, long measure */ }
+body > footer p a { color: var(--moss-color-accent); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- Home page: the title, its paragraph and one period photograph on KERN's pale band, full bleed; then the board. ---- */
+body[data-page="home"] { --moss-header-rule: transparent; /* the band's top edge is the divider here, so the hairline would draw a second one */ }
+body[data-page="home"] > header,
+body[data-page="home"] .main-nav { margin-block-end: 0; padding-block-end: 0; /* the band starts right under the header's last line, where the rule sits on other pages */ }
+body[data-page="home"] article > .home-band {
+  --moss-grid-image-ratio: auto; /* moss crops a grid picture to a square; the photograph keeps its own shape */
+  margin: 0; align-items: start; column-gap: clamp(var(--moss-space-md), 4vw, var(--moss-space-2xl));
+  padding-block: clamp(var(--moss-space-lg), 6vw, var(--moss-space-2xl)); /* the band's air grows with the display heading */
+  background: var(--moss-color-surface); /* KERN pale grey band, level 1 */
+  box-shadow: 0 0 0 100vmax var(--moss-color-surface); clip-path: inset(0 -100vmax); /* runs to the viewport edges without a wrapper element */
+}
+body[data-page="home"] .home-band h1 { margin: 0 0 var(--moss-space-md); font-size: clamp(2.5rem, 6vw, 4.5rem); line-height: 1.1; font-weight: 600; text-wrap: balance; /* KERN display heading */ }
+body[data-page="home"] .home-band .moss-image { margin-block: 0; /* the picture starts level with the title and ends at the band's bottom padding, not 40px off either */ }
+body[data-page="home"] .home-band p { font-size: 1.25rem; max-inline-size: 68ch; /* KERN large body at the reading measure */ }
+body[data-page="home"] article > [data-projektschau] { margin-block-start: var(--moss-space-xl, 2rem); }
+
+/* ---- A project's further pictures: two to a row, each whole, caption small and grey as under the lead picture. ---- */
+/* ---- Partner portrait: small beside the first paragraph; the project cards start below it, and on a phone it stays a small float instead of filling the width. ---- */
+.moss-byline ~ .moss-cards-container { clear: both; /* the portrait floats into the margin, so the cards must not wrap around its caption */ }
+@layer shortcodes { @media (max-width: 48rem) {
+  article figure.moss-image.moss-align-right:not([data-width]) { float: right; width: 38% !important; margin-inline-start: var(--moss-space-sm); /* moss's own phone rule is !important inside its layer, so only a rule in that layer, later, can keep the portrait small */ }
+} }
+
+/* ---- Picture sets: a gallery sits in the 68ch text column, so its rows start lower than moss's default and two landscape photos share a row. ---- */
+.moss-gallery[data-layout="rows"] { --moss-gallery-row-height: 11rem; /* two 3:2 photos fit side by side in the text column, then grow to fill it */ }
+
+/* ---- Partners index: one list card per person, three to a row wide. ---- */
+body[data-path$="/partners/"] {
+  --thumb: 5.5rem; /* a 4:5 face wide enough to read, leaving a three-up card (about 20rem) 11rem for the role line */
+  .moss-cards[data-layout="list"] { grid-template-columns: 1fr; }
+  @media (min-width: 48rem) { .moss-cards[data-layout="list"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 64rem) { .moss-cards[data-layout="list"] { grid-template-columns: repeat(3, minmax(0, 1fr)); /* three cards of 20rem need about this width; below it the role lines wrap to four lines */ } }
+  .moss-card-row { flex-direction: row-reverse; align-items: center; justify-content: flex-end; min-block-size: calc(var(--thumb) * 5 / 4); /* moss puts the picture after the text; the row keeps the thumbnail's height whether or not it has one, so the script adding a tile moves nothing */ }
+  .moss-card-cover { flex: 0 0 var(--thumb); inline-size: var(--thumb); aspect-ratio: 4 / 5; }
+  .moss-card-cover img { inline-size: 100%; block-size: 100%; object-fit: cover; object-position: top; border-radius: var(--a-radius); /* from the top, so the face stays in */ }
+  .moss-card-description { max-block-size: none; /* moss caps a description at 48px, which cut a three-line role line; its overflow, display and line-clamp settings change nothing once the cap is gone */ }
+  .moss-card-row:not(:has(.moss-card-cover))::before { content: attr(data-initials); order: 1; flex: 0 0 var(--thumb); inline-size: var(--thumb); aspect-ratio: 4 / 5; box-sizing: border-box; display: grid; place-items: center; border-radius: var(--a-radius); font: 600 1.75rem/1 var(--moss-font-heading); letter-spacing: .02em; color: var(--moss-color-text-secondary); /* the initials fill about a third of the tile; the slight tracking opens capitals set tight */ }
+  .moss-card-row[data-initials]::before { background: var(--moss-color-bg); border: 1px solid var(--moss-border-light); /* drawn only once the script has the initials, so without it the tile is blank space, not an empty box */ }
+}

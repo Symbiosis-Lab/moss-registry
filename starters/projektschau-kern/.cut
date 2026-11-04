@@ -1,0 +1,155 @@
+# starters/projektschau-kern/.cut -- which paths of The New Vienna make up site/.
+# One path per line, relative to the full site's root. A directory copies
+# recursively. Regenerate from the root of this repository with:
+#   scripts/cut-starter.sh <path-to-the-full-site> projektschau-kern
+#
+# The Projektschau starter: Don Ludwig's Projektschau for KERN board drawn
+# over a folder of project pages, filled with the City of Vienna's municipal
+# programme, 1919-1934. Three projects in each of the five areas, covering
+# all four kinds (Building, Service, Programme, Event) with the timeline
+# still running from 1917 to 1934, the three projects the home highlights,
+# the partners those projects name, and the German mirror of every kept page.
+
+# moss's own scaffold: the gitignore and the empty redirects map.
+.moss/.gitignore
+.moss/redirects.json
+
+# site config: the partners term and the kind/years/figure fields the board
+# reads (their `in` lists name the five area folders and de/, all kept)
+.moss/config.toml
+
+# Projektschau, carried as a site plugin: donludwig's unmodified renderer
+# (projektschau.js, projektschau.css, LICENSE.txt) and the moss port
+# (main.js, engine-shim.js, manifest.json). The port's development test,
+# test.js, is left out: it needs a moss build list and no user runs it.
+.moss/plugins/projektschau/LICENSE.txt
+.moss/plugins/projektschau/engine-shim.js
+.moss/plugins/projektschau/main.js
+.moss/plugins/projektschau/manifest.json
+.moss/plugins/projektschau/projektschau.css
+.moss/plugins/projektschau/projektschau.js
+
+# theme: KERN tokens and the board's cut of the KERN kit, the dark-mode
+# mirror script, and KERN's Fira Sans with the kit's licence
+.moss/theme
+
+# home (the board, its intro band and the three highlights), footer, About
+# the sources, and the two root pictures (the home band's facade photograph
+# and About's cover of Das Neue Wien)
+index.md
+footer.md
+About the sources.md
+Karl-Marx-Hof facade.jpg
+Das Neue Wien cover.jpg
+
+# Housing: the highlighted programme, its tax (a Programme with a money
+# figure, Hugo Breitner's), and Karl-Marx-Hof, a Building with two galleries
+Housing/index.md
+Housing/Municipal housing programme.md
+Housing/Municipal housing programme.jpg
+Housing/Housing construction tax.md
+Housing/Karl-Marx-Hof.md
+Housing/Karl-Marx-Hof.jpg
+Housing/Karl-Marx-Hof 2.jpg
+Housing/Karl-Marx-Hof 3.jpg
+Housing/Karl-Marx-Hof 4.jpg
+Housing/Karl-Marx-Hof 5.jpg
+
+# Health: the highlighted advice centres (a Service begun in 1917), the
+# children's pools (a Building begun in 1919, with a gallery), and the
+# school dental clinics
+Health/index.md
+Health/Maternity advice centres.md
+Health/Maternity advice centres.jpg
+Health/Children's open-air pools.md
+Health/Children's open-air pools.jpg
+Health/Children's open-air pools 2.jpg
+Health/Children's open-air pools 3.jpg
+Health/Children's open-air pools 4.jpg
+Health/School dental clinics.md
+Health/School dental clinics.jpg
+
+# Welfare: all three, the highlighted layette package among them
+Welfare/index.md
+Welfare/Infant layette package.md
+Welfare/Children's reception centre.md
+Welfare/Children's reception centre.jpg
+Welfare/Welfare office.md
+Welfare/Welfare office.jpg
+
+# Sport: the Workers' Olympiad (the board's one Event), the Prater Stadium
+# built for it, and the Kongressbad. Two pictures a page at most, for size:
+# fixups.sh drops the gallery lines of the pictures left out here, and the
+# Prater Stadium keeps the Rijksmuseum's, the only one from that holder.
+Sport/index.md
+Sport/Second Workers' Olympiad.md
+Sport/Second Workers' Olympiad.jpg
+Sport/Second Workers' Olympiad 2.jpg
+Sport/Prater Stadium.md
+Sport/Prater Stadium.jpg
+Sport/Prater Stadium 5.jpg
+Sport/Kongressbad.md
+Sport/Kongressbad.jpg
+
+# Education & culture: the school reform (1919-1934, the timeline's span),
+# the Pedagogical Institute, and Neurath's Society and Economy Museum
+Education & culture/index.md
+Education & culture/Vienna school reform.md
+Education & culture/Vienna school reform.jpg
+Education & culture/Pedagogical Institute of the City of Vienna.md
+Education & culture/Pedagogical Institute of the City of Vienna.jpg
+Education & culture/Society and Economy Museum.md
+
+# Partners: the index and exactly the ten people the kept projects name,
+# with the four portraits among them
+Partners/index.md
+Partners/Karl Ehn.md
+Partners/Hugo Breitner.md
+Partners/Hugo Breitner.jpg
+Partners/Julius Tandler.md
+Partners/Julius Tandler.jpg
+Partners/Adolf Stöckl.md
+Partners/Otto Ernst Schweizer.md
+Partners/Erich Leischner.md
+Partners/Otto Glöckel.md
+Partners/Otto Glöckel.jpg
+Partners/Karl Bühler.md
+Partners/Karl Bühler.jpg
+Partners/Alfred Adler.md
+Partners/Otto Neurath.md
+
+# German: the same pages again under de/ (they point at the pictures above)
+de/index.md
+de/footer.md
+de/About the sources.md
+de/Housing/index.md
+de/Housing/Municipal housing programme.md
+de/Housing/Housing construction tax.md
+de/Housing/Karl-Marx-Hof.md
+de/Health/index.md
+de/Health/Maternity advice centres.md
+de/Health/Children's open-air pools.md
+de/Health/School dental clinics.md
+de/Welfare/index.md
+de/Welfare/Infant layette package.md
+de/Welfare/Children's reception centre.md
+de/Welfare/Welfare office.md
+de/Sport/index.md
+de/Sport/Second Workers' Olympiad.md
+de/Sport/Prater Stadium.md
+de/Sport/Kongressbad.md
+de/Education & culture/index.md
+de/Education & culture/Vienna school reform.md
+de/Education & culture/Pedagogical Institute of the City of Vienna.md
+de/Education & culture/Society and Economy Museum.md
+de/Partners/index.md
+de/Partners/Karl Ehn.md
+de/Partners/Hugo Breitner.md
+de/Partners/Julius Tandler.md
+de/Partners/Adolf Stöckl.md
+de/Partners/Otto Ernst Schweizer.md
+de/Partners/Erich Leischner.md
+de/Partners/Otto Glöckel.md
+de/Partners/Karl Bühler.md
+de/Partners/Alfred Adler.md
+de/Partners/Otto Neurath.md

@@ -50,6 +50,9 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_starters import build_command  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 STARTERS = ROOT / "starters"
 OUT = ROOT / "dist" / "starters"
@@ -92,12 +95,12 @@ def moss_version(moss: str) -> str:
     return m.group(0) if m else out.strip()
 
 
-def build_preview(moss: str, starter: Path):
+def build_preview(moss: str, starter: Path, m: dict):
     """Build a scratch copy of site/ and return (tempdir, build output dir)."""
     scratch = Path(tempfile.mkdtemp(prefix="starter-preview-"))
     copy = scratch / "site"
     shutil.copytree(starter / "site", copy)
-    r = subprocess.run([moss, "build", str(copy), "--strict"], capture_output=True, text=True)
+    r = subprocess.run(build_command(moss, copy, m), capture_output=True, text=True)
     if r.returncode != 0:
         shutil.rmtree(scratch, ignore_errors=True)
         sys.exit(f"pack-starters: moss build --strict failed for {starter.name}:\n"
@@ -144,7 +147,7 @@ def pack(sid: str, base: str, moss):
             f"poster_{scheme}_size_bytes": len(data),
         })
     if moss:
-        scratch, built = build_preview(moss, starter)
+        scratch, built = build_preview(moss, starter, m)
         try:
             built_files = [(p.relative_to(built).as_posix(), p) for p in built.rglob("*")
                            if p.is_file() and p.name != ".DS_Store"]

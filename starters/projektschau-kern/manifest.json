@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "projektschau-kern",
+  "version": "1.0.0",
+  "name": "Projektschau",
+  "line": "Don Ludwig's Projektschau for KERN: a programme as a board of cards and a timeline.",
+  "credit": "Filled with fifteen projects of the City of Vienna's municipal programme, 1919–1934, in English and German.",
+  "language": "en",
+  "min_moss_version": "0.15.11",
+  "order": 40,
+  "demo_url": "https://projektschau.thinkrepeat.com/",
+  "plugins": [
+    "projektschau"
+  ],
+  "tour": [
+    {
+      "label": "The board: cards by area and kind, and a timeline",
+      "path": "/"
+    },
+    {
+      "label": "A project, with its facts, galleries and sources",
+      "path": "/housing/karl-marx-hof/"
+    },
+    {
+      "label": "An area and its projects",
+      "path": "/housing/"
+    },
+    {
+      "label": "The same board in German",
+      "path": "/de/"
+    },
+    {
+      "label": "Where every fact and picture comes from",
+      "path": "/about-the-sources/"
+    }
+  ]
+}
