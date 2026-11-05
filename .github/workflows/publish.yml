@@ -75,8 +75,8 @@ jobs:
             manifest="$dir/assets/manifest.json"
             [ -f "$manifest" ] || { echo "$id: no assets/manifest.json, skipping"; continue; }
 
-            # No entry means a program-only plugin, which the macOS `native`
-            # job builds; there is no bundle for this job to make.
+            # No entry means a program-only plugin, which the `native-*`
+            # jobs build; there is no bundle for this job to make.
             if ! jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then
               echo "$id: native plugin, released by the native job"
               continue
@@ -216,56 +216,116 @@ jobs:
           echo "released $published starter(s)"
           exit "$failed"
 
-  # Plugins that are only a manifest plus a native program are built here, on
-  # macOS, by each plugin's own native/build-<platform>.sh. Like starters this is
-  # a job of its own with a timeout, so a slow or failing build can neither stop
-  # the JavaScript plugins from being released nor hold back the index.
+  # Plugins that are only a manifest plus a native program are built by each
+  # plugin's own native/build-<platform>.sh, on a runner of each platform the
+  # manifest declares, with a read-only token: the build script is the
+  # contributor's code. Like starters these are jobs of their own with a
+  # timeout, so a slow or failing build can neither stop the JavaScript plugins
+  # from being released nor hold back the index.
   #
   # The release carries the archives next to the zip, and the zip's manifest pins
   # each archive's sha256 and URL. The index builder re-downloads the archives
   # and refuses an entry whose pins do not match, so a release that is only
   # half uploaded fails the run loudly instead of publishing a plugin that
   # cannot work. A released version is final, as everywhere else.
-  native:
-    name: cut missing native plugin releases
-    runs-on: macos-14
-    timeout-minutes: 45
-    permissions:
-      contents: write
+  native-plan:
+    name: plan native plugin releases
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.plan.outputs.plugins }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # tags are the version record
 
-      - name: Build and release every native plugin whose tag is missing
+      - id: plan
+        name: List native plugins whose release tag is missing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           shopt -s nullglob
+          todo=()
+          for dir in plugins/*/; do
+            dir="${dir%/}"
+            manifest="$dir/assets/manifest.json"
+            [ -f "$manifest" ] || continue
+            if jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then continue; fi
+            tag="$(basename "$dir")-v$(jq -r '.version' "$manifest")"
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "$dir: $tag already released"
+            else
+              echo "$dir: $tag to release"
+              todo+=("$dir")
+            fi
+          done
+          echo "plugins=${todo[*]}" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(node .github/scripts/native-matrix.mjs "${todo[@]}")" >> "$GITHUB_OUTPUT"
+
+  native-build:
+    name: build ${{ matrix.id }} (${{ matrix.platform }})
+    needs: native-plan
+    if: needs.native-plan.outputs.matrix != '[]'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.native-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run the ${{ matrix.platform }} program
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+          PLATFORM: ${{ matrix.platform }}
+        run: scripts/pack-native-plugin "$PLUGIN" --platform "$PLATFORM" --out "$RUNNER_TEMP/archive"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.id }}-${{ matrix.platform }}
+          path: ${{ runner.temp }}/archive/*
+          retention-days: 7
+
+  native:
+    name: cut missing native plugin releases
+    needs: [native-plan, native-build]
+    # Also after a failed build: the other plugins' releases still go out, and a
+    # plugin missing an archive fails in the pack step below.
+    if: always() && needs.native-plan.outputs.plugins != '' && needs.native-build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true # every build failed: each plugin below then fails by name
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/archives
+
+      - name: Pack and release every planned native plugin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLUGINS: ${{ needs.native-plan.outputs.plugins }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/archives"
 
           # One plugin failing must not stop the others.
           failed=0
           published=0
-          for dir in plugins/*/; do
-            dir="${dir%/}"
+          for dir in $PLUGINS; do
             id="$(basename "$dir")"
-            manifest="$dir/assets/manifest.json"
-            [ -f "$manifest" ] || continue
-            if jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then continue; fi
-
-            version="$(jq -r '.version' "$manifest")"
+            version="$(jq -r '.version' "$dir/assets/manifest.json")"
             tag="${id}-v${version}"
-
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "$id: $tag already released"
-              continue
-            fi
 
             echo "::group::$id -> $tag"
             out="$RUNNER_TEMP/native-$id"
-            if ! scripts/pack-native-plugin "$dir" --out "$out" --repo "$GITHUB_REPOSITORY"; then
-              echo "::error::$id: building or packing failed"
+            if ! scripts/pack-native-plugin "$dir" --prebuilt "$RUNNER_TEMP/archives" --out "$out" --repo "$GITHUB_REPOSITORY"; then
+              echo "::error::$id: packing failed (a platform's build failed or is missing)"
               echo "::endgroup::"
               failed=1
               continue
@@ -273,7 +333,6 @@ jobs:
 
             files=("$out"/*)
             if gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
-                 --latest=false \
                  --title "$id $version" \
                  --notes "Built from \`$dir\` at ${GITHUB_SHA}. See the plugin's README.md for what it does."; then
               published=$((published + 1))

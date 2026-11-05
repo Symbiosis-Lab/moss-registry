@@ -1,14 +1,37 @@
-# Pinned third-party binaries (not committed; fetched by scripts/fetch-pdfium.sh)
-[pdfium.macos-arm64]
+# Pinned third-party inputs (not committed; fetched by scripts/fetch-pdfium.sh and,
+# on Linux, scripts/package-linux.sh). Sections are keyed by moss's platform names.
+[pdfium.darwin-arm64]
 release = "chromium/8086"
 url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8086/pdfium-mac-arm64.tgz"
 sha256 = "e98679e052c07edbb5a627980902abb823d4b3f35744d877bd21668bd9fc13ab"
 
-# Inputs to the OCR fingerprint. package-macos.py refuses any other tesseract and
-# ships this traineddata (tessdata_fast 4.1.0, byte-identical to Homebrew's) instead
-# of Homebrew's, so a build on any machine keeps the same cached readings.
+[pdfium.linux-x64]
+release = "chromium/8086"
+url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8086/pdfium-linux-x64.tgz"
+sha256 = "588577cf52dabc1a444988bac841920df54cc2f141801424de97ab04f4fbb935"
+
+[pdfium.linux-arm64]
+release = "chromium/8086"
+url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8086/pdfium-linux-arm64.tgz"
+sha256 = "e7e2fe4686925618330103cb167950aca5a84bb00fd977a41b86be59dd1480a2"
+
+# Inputs to the OCR fingerprint, whose first two parts are the lines
+# `tesseract 5.5.3` and ` leptonica-1.87.0` of `tesseract --version`. On macOS,
+# package-macos.py refuses any other Homebrew tesseract; on Linux,
+# package-linux.sh builds both from these sources. Both ship this traineddata
+# (tessdata_fast 4.1.0, byte-identical to Homebrew's), so every build reads a
+# page the same way and a new release keeps a site's cached readings.
+# Homebrew's last tesseract for macOS 14 is 5.5.3, so the darwin runner stays
+# on macos-14 until this pin moves; moving it redoes every cached reading.
 [tesseract]
 version = "5.5.3"
+url = "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz"
+sha256 = "9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884"
+
+[leptonica]
+version = "1.87.0"
+url = "https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz"
+sha256 = "c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7"
 
 [eng-traineddata]
 url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/65727574dfcd264acbb0c3e07860e4e9e9b22185/eng.traineddata"

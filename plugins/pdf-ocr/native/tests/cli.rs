@@ -4,7 +4,7 @@ use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
 fn pdfium() -> String {
-    let p = format!("{}/vendor/libpdfium.dylib", env!("CARGO_MANIFEST_DIR"));
+    let p = format!("{}/vendor/libpdfium{}", env!("CARGO_MANIFEST_DIR"), std::env::consts::DLL_SUFFIX);
     assert!(std::path::Path::new(&p).exists(), "run scripts/fetch-pdfium.sh first");
     p
 }

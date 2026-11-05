@@ -10,3 +10,4 @@ vendor/*.dll
 vendor/LICENSE
 vendor/licenses/
 dist/
+vendor/linux-*/

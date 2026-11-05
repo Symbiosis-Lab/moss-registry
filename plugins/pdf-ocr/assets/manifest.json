@@ -1,7 +1,7 @@
 {
   "name": "pdf-ocr",
   "display_name": "PDF OCR",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Shows a folder's PDFs as pages: extracts each document's text, reading scanned pages by OCR.",
   "author": "Symbiosis Lab",
   "repository": "https://github.com/Symbiosis-Lab/moss-registry/tree/main/plugins/pdf-ocr",
@@ -30,6 +30,18 @@
             {
               "kind": "download",
               "platform": "darwin-arm64",
+              "archive_format": "tar.gz",
+              "executable": "pdf-ocr/pdf-ocr"
+            },
+            {
+              "kind": "download",
+              "platform": "linux-arm64",
+              "archive_format": "tar.gz",
+              "executable": "pdf-ocr/pdf-ocr"
+            },
+            {
+              "kind": "download",
+              "platform": "linux-x64",
               "archive_format": "tar.gz",
               "executable": "pdf-ocr/pdf-ocr"
             }

@@ -13,11 +13,11 @@ A PDF added to a chosen folder gets its page at once; the text follows when the 
 
 PDF OCR is a preview plugin: the moss app's plugin catalog lists it once **Preview features** is on in the app's settings. A site that already has it keeps running it with the setting off.
 
-Runs on macOS on Apple silicon. moss downloads the program the first time a site needs it (about 12 MB: pdf-ocr, pdfium and Tesseract with English language data) and checks it against the sha256 in the manifest; nothing else needs installing.
+Runs on macOS on Apple silicon and on 64-bit Linux, x86 or ARM, with glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and later). moss downloads the program the first time a site needs it (about 12 MB: pdf-ocr, pdfium and Tesseract with English language data) and checks it against the sha256 in the manifest; nothing else needs installing.
 
 ## Network access
 
-None. The program runs with the network denied (moss confines it on macOS), reads the PDF it is given and writes only to its scratch and cache folders. moss itself downloads the program once from this registry's release.
+None. The program reads the PDF it is given and writes only to its scratch and cache folders. On macOS moss runs it with the network denied; on Linux moss does not confine it yet, and the sha256 pinned in the manifest is what guarantees it is the program built here. moss itself downloads the program once from this registry's release.
 
 ## Source
 

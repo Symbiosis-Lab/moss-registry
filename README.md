@@ -75,7 +75,7 @@ A **starter** is a complete small site a new moss site can begin as: real pages,
 A plugin is one of two shapes. A JavaScript plugin is a TypeScript package bundled by esbuild into a single IIFE that moss loads in a sandboxed QuickJS engine. A native plugin is only a manifest plus the source of a program: it has no `entry`, declares `contributes.derivations`, and CI builds the program from `native/` and attaches it to the release. At first use moss downloads that program, checks the sha256 the manifest pins, and runs it. End users do **not** install plugins from npm or build anything.
 
 1. You open a PR adding or updating a plugin directory.
-2. CI validates it and builds it from your source: the bundle for a JavaScript plugin, the program (on a macOS runner) for a native one.
+2. CI validates it and builds it from your source: the bundle for a JavaScript plugin, the program for a native one, on a runner of each platform it declares.
 3. A maintainer reviews that source and merges.
 4. On merge, CI packages `<id>-<version>.zip`, attaches it to a GitHub Release (a native plugin's release also carries its program archives, and the zip's manifest pins their URLs and sha256), and regenerates the registry index.
 5. moss reads that index so users can install the plugin from the app, and shows

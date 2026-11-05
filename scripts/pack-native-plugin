@@ -2,6 +2,8 @@
 """pack-native-plugin -- build and package a plugin that is only a manifest plus a native program.
 
 Usage: scripts/pack-native-plugin <plugin-dir> --out <dir> --repo <owner/name> [--skip-run]
+       scripts/pack-native-plugin <plugin-dir> --out <dir> --platform <platform> [--skip-run]
+       scripts/pack-native-plugin <plugin-dir> --out <dir> --repo <owner/name> --prebuilt <dir>
 
 For every platform the manifest declares, runs native/build-<platform>.sh (the
 only thing this registry knows about how a program is built), then writes into
@@ -20,6 +22,11 @@ Before anything is written the archive is checked to hold every declared
 executable (a regular file with an execute bit), and each executable is run
 with --version, which must exit 0. Running needs the target platform's host;
 --skip-run is for tests on any other.
+
+A program runs only on its own platform, so CI splits the work: --platform
+builds and checks one platform's archive on a runner of that platform and
+writes only the archive; --prebuilt takes every platform's archive from a
+directory instead of building, checks them, and writes the release.
 
 The zip is deterministic: sorted entries, fixed timestamps and permissions.
 Nothing is uploaded; the caller creates the release.
@@ -129,9 +136,14 @@ def run_executable(archive: Path, fmt: str, executable: str):
         print(f"ran {executable} --version: {r.stdout.strip()[:100]}")
 
 
-def on_host(plat: str) -> bool:
+MACHINE_NAMES = {"arm64": ("arm64", "aarch64"), "x64": ("x86_64", "amd64")}
+
+
+def on_host(plat: str, system: str = None, machine: str = None) -> bool:
     os_, _, arch = plat.partition("-")
-    return host.system().lower() == os_ and host.machine().lower() in (arch, "aarch64" if arch == "arm64" else arch)
+    system = (system or host.system()).lower()
+    machine = (machine or host.machine()).lower()
+    return system == os_ and machine in MACHINE_NAMES.get(arch, (arch,))
 
 
 def write_zip(zpath: Path, entries):
@@ -148,9 +160,14 @@ def main():
     ap = argparse.ArgumentParser(description="Build and package a native plugin.")
     ap.add_argument("plugin")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--repo", required=True, help="owner/name; release URLs are built from it")
+    ap.add_argument("--repo", help="owner/name; release URLs are built from it")
     ap.add_argument("--skip-run", action="store_true")
+    split = ap.add_mutually_exclusive_group()
+    split.add_argument("--platform", help="build only this platform's archive, and write no release zip")
+    split.add_argument("--prebuilt", help="take each platform's archive from this directory instead of building it")
     args = ap.parse_args()
+    if not args.platform and not args.repo:
+        ap.error("--repo is required to write the release zip")
 
     plugin = Path(args.plugin).resolve()
     pid = plugin.name
@@ -158,16 +175,27 @@ def main():
     version = manifest["version"]
     tag = f"{pid}-v{version}"
     out = Path(args.out).resolve()
+    if args.prebuilt and Path(args.prebuilt).resolve() == out:
+        die("--prebuilt and --out must differ: --out is emptied first")
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
 
     plats = sorted({a["platform"] for a in artifacts_of(manifest)})
+    if args.platform:
+        if args.platform not in plats:
+            die(f"the manifest declares no {args.platform} artifact (it has {', '.join(plats)})")
+        plats = [args.platform]
     built = {}  # platform -> (asset name, sha256)
     for plat in plats:
         fmt = next(a["archive_format"] for a in artifacts_of(manifest) if a["platform"] == plat)
         prefix = f"{pid}-{version}-{plat}."
-        archive = build(plugin / "native", plat, prefix, fmt)
+        if args.prebuilt:
+            archive = Path(args.prebuilt).resolve() / f"{prefix}{fmt}"
+            if not archive.is_file():
+                die(f"--prebuilt {args.prebuilt} has no {archive.name}")
+        else:
+            archive = build(plugin / "native", plat, prefix, fmt)
         for a in artifacts_of(manifest):
             if a["platform"] == plat:
                 check_executable(archive, fmt, a["executable"])
@@ -177,11 +205,15 @@ def main():
             for a in artifacts_of(manifest):
                 if a["platform"] == plat:
                     run_executable(archive, fmt, a["executable"])
+        elif args.prebuilt:
+            print(f"not running the {plat} executables here; the {plat} build ran them")
         else:
             die(f"cannot run {plat} programs on {host.system()} {host.machine()}; run this on a {plat} host")
         shutil.copyfile(archive, out / archive.name)
         built[plat] = (archive.name, sha256_of(out / archive.name))
         print(f"{archive.name}  sha256={built[plat][1]}")
+    if args.platform:
+        return
 
     filled = copy.deepcopy(manifest)
     for d in filled["contributes"]["derivations"].values():

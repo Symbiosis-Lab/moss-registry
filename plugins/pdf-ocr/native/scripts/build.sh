@@ -1,8 +1,9 @@
 #!/bin/sh
-# Release build with libpdfium placed next to the binary (target/release/).
+# Release build with libpdfium placed next to the binary (<target>/release/).
 set -eu
 cd "$(dirname "$0")/.."
 ./scripts/fetch-pdfium.sh
 cargo build --release
-cp vendor/libpdfium.dylib target/release/libpdfium.dylib
-echo "built: $(pwd)/target/release/pdf-ocr"
+out="${CARGO_TARGET_DIR:-target}/release"
+cp vendor/libpdfium.* "$out/"
+echo "built: $out/pdf-ocr"
