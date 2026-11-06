@@ -3,12 +3,12 @@
 Checks a syndication plugin end to end: real moss, headless, publishing a small site and posting its copies to a local copy of each network, then reading the copies back from that network.
 
 ```sh
-cd plugins/bluesky && npm ci && npm run build && cd -
+for p in bluesky mastodon; do (cd plugins/$p && npm ci && npm run build); done
 cd harness/syndication && npm ci
 node run.mjs --moss /path/to/moss [--only bluesky] [--keep]
 ```
 
-It needs Node 24 or later (the AT Protocol development network's native modules have no build for Node 23) and, for the networks that run in a container, Docker.
+It needs Node 24 or later (the AT Protocol development network's native modules have no build for Node 23) and, for the networks that run in a container (Mastodon), Docker.
 
 What one run does:
 
@@ -36,3 +36,4 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 | Network | Local copy |
 |---|---|
 | Bluesky | the AT Protocol development network (`@atproto/dev-env`): a PLC directory and a data server, in process |
+| Mastodon | GoToSocial (`superseriousbusiness/gotosocial:0.20.2`) in Docker, which speaks the Mastodon client API: the author signs in through the server's own OAuth pages, and a second account follows the author and must see each copy on its home timeline. The container is stopped by its id. |

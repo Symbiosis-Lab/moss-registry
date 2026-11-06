@@ -93,8 +93,6 @@ let server;
 try {
   server = await serveBuild();
   const siteUrl = `http://127.0.0.1:${server.address().port}`;
-  // The site's canonical address, as a configured site has one.
-  env.MOSS_SITE_URL = siteUrl;
 
   for (const id of only) {
     const dist = path.join(plugins, id, "dist");
@@ -122,6 +120,14 @@ try {
 
   const dry = JSON.parse((await runMoss(["deploy", site, "--allow-plugins", "--dry-run", "--json"])).stdout);
   const due = dry.copies.filter((c) => c.action === "due");
+  // A loopback address is not one a reader elsewhere can open, so moss gives
+  // the site no address of its own and the dry run's links to its pages are
+  // paths; the copies link to the address the publish reports.
+  const resolve = (t) => t.replace(/(^|\s)(\/\S*)/g, (_, space, p) => space + siteUrl + p);
+  for (const c of due) {
+    for (const part of c.parts ?? []) part.text = resolve(part.text);
+    if (c.link_card) c.link_card.url = resolve(c.link_card.url);
+  }
   console.log(`dry run: ${due.length} copies due`);
   for (const c of dry.copies) console.log(`  plan: ${c.channel} ${c.source_path} ${c.action}${c.reason ? ` (${c.reason})` : ""} ${c.form ?? ""}`);
   check(due.length === 3 * channels.length, `the dry run plans three copies per channel (${due.length})`);
