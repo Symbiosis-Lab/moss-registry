@@ -1,0 +1,28 @@
+{
+  "name": "@symbiosis-lab/moss-plugin-mastodon",
+  "version": "0.1.0",
+  "description": "Post a copy of each new post to Mastodon",
+  "main": "dist/main.bundle.js",
+  "scripts": {
+    "build": "npm run clean && npm run bundle && npm run copy-assets",
+    "bundle": "esbuild src/main.ts --bundle --format=iife --global-name=MastodonPlugin --outfile=dist/main.bundle.js",
+    "clean": "rm -rf dist && mkdir -p dist",
+    "copy-assets": "cp assets/* dist/",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit"
+  },
+  "keywords": ["moss", "plugin", "mastodon", "activitypub", "syndication"],
+  "author": "Symbiosis Lab",
+  "license": "MIT",
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/", "provenance": false },
+  "repository": { "type": "git", "url": "https://github.com/Symbiosis-Lab/moss-registry.git", "directory": "plugins/mastodon" },
+  "devDependencies": {
+    "@symbiosis-lab/moss-api": "^0.15.0",
+    "@tauri-apps/api": "^2.9.1",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.27.0",
+    "happy-dom": "^20.0.11",
+    "typescript": "^5.3.0",
+    "vitest": "^3.2.4"
+  }
+}
