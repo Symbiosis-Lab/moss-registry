@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Publishing reports each step once, when it starts, instead of repeating the same line every ten seconds. The repetition existed to convince moss the plugin was still alive during a long upload; moss now counts the upload itself as being alive.
 
-- Changed (in moss, no plugin release): moss starts and watches the OnionPress stack only while a site hosted on it is open. Launching moss no longer brings the stack up about fifteen minutes in on every machine that has it installed; opening a site hosted on OnionPress brings it up immediately, and a published site whose folder is closed is left to the stack's own watchdog and the menu bar app. ADR-050 § Amendment (2026-08-27).
+- Changed (in moss, no plugin release): moss starts and watches the OnionPress stack only while a site hosted on it is open. Launching moss no longer brings the stack up about fifteen minutes in on every machine that has it installed; opening a site hosted on OnionPress brings it up immediately, and a published site whose folder is closed is left to the stack's own watchdog and the menu bar app.
 
 ## [0.4.0] - 2026-08-20
 
