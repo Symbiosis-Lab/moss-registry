@@ -491,7 +491,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 /**
  * configure_domain hook - Set custom domain on GitHub Pages via API
  *
- * Called after moss-seta configures DNS records. This hook tells GitHub
+ * Called after DNS records are configured. This hook tells GitHub
  * about the custom domain so GitHub Pages serves content on it.
  *
  * Uses the GitHub Pages API: PUT /repos/{owner}/{repo}/pages { cname: domain }
