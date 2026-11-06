@@ -109,8 +109,7 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
     // poll window here is deliberately shorter than descriptor publication
     // usually takes, because stalling the publish UI to wait for it would be
     // worse. moss keeps watching after this returns and settles the verdict
-    // there — see `system/stack_serving.rs` and ADR-050, which is also why
-    // "not live" can honestly say moss is still working on it.
+    // there, which is also why "not live" can honestly say moss is still working on it.
     const verdict = classifyLiveness(reachable, httpCode);
     console.log(`   Published: ${onionUrl} (${verdict}${httpCode ? `, ${httpCode}` : ""})`);
 

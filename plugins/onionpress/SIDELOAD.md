@@ -14,21 +14,17 @@ pnpm run build          # → dist/manifest.json, dist/main.bundle.js, dist/icon
 ## 2. Symlink dist/ into your vault
 
 ```bash
-# <repo>  = this monorepo checkout
+# <repo>  = this repository checkout
 # <vault> = the moss folder you Publish
 ln -s <repo>/plugins/onionpress/dist <vault>/.moss/plugins/onionpress
 ```
 
-**Use a symlink, not a copy.** moss's bundled-plugin auto-updater
-(`src-tauri/src/plugins/bundled.rs`) **skips any plugin directory that is a
-symlink** ("respecting developer setup" — verified: `target_dir.is_symlink()` →
-skip). A real directory would get reconciled against the binary's embedded copy
-and could be clobbered; a symlink is left alone, so your dev build always wins.
+**Use a symlink, not a copy.** moss leaves a plugin directory that is a symlink alone when it refreshes bundled plugins, so your dev build is never overwritten.
 
 ## 3. Start OnionPress, then Publish
 
 Start OnionPress on the same machine so its receiver is listening on loopback
-(`8080`, or `18080`/`28080`/… for additional multi-user installs). Then in moss:
+(`8080`). Then in moss:
 
 - Right-click the folder → **Publish**.
 

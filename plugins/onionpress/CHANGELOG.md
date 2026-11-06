@@ -56,7 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   isn't reachable on Tor yet.
 - Added (`0.1.0`): initial OnionPress deploy plugin. Publishes the sealed build
   generation to a locally-running OnionPress receiver over loopback HTTP,
-  implementing the v1 wire contract (`receiver-contract.md`): port discovery via
+  implementing the v1 wire contract: port discovery via
   `GET /status`, `tar` of `.moss/build/current`, `POST /generation` upload,
   `POST /commit` atomic flip. Returns a `DeploymentInfo` with `method:
   "onionpress"` so moss persists the onion `site_url`. Transport is the

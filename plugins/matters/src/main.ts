@@ -2464,7 +2464,7 @@ export function siteRelativePathFromSrc(src: string, baseUrl: string): string | 
  *
  * Bytes are read from the LOCAL build output (`readSiteFile`) and uploaded
  * directly via multipart — matters' server cannot reliably fetch images by URL
- * from a deployed site (Caddy/moss-seta hosts return `UNABLE_TO_UPLOAD_FROM_URL`).
+ * from a deployed site (Caddy hosts return `UNABLE_TO_UPLOAD_FROM_URL`).
  *
  * - Skips external (other-origin) and `data:` srcs.
  * - Deduplicates: same src is uploaded once.
