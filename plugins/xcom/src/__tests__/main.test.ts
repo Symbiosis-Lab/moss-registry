@@ -1,11 +1,11 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
 vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async (k: string) => secrets[k] ?? null) }));
 
 import { delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
-import { authorization, hmacSha1, percent, sha1 } from "../oauth1";
+import { authorization, percent } from "../oauth1";
 
 const CREDS = { api_key: "ck", api_key_secret: "cs&+/", access_token: "tok", access_token_secret: "ts=1" };
 
@@ -81,22 +81,13 @@ beforeEach(() => {
 });
 
 describe("oauth1", () => {
-  it("signs X's worked example as its documentation does, for either host", () => {
+  it("signs X's worked example as its documentation does, for either host", async () => {
     const creds = { consumerKey: "xvz1evFS4wEEPTGEFPHBog", consumerSecret: "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw", token: "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb", tokenSecret: "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE" };
     // The example's status is a form field, so it is signed like a query parameter.
     const query = "?include_entities=true&status=" + percent("Hello Ladies + Gentlemen, a signed OAuth request!");
     const sign = (host: string) => authorization("POST", `https://${host}/1.1/statuses/update.json${query}`, creds, "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg", 1318622958);
-    expect(sign("api.x.com")).toContain(`oauth_signature="${percent("Ls93hJiZbQ3akF3HF3x1Bz8/zU4=")}"`);
-    expect(sign("api.twitter.com")).toContain(`oauth_signature="${percent("hCtSmYh+iHYCEqBWrE7C7hYmtUk=")}"`);
-  });
-
-  it("hashes as Node does, across block boundaries and long keys", () => {
-    for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 200]) {
-      const bytes = new Uint8Array(n).map((_, i) => (i * 37 + n) & 0xff);
-      expect(Buffer.from(sha1(bytes)).toString("hex")).toBe(createHash("sha1").update(bytes).digest("hex"));
-      const key = new Uint8Array(n).map((_, i) => i & 0xff);
-      expect(Buffer.from(hmacSha1(key, bytes)).toString("base64")).toBe(createHmac("sha1", key).update(bytes).digest("base64"));
-    }
+    expect(await sign("api.x.com")).toContain(`oauth_signature="${percent("Ls93hJiZbQ3akF3HF3x1Bz8/zU4=")}"`);
+    expect(await sign("api.twitter.com")).toContain(`oauth_signature="${percent("hCtSmYh+iHYCEqBWrE7C7hYmtUk=")}"`);
   });
 });
 

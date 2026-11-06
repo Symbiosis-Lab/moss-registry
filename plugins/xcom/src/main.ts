@@ -71,7 +71,7 @@ async function call(a: Account, method: string, path: string, body?: unknown): P
   const nonce = crypto.randomUUID().replace(/-/g, "");
   const r = await fetch(url, {
     method,
-    headers: { authorization: authorization(method, url, a.credentials, nonce, Math.floor(Date.now() / 1000)), ...(body ? { "content-type": "application/json" } : {}) },
+    headers: { authorization: await authorization(method, url, a.credentials, nonce, Math.floor(Date.now() / 1000)), ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
