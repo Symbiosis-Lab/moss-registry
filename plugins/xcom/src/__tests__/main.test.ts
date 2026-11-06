@@ -1,0 +1,215 @@
+import { createHash, createHmac } from "node:crypto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const secrets: Record<string, string | null> = {};
+vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async (k: string) => secrets[k] ?? null) }));
+
+import { delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
+import { authorization, hmacSha1, percent, sha1 } from "../oauth1";
+
+const CREDS = { api_key: "ck", api_key_secret: "cs&+/", access_token: "tok", access_token_secret: "ts=1" };
+
+/** Node's own HMAC over the OAuth base string: an implementation independent of the plugin's. */
+function expectedSignature(method: string, url: string, header: string, consumerSecret: string, tokenSecret: string) {
+  const oauth = Object.fromEntries([...header.slice(6).matchAll(/(\w+)="([^"]*)"/g)].map(([, k, v]) => [k, decodeURIComponent(v)]));
+  const u = new URL(url);
+  const params = [...u.searchParams, ...Object.entries(oauth).filter(([k]) => k !== "oauth_signature")].map(([k, v]) => [percent(k), percent(v)])
+    .sort((a, b) => (a[0] + "\0" + a[1] < b[0] + "\0" + b[1] ? -1 : 1))
+    .map(([k, v]) => `${k}=${v}`);
+  const base = `${method}&${percent(u.origin + u.pathname)}&${percent(params.join("&"))}`;
+  return { given: oauth.oauth_signature, want: createHmac("sha1", `${percent(consumerSecret)}&${percent(tokenSecret)}`).update(base).digest("base64") };
+}
+
+/** An in-memory X: one account, the v2 calls the plugin makes, each request's signature checked. */
+function fakeX(opts: { failAt?: number; status?: number; type?: string } = {}) {
+  const posts = new Map<string, { id: string; text: string; reply?: string }>();
+  const calls: string[] = [];
+  let next = 1000;
+  const reply = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === undefined ? "" : JSON.stringify(body)) });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init: any) => {
+      const u = new URL(url);
+      const method = init?.method ?? "GET";
+      calls.push(`${method} ${u.pathname}${u.search}`);
+      const sig = expectedSignature(method, url, init.headers.authorization ?? "", CREDS.api_key_secret, CREDS.access_token_secret);
+      if (sig.given !== sig.want) return reply(401, { title: "Unauthorized", detail: "Unauthorized", type: "about:blank", status: 401 });
+      if (method === "POST" && u.pathname === "/2/tweets") {
+        if (opts.failAt === posts.size) return reply(opts.status ?? 403, { title: "Forbidden", detail: "You are not allowed to create a Tweet with duplicate content.", type: opts.type ?? "about:blank", status: opts.status ?? 403 });
+        const body = JSON.parse(init.body);
+        if (body.reply && !posts.has(body.reply.in_reply_to_tweet_id)) return reply(400, { title: "Invalid Request", detail: "reply target missing", type: "https://api.x.com/2/problems/invalid-request" });
+        const id = String(next++);
+        posts.set(id, { id, text: body.text, reply: body.reply?.in_reply_to_tweet_id });
+        return reply(201, { data: { id, text: body.text.replace(/https?:\/\/\S+/g, "https://t.co/abc123") } });
+      }
+      if (method === "DELETE") {
+        const id = u.pathname.split("/").pop()!;
+        if (!posts.delete(id)) return reply(404, { title: "Not Found Error", detail: "Could not find post", type: "https://api.x.com/2/problems/resource-not-found" });
+        return reply(200, { data: { deleted: true } });
+      }
+      if (u.pathname === "/2/users/me") return reply(200, { data: { id: "42", name: "Alex", username: "alex" } });
+      if (u.pathname === "/2/users/42/tweets") {
+        // As X answers: `& < >` escaped, links shortened, replies marked only when asked for.
+        const shown = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/https?:\/\/\S+/g, "https://t.co/abc123");
+        const refs = u.searchParams.get("tweet.fields") === "referenced_tweets";
+        return reply(200, { data: [...posts.values()].reverse().map((p) => ({ id: p.id, text: shown(p.text), ...(refs && p.reply ? { referenced_tweets: [{ type: "replied_to", id: p.reply }] } : {}) })) });
+      }
+      return reply(404, { title: "Not Found Error" });
+    }),
+  );
+  return { posts, calls };
+}
+
+function job(over: Partial<CopyJob> = {}): CopyJob {
+  return {
+    op: "publish",
+    channel: "xcom",
+    idempotency_key: "0123456789abcdef0123456789abcdef",
+    post: { url: "https://notes.example.org/notes/a/", source_path: "notes/a.md", title: "", lang: "en", date: "2026-11-06T14:32:00Z" },
+    form: "short",
+    parts: [{ text: "Autumn's first hotpot https://example.org/river", links: ["https://example.org/river"] }],
+    config: { api: "http://127.0.0.1:9/" },
+    ...over,
+  };
+}
+
+const thread = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text: "Three.", links: [] }];
+
+beforeEach(() => {
+  vi.unstubAllGlobals();
+  Object.assign(secrets, CREDS);
+});
+
+describe("oauth1", () => {
+  it("signs X's worked example as its documentation does, for either host", () => {
+    const creds = { consumerKey: "xvz1evFS4wEEPTGEFPHBog", consumerSecret: "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw", token: "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb", tokenSecret: "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE" };
+    // The example's status is a form field, so it is signed like a query parameter.
+    const query = "?include_entities=true&status=" + percent("Hello Ladies + Gentlemen, a signed OAuth request!");
+    const sign = (host: string) => authorization("POST", `https://${host}/1.1/statuses/update.json${query}`, creds, "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg", 1318622958);
+    expect(sign("api.x.com")).toContain(`oauth_signature="${percent("Ls93hJiZbQ3akF3HF3x1Bz8/zU4=")}"`);
+    expect(sign("api.twitter.com")).toContain(`oauth_signature="${percent("hCtSmYh+iHYCEqBWrE7C7hYmtUk=")}"`);
+  });
+
+  it("hashes as Node does, across block boundaries and long keys", () => {
+    for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 200]) {
+      const bytes = new Uint8Array(n).map((_, i) => (i * 37 + n) & 0xff);
+      expect(Buffer.from(sha1(bytes)).toString("hex")).toBe(createHash("sha1").update(bytes).digest("hex"));
+      const key = new Uint8Array(n).map((_, i) => i & 0xff);
+      expect(Buffer.from(hmacSha1(key, bytes)).toString("base64")).toBe(createHmac("sha1", key).update(bytes).digest("base64"));
+    }
+  });
+});
+
+describe("publish_copy", () => {
+  it("posts the text and returns the post's address", async () => {
+    const x = fakeX();
+    const r = await publish_copy(job());
+    expect(r).toEqual({ success: true, copy: { id: "1000", url: "https://x.com/i/status/1000", parts: [] } });
+    expect(x.posts.get("1000")?.text).toBe("Autumn's first hotpot https://example.org/river");
+  });
+
+  it("posts a thread as replies, each to the part before it", async () => {
+    const x = fakeX();
+    const r = await publish_copy(job({ form: "thread", parts: thread }));
+    expect([...x.posts.values()].map((p) => p.reply)).toEqual([undefined, "1000", "1001"]);
+    expect(r.copy?.parts).toEqual([{ id: "1001", url: "https://x.com/i/status/1001" }, { id: "1002", url: "https://x.com/i/status/1002" }]);
+  });
+
+  it("takes a thread refused part way down again, so the next run sends it whole", async () => {
+    const x = fakeX({ failAt: 2 });
+    const r = await publish_copy(job({ form: "thread", parts: thread }));
+    expect(r.copy?.refused).toEqual({ cause: "content", message: "You are not allowed to create a Tweet with duplicate content." });
+    expect(x.posts.size).toBe(0);
+  });
+
+  it("names what kind of refusal each answer is", async () => {
+    const causes: [number, string, string][] = [
+      [401, "about:blank", "auth"],
+      [403, "https://api.x.com/2/problems/client-forbidden", "auth"],
+      [403, "https://api.x.com/2/problems/unsupported-authentication", "auth"],
+      [403, "about:blank", "content"],
+      [400, "https://api.x.com/2/problems/invalid-request", "content"],
+      [402, "about:blank", "rate"],
+      [429, "https://api.x.com/2/problems/usage-capped", "rate"],
+    ];
+    for (const [status, type, cause] of causes) {
+      fakeX({ failAt: 0, status, type });
+      expect((await publish_copy(job())).copy?.refused?.cause, `${status} ${type}`).toBe(cause);
+    }
+  });
+
+  it("says missing credentials are a sign-in problem, without calling X", async () => {
+    const x = fakeX();
+    secrets.access_token_secret = null;
+    const r = await publish_copy(job());
+    expect(r.copy?.refused?.cause).toBe("auth");
+    expect(x.calls).toEqual([]);
+  });
+
+  it("sends the credentials nowhere but X or a local test server", async () => {
+    const x = fakeX();
+    const r = await publish_copy(job({ config: { api: "https://api.example.net" } }));
+    expect(r.copy?.refused?.cause).toBe("auth");
+    expect(x.calls).toEqual([]);
+  });
+
+  it("throws when X fails without saying why, since a post may exist", async () => {
+    const x = fakeX({ failAt: 1, status: 503 });
+    await expect(publish_copy(job({ form: "thread", parts: thread }))).rejects.toThrow();
+    expect(x.posts.size).toBe(1);
+  });
+});
+
+describe("find_copy", () => {
+  it("finds the copy by its text though X has escaped it and replaced its link, and nothing when there is none", async () => {
+    const x = fakeX();
+    const fish = job({ parts: [{ text: "Fish & chips <by the sea> https://example.org/river", links: [] }] });
+    expect((await find_copy(fish)).copy).toBeNull();
+    await publish_copy(fish);
+    expect((await find_copy(fish)).copy).toEqual({ id: "1000", url: "https://x.com/i/status/1000", parts: [] });
+    // The look-up's query is signed too, or X refuses it.
+    expect(x.calls).toContain("GET /2/users/42/tweets?max_results=20&tweet.fields=referenced_tweets");
+  });
+
+  it("finds a whole thread, each part a reply to the one before", async () => {
+    fakeX();
+    await publish_copy(job({ form: "thread", parts: thread }));
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toEqual({
+      id: "1000",
+      url: "https://x.com/i/status/1000",
+      parts: [{ id: "1001", url: "https://x.com/i/status/1001" }, { id: "1002", url: "https://x.com/i/status/1002" }],
+    });
+  });
+
+  it("does not take posts with the parts' words for the thread unless each replies to the part before", async () => {
+    fakeX();
+    for (const part of thread) await publish_copy(job({ parts: [part] }));
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toBeNull();
+  });
+
+  it("takes a thread found cut short down, so the next send posts it whole", async () => {
+    const x = fakeX();
+    await publish_copy(job({ form: "thread", parts: thread.slice(0, 2) }));
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toBeNull();
+    expect(x.posts.size).toBe(0);
+  });
+});
+
+describe("delete_copy", () => {
+  it("removes a copy sent without its later parts", async () => {
+    const x = fakeX();
+    await publish_copy(job());
+    expect((await delete_copy(job({ op: "delete", previous: { id: "1000", url: "u" } }))).success).toBe(true);
+    expect(x.posts.size).toBe(0);
+  });
+
+  it("removes every post of the copy, last part first, and takes one already gone as removed", async () => {
+    const x = fakeX();
+    const posted = (await publish_copy(job({ form: "thread", parts: thread }))).copy!;
+    x.posts.delete("1002");
+    const r = await delete_copy(job({ op: "delete", previous: { id: posted.id!, url: posted.url!, parts: posted.parts! } }));
+    expect(r.success).toBe(true);
+    expect(x.posts.size).toBe(0);
+    expect(x.calls.filter((c) => c.startsWith("DELETE"))).toEqual(["DELETE /2/tweets/1002", "DELETE /2/tweets/1001", "DELETE /2/tweets/1000"]);
+  });
+});
