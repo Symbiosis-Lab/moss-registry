@@ -139,6 +139,7 @@ describe("delete_copy", () => {
 
 describe("plainText", () => {
   it("reads a status's HTML back as the text that was posted", () => {
-    expect(plainText('<p>A &amp; B</p><p>see <a href="https://x.org"><span class="invisible">https://</span>x.org</a><br>end</p>')).toBe("A & B\n\nsee https://x.org\nend");
+    expect(plainText('<p>A &amp; B</p><p>see <a href="https://x.org/a/long/path" rel="nofollow">x.org/a/long/…</a><br>end</p>')).toBe("A & B\n\nsee https://x.org/a/long/path\nend");
+    expect(plainText('<p><a href="https://s.example/tags/autumn" class="hashtag">#<span>autumn</span></a></p>')).toBe("#autumn");
   });
 });

@@ -104,6 +104,8 @@ function refused(e: unknown): CopyResult {
 /** A status's text as its author wrote it, from the HTML the server renders. */
 export function plainText(html: string): string {
   return html
+    // Servers shorten a link's visible text; its address is what was posted.
+    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (whole, href, inner) => (/^[#@]/.test(inner.replace(/<[^>]+>/g, "")) ? whole : href))
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>\s*<p>/gi, "\n\n")
     .replace(/<[^>]+>/g, "")
