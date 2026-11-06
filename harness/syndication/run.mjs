@@ -1,7 +1,7 @@
 // End-to-end check of moss syndication: real moss, headless, against a local
 // copy of each network. One command:
 //
-//   node run.mjs --moss <path to moss binary> [--only bluesky,mastodon] [--keep]
+//   node run.mjs --moss <path to moss binary> [--only bluesky,mastodon,linkedin,xcom] [--keep]
 //
 // It builds a small site in a scratch folder with its own HOME, publishes it
 // through a deploy plugin that only reports the address a local server
@@ -28,7 +28,7 @@ const flag = (name) => {
 const moss = flag("--moss");
 const keep = args.includes("--keep");
 if (!moss) {
-  console.error("usage: node run.mjs --moss <path to moss binary> [--only bluesky,mastodon] [--keep]");
+  console.error("usage: node run.mjs --moss <path to moss binary> [--only bluesky,mastodon,linkedin,xcom] [--keep]");
   process.exit(2);
 }
 if (Number(process.versions.node.split(".")[0]) < 24) {

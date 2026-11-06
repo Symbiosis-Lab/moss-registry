@@ -3,9 +3,9 @@
 Checks a syndication plugin end to end: real moss, headless, publishing a small site and posting its copies to a local copy of each network, then reading the copies back from that network.
 
 ```sh
-for p in bluesky mastodon; do (cd plugins/$p && npm ci && npm run build); done
+for p in bluesky mastodon linkedin xcom; do (cd plugins/$p && npm ci && npm run build); done
 cd harness/syndication && npm ci
-node run.mjs --moss /path/to/moss [--only bluesky] [--keep]
+node run.mjs --moss /path/to/moss [--only bluesky,linkedin] [--keep]
 ```
 
 It needs Node 24 or later (the AT Protocol development network's native modules have no build for Node 23) and, for the networks that run in a container (Mastodon), Docker.
@@ -37,3 +37,7 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 |---|---|
 | Bluesky | the AT Protocol development network (`@atproto/dev-env`): a PLC directory and a data server, in process |
 | Mastodon | GoToSocial (`superseriousbusiness/gotosocial:0.20.2`) in Docker, which speaks the Mastodon client API: the author signs in through the server's own OAuth pages, and a second account follows the author and must see each copy on its home timeline. The container is stopped by its id. |
+| LinkedIn | a stand-in for the Posts API in process, written from LinkedIn's API reference: LinkedIn has no test environment, and its development tier posts to the live network. It requires the version and protocol headers, posts only as the token's own member, refuses commentary with an unescaped reserved character, and holds 3,000 characters as the limit. |
+| X | a stand-in for the v2 posting API in process, written from X's API reference: X has no test environment, and every real post is billed. It checks each request's OAuth 1.0a signature with Node's own HMAC, refuses a post over 280 weighted characters, a duplicate, or a reply to a post it does not hold, and shortens links as X does. |
+
+The two stand-ins are not recorded responses: nothing was recorded from either network. They hold the request and response shapes the API references document, so a live run on a test account is what confirms those shapes.
