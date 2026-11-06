@@ -1,0 +1,9 @@
+{
+  "name": "moss-syndication-harness",
+  "private": true,
+  "type": "module",
+  "description": "Runs real moss headless against local copies of each network a syndication plugin posts to",
+  "engines": { "node": ">=24" },
+  "scripts": { "harness": "node run.mjs" },
+  "dependencies": { "@atproto/dev-env": "0.7.4" }
+}
