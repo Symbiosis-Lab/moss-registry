@@ -131,6 +131,13 @@ try {
   console.log(`dry run: ${due.length} copies due`);
   for (const c of dry.copies) console.log(`  plan: ${c.channel} ${c.source_path} ${c.action}${c.reason ? ` (${c.reason})` : ""} ${c.form ?? ""}`);
   check(due.length === 3 * channels.length, `the dry run plans three copies per channel (${due.length})`);
+  // A date-named note has no title, so its text is the copy: one paragraph is
+  // a short post, three parts are a thread where the network takes one and
+  // fit as one short post where it does not. The essay is too long for any.
+  const forms = Object.fromEntries(started.map((s) => [s.id, JSON.parse(fs.readFileSync(path.join(s.dist, "manifest.json"), "utf8")).contributes.channel.syndication.forms]));
+  const expectedForm = (c) =>
+    c.source_path.endsWith(" 1432.md") ? "short" : c.source_path.endsWith(" 1500.md") ? (forms[c.channel].includes("thread") ? "thread" : "short") : "teaser";
+  for (const c of due) check(c.form === expectedForm(c), `${c.channel} ${c.source_path} goes out as a ${expectedForm(c)} (${c.form})`);
 
   const first = await runMoss(["deploy", site, "--allow-plugins"]);
   for (const line of first.stderr.split("\n").filter((l) => l.includes(" — "))) console.log(`  moss: ${line}`);
