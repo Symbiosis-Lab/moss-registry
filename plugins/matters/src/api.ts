@@ -1262,7 +1262,7 @@ mutation SingleFileUpload($input: SingleFileUploadInput!) {
  * by URL.
  *
  * Why bytes, not URL: Matters' server cannot reliably fetch assets from
- * arbitrary deployed sites (e.g. Caddy/moss-seta-hosted sites return
+ * arbitrary deployed sites (e.g. Caddy-hosted sites return
  * `UNABLE_TO_UPLOAD_FROM_URL`), and the `embedaudio` asset type rejects
  * url-upload entirely. So callers read the asset bytes from the local build
  * output (`readSiteFile`, already base64) and POST them here.
