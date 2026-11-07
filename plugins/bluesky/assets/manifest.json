@@ -10,7 +10,6 @@
   "global_name": "BlueskyPlugin",
   "icon": "icon.svg",
   "domains": ["bsky.app"],
-  "config": { "service": "https://bsky.social" },
   "contributes": {
     "channel": {
       "display_name": "Bluesky",
@@ -18,7 +17,7 @@
         "settings": [
           { "key": "handle", "type": "string", "required": true, "label": "Handle", "description": "Your Bluesky handle, such as alex.bsky.social or your own domain." },
           { "key": "app_password", "type": "secret", "label": "App password", "description": "Made in Bluesky under Settings, Privacy and security, App passwords. It can post but not change your account." },
-          { "key": "service", "type": "string", "label": "Server", "description": "The server your account lives on. Leave it as it is unless you run your own." }
+          { "key": "service", "type": "string", "label": "Server", "description": "The server your account lives on. Leave it as it is unless you run your own.", "default": "https://bsky.social" }
         ]
       },
       "syndication": {
