@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- (`1.6.3`) Publishing works again. Since moss 0.15.1 keeps the built site in `.moss/build.nosync/`, the plugin looked for it in the old place and every publish stopped with "Cannot locate current generation". It now reads the new place, still reads the old one on earlier moss, and stops with git's own reason if the build cannot be staged instead of going on to publish nothing.
+
 ### Changed
 
 - When git is not installed, publishing waits with a Download button for moss's copy of git, and goes on once it is there, instead of failing straight away. It fails with the usual git message if nothing arrives within ten minutes.

@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-github",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "Deploy to GitHub Pages via GitHub Actions",
   "main": "dist/main.js",
   "scripts": {
