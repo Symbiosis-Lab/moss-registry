@@ -1,0 +1,37 @@
+{
+  "name": "@symbiosis-lab/moss-plugin-map-layers",
+  "version": "0.1.0",
+  "description": "Fetches the georeferenced map scans a site's historical map layer needs into the site folder",
+  "main": "dist/main.bundle.js",
+  "scripts": {
+    "clean": "rm -rf dist && mkdir -p dist",
+    "bundle": "esbuild src/main.ts --bundle --format=iife --global-name=MapLayersPlugin --outfile=dist/main.bundle.js",
+    "copy-assets": "cp assets/* dist/",
+    "build": "npm run clean && npm run bundle && npm run copy-assets",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "moss",
+    "plugin",
+    "map",
+    "iiif",
+    "allmaps"
+  ],
+  "author": "moss team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Symbiosis-Lab/moss-registry.git",
+    "directory": "plugins/map-layers"
+  },
+  "devDependencies": {
+    "@symbiosis-lab/moss-api": "^0.15.0",
+    "@types/node": "^20.19.43",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

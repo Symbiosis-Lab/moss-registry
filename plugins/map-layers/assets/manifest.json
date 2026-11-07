@@ -1,0 +1,15 @@
+{
+  "name": "map-layers",
+  "version": "0.1.0",
+  "display_name": "Map layers",
+  "description": "Fetches the georeferenced map scans a site's historical map layer needs into the site folder, so the site works offline afterwards.",
+  "author": "moss team",
+  "min_moss_version": "0.15.1",
+  "preview": true,
+  "entry": "main.bundle.js",
+  "capabilities": [
+    "process"
+  ],
+  "global_name": "MapLayersPlugin",
+  "icon": "icon.svg"
+}
