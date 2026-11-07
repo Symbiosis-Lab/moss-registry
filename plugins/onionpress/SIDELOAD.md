@@ -23,8 +23,7 @@ ln -s <repo>/plugins/onionpress/dist <vault>/.moss/plugins/onionpress
 
 ## 3. Start OnionPress, then Publish
 
-Start OnionPress on the same machine so its receiver is listening on loopback
-(`8080`). Then in moss:
+Start OnionPress on the same machine so its receiver is listening on loopback (`8080`, or `18080`, `28080` and so on for each further user of a multi-user install). Then in moss:
 
 - Right-click the folder → **Publish**.
 
