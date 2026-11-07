@@ -2,8 +2,8 @@
 
 > Fetch the georeferenced map scans a site's historical map layer needs into the site's own folder, so the site works offline afterwards.
 
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
-[![status](https://img.shields.io/badge/status-experimental-orange)](../README.md#stability)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
+[![status](https://img.shields.io/badge/status-experimental-orange)](../../README.md#stability)
 
 A moss `process` plugin. A historical map layer draws old maps that libraries have scanned and that volunteers have georeferenced with [Allmaps](https://allmaps.org). This plugin downloads those scans once, in the part and at the detail the layer needs, and leaves them in a folder of the site. The build reads only that folder, so the site no longer depends on the library's server.
 
@@ -66,9 +66,9 @@ Nothing else is contacted, and nothing is sent beyond the request URLs and the U
 ## Development
 
 ```bash
-pnpm install
-pnpm --filter @symbiosis-lab/moss-plugin-map-layers run test
-pnpm --filter @symbiosis-lab/moss-plugin-map-layers run build
+npm ci
+npm test
+npm run build
 ```
 
 The geometry (`src/geo.ts`) and the fetch loop (`src/fetcher.ts`) have no moss-api imports; `src/main.ts` binds them to the host.
@@ -79,4 +79,4 @@ This plugin is 0.x. APIs may change between minor versions until 1.0.
 
 ## License
 
-MIT, see [LICENSE](../LICENSE).
+MIT, see [LICENSE](../../LICENSE).
