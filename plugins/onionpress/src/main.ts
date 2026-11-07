@@ -4,7 +4,7 @@
  * Publishes a moss site to a locally-running OnionPress receiver, which serves
  * it as a Tor onion service. The deploy hook:
  *   1. Discovers the receiver by probing loopback ports for `/status`.
- *   2. Tars the sealed generation (`.moss/build/current`).
+ *   2. Tars the sealed generation (`current` in moss's build directory).
  *   3. Uploads the tar to `POST /generation`.
  *   4. Commits it via `POST /commit` (atomic flip) and reads back the onion URL.
  *   5. Cleans up the temporary tar.

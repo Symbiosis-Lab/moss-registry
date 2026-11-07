@@ -11,7 +11,7 @@
  * All commands run with the default working directory (the project root), the
  * same way the github plugin resolves `project_path`: `execute_binary` reads it
  * from the injected internal context. Paths handed to the receiver are therefore
- * project-root-relative (`.moss/build/current`); `/tmp/<genid>.tar` is absolute.
+ * project-root-relative (`.moss/build.nosync/current`); `/tmp/<genid>.tar` is absolute.
  *
  * @module receiver
  */
@@ -249,7 +249,7 @@ export async function discoverReceiver(
  * defaults to `--mac-metadata` in create mode: for every entry carrying an
  * extended attribute it emits a second AppleDouble member named `._<name>`
  * holding the serialized xattrs. Every file moss writes under
- * `.moss/build/current` carries `com.apple.provenance`, so this doubles the
+ * moss's build output carries `com.apple.provenance`, so this doubles the
  * archive — `._index.html`, `._assets`, `._robots.txt`, … Apple's tar silently
  * re-absorbs those members when it extracts, which is why the archive looks
  * clean locally; the receiver unpacks with PHP `PharData` on Linux, which has no
