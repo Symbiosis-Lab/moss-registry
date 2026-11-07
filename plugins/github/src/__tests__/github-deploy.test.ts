@@ -188,11 +188,11 @@ describe("github-deploy", () => {
 
     it("handles dotted repo names (username.github.io)", async () => {
       mockExecuteBinary.mockResolvedValueOnce(
-        gitResult(true, "https://github.com/guoliu/guoliu.github.io.git\n")
+        gitResult(true, "https://github.com/alex/alex.github.io.git\n")
       );
 
       const result = await getOriginOwnerRepo();
-      expect(result).toEqual({ owner: "guoliu", repo: "guoliu.github.io" });
+      expect(result).toEqual({ owner: "alex", repo: "alex.github.io" });
     });
 
     it("returns null when no .git directory (command fails)", async () => {
