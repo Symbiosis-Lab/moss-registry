@@ -107,7 +107,8 @@ fn bad_requests_fail_cleanly() {
 }
 
 fn have_tesseract() -> bool {
-    Command::new("tesseract").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    std::env::var_os("PDF_OCR_TESSERACT").is_some()
+        || Command::new("tesseract").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
         || std::path::Path::new("/opt/homebrew/bin/tesseract").exists()
 }
 
