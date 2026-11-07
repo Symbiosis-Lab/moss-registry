@@ -21,7 +21,7 @@ import {
   RECEIVER_PORTS,
   RECEIVER_API_PATH,
   STATUS_PROBE_TIMEOUT_SECONDS,
-  CURRENT_BUILD_PATH,
+  CURRENT_BUILD_PATHS,
   REACHABILITY_POLL_TIMEOUT_MS,
   REACHABILITY_POLL_INTERVAL_MS,
 } from "./constants";
@@ -262,33 +262,31 @@ export async function discoverReceiver(
 const PACK_ENV: Record<string, string> = { COPYFILE_DISABLE: "1" };
 
 /**
- * Tar the current generation's CONTENTS to `/tmp/<genId>.tar`.
- *
- * `tar -cf <tar> -C <buildPath> .` follows the `current` symlink, so the archive
- * holds files like `index.html`, `assets/…` at tar root — the shape the receiver
- * extracts via `PharData`.
+ * Tar the current generation's CONTENTS to `/tmp/<genId>.tar`, from the first
+ * of `buildPaths` tar can enter. The archive holds `index.html`, `assets/…` at
+ * its root, the shape the receiver extracts via `PharData`.
  *
  * @returns absolute path to the created tar.
- * @throws if tar fails (e.g., missing `current` symlink — build first).
+ * @throws if no build path can be packed (no build yet).
  */
 export async function packGeneration(
   genId: string,
-  buildPath: string = CURRENT_BUILD_PATH,
+  buildPaths: readonly string[] = CURRENT_BUILD_PATHS,
 ): Promise<string> {
   const tarPath = `/tmp/${genId}.tar`;
-  const result = await executeBinary({
-    binaryPath: "tar",
-    args: ["-cf", tarPath, "-C", buildPath, "."],
-    workingDir: ".",
-    timeoutMs: 300_000, // 5 min — large media generations can be slow to archive
-    env: PACK_ENV,
-  });
-  if (!result.success) {
-    throw new Error(
-      `Could not package the built site. Run a build first, then Publish again. (${result.stderr.trim()})`,
-    );
+  let firstError = "";
+  for (const buildPath of buildPaths) {
+    const result = await executeBinary({
+      binaryPath: "tar",
+      args: ["-cf", tarPath, "-C", buildPath, "."],
+      workingDir: ".",
+      timeoutMs: 300_000, // 5 min — large media generations can be slow to archive
+      env: PACK_ENV,
+    });
+    if (result.success) return tarPath;
+    firstError ||= result.stderr.trim();
   }
-  return tarPath;
+  throw new Error(`Could not package the built site. Run a build first, then Publish again. (${firstError})`);
 }
 
 // ============================================================================

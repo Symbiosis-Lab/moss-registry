@@ -151,12 +151,8 @@ describe.skipIf(!MOSS_BINARY)("onionpress plugin through moss deploy", () => {
     if (testDir) fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  async function deployToStub(bridgeBuildDir: boolean) {
-    const site = createSite();
-    // The plugin reads the build from `.moss/build/current` (src/constants.ts);
-    // current moss writes `.moss/build.nosync/current`.
-    if (bridgeBuildDir) fs.symlinkSync("build.nosync", path.join(site, ".moss", "build"));
-    return moss(["deploy", site, "--allow-plugins"]);
+  function deployToStub() {
+    return moss(["deploy", createSite(), "--allow-plugins"]);
   }
 
   function skipIfNoStub(ctx: { skip: () => never }) {
@@ -167,7 +163,7 @@ describe.skipIf(!MOSS_BINARY)("onionpress plugin through moss deploy", () => {
 
   it("uploads the build to the receiver, commits it, and moss reports the onion address", async (ctx) => {
     skipIfNoStub(ctx);
-    const { output, code } = await deployToStub(true);
+    const { output, code } = await deployToStub();
 
     expect(code, output).toBe(0);
 
@@ -183,14 +179,5 @@ describe.skipIf(!MOSS_BINARY)("onionpress plugin through moss deploy", () => {
     expect(JSON.parse(seen.commitBody ?? "{}")).toEqual({ generation: genId });
 
     expect(output).toContain(ONION_URL);
-  });
-
-  // Known plugin bug: without the bridge, tar cannot find the build. Expected
-  // to fail until src/constants.ts follows moss's build directory; then this
-  // test starts passing, vitest reports it, and the bridge above can go.
-  it.fails("deploys with no bridge between the plugin's build path and moss's", async (ctx) => {
-    skipIfNoStub(ctx);
-    const { code } = await deployToStub(false);
-    expect(code).toBe(0);
   });
 });
