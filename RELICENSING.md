@@ -8,10 +8,6 @@ This repository and its history are released under the [MIT License](LICENSE).
 
 Contribution terms live in one place, [CONTRIBUTING.md](CONTRIBUTING.md#license): this repository is MIT, opening a pull request licenses your contribution under it — inbound matches outbound — and you should only submit code you have the right to license that way.
 
-## Generated directories
-
-Some `plugins/<id>/` directories carry a `.generated` marker. They hold first-party plugin source copied from the moss repository, published here so the code this registry distributes can be read and built by anyone. They are the same copyright holder and the same MIT license as the rest of this repository — not third-party code.
-
 ## Historical authors
 
 Counted in the public history at the initial release:
