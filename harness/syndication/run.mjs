@@ -130,7 +130,10 @@ try {
   }
   console.log(`dry run: ${due.length} copies due`);
   for (const c of dry.copies) console.log(`  plan: ${c.channel} ${c.source_path} ${c.action}${c.reason ? ` (${c.reason})` : ""} ${c.form ?? ""}`);
-  check(due.length === 3 * channels.length, `the dry run plans three copies per channel (${due.length})`);
+  for (const s of started) {
+    const n = due.filter((c) => c.channel === s.id).length;
+    check(n === 3, `the dry run plans three copies to ${s.id} (${n})`);
+  }
   // A date-named note has no title, so its text is the copy: one paragraph is
   // a short post, three parts are a thread where the network takes one and
   // fit as one short post where it does not. The essay is too long for any.
@@ -141,6 +144,8 @@ try {
 
   const first = await runMoss(["deploy", site, "--allow-plugins"]);
   for (const line of first.stderr.split("\n").filter((l) => l.includes(" — "))) console.log(`  moss: ${line}`);
+  const posted = (out, id) => out.split("\n").filter((l) => l.includes(`posted to ${id}: `) && !l.includes("not posted to")).length;
+  for (const s of started) check(posted(first.stderr, s.id) === 3, `the first publish reports three copies posted to ${s.id} (${posted(first.stderr, s.id)})`);
 
   for (const s of started) {
     console.log(`checking ${s.id}…`);
@@ -148,7 +153,8 @@ try {
     await s.net.verify(mine, check);
     for (const c of mine) {
       const page = fs.readFileSync(path.join(site, c.source_path), "utf8");
-      check(s.net.owns(page), `${c.source_path} lists its ${s.id} copy under syndicated:`);
+      const frontMatter = page.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? "";
+      check(s.net.owns(frontMatter), `${c.source_path} lists its ${s.id} copy under syndicated:`);
     }
   }
 
@@ -156,7 +162,7 @@ try {
   const second = await runMoss(["deploy", site, "--allow-plugins"]);
   const after = await Promise.all(started.map((s) => s.net.count()));
   started.forEach((s, i) => check(after[i] === counts[i], `a second publish posts nothing to ${s.id} (${counts[i]} → ${after[i]})`));
-  check(!/posted to /.test(second.stderr), "a second publish reports no new copy");
+  for (const s of started) check(posted(second.stderr, s.id) === 0, `a second publish reports no new copy to ${s.id}`);
 } catch (e) {
   failures.push(String(e?.stack ?? e));
   console.error(e);

@@ -30,7 +30,7 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 - `secrets`: its credentials, by the keys its manifest declares;
 - `verify(copies, check)`: reads the network and calls `check(ok, what)` for each planned copy;
 - `count()`: how many posts the account has, for the second-publish check;
-- `owns(pageText)`: whether a post's file lists a copy on this network;
+- `owns(frontMatter)`: whether a post's front matter lists a copy on this network;
 - `stop()`.
 
 | Network | Local copy |
@@ -39,5 +39,7 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 | Mastodon | GoToSocial (`superseriousbusiness/gotosocial:0.20.2`) in Docker, which speaks the Mastodon client API: the author signs in through the server's own OAuth pages, and a second account follows the author and must see each copy on its home timeline. The container is stopped by its id. |
 | LinkedIn | a stand-in for the Posts API in process, written from LinkedIn's API reference: LinkedIn has no test environment, and its development tier posts to the live network. It requires the version and protocol headers, posts only as the token's own member, refuses commentary with an unescaped reserved character, and holds 3,000 characters as the limit. |
 | X | a stand-in for the v2 posting API in process, written from X's API reference: X has no test environment, and every real post is billed. It checks each request's OAuth 1.0a signature with Node's own HMAC, refuses a post over 280 weighted characters, a duplicate, or a reply to a post it does not hold, and shortens links as X does. |
+
+A run checks publishing only: editing and deleting a copy, and undoing a thread that fails part-way, are covered by each plugin's unit tests, not here.
 
 The two stand-ins are not recorded responses: nothing was recorded from either network. They hold the request and response shapes the API references document, so a live run on a test account is what confirms those shapes.
