@@ -152,8 +152,7 @@ jobs:
           # include features/e2e/integration projects that hit a live service,
           # need a real browser, or need the moss binary — none of which this
           # powerless gate has (matters' features/e2e call the live Matters API).
-          # test:unit is the deterministic subset, matching the monorepo's own
-          # plugin CI scope.
+          # test:unit is the deterministic subset.
           if node -e "process.exit(require('./package.json').scripts?.['test:unit'] ? 0 : 1)"; then
             npm run test:unit
           elif node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
@@ -161,6 +160,19 @@ jobs:
             npm test
           else
             echo "No test script; skipping."
+          fi
+
+      # A plugin with a `test:e2e` script runs it through the moss pinned in
+      # starters/moss.json, downloaded and sha256-checked: offline, no secrets.
+      # It is what catches moss moving something a plugin relies on.
+      - name: End to end through moss
+        if: hashFiles(format('{0}/e2e/**', matrix.plugin)) != ''
+        run: |
+          set -euo pipefail
+          moss="$(scripts/fetch-moss.sh "$RUNNER_TEMP/moss")"
+          cd "${{ matrix.plugin }}"
+          if node -e "process.exit(require('./package.json').scripts?.['test:e2e'] ? 0 : 1)"; then
+            MOSS_BINARY="$moss" INCLUDE_E2E=1 npm run test:e2e
           fi
 
       # dist/ is gitignored, so what ships is always built here from the source

@@ -1,0 +1,71 @@
+name: contract
+
+# Every plugin's end-to-end suite, against the newest moss release rather than
+# the pinned one. Pull requests prove a plugin against the moss it was written
+# for; this proves the published plugins still work with the moss people have
+# now, so a moss release that moves something a plugin relies on fails here
+# within a day instead of in someone's publish.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.list.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          set -euo pipefail
+          plugins=$(for f in plugins/*/package.json; do
+            jq -e '.scripts["test:e2e"]' "$f" >/dev/null && basename "$(dirname "$f")"
+          done | jq -R . | jq -sc .)
+          echo "plugins=$plugins" >> "$GITHUB_OUTPUT"
+          echo "plugins with an end-to-end suite: $plugins"
+
+  plugins:
+    name: ${{ matrix.plugin }}
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
+    defaults:
+      run:
+        working-directory: plugins/${{ matrix.plugin }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch the newest moss release, checked against its SHA256SUMS
+        id: moss
+        working-directory: ${{ runner.temp }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo Symbiosis-Lab/moss --json tagName --jq .tagName)"
+          gh release download "$tag" --repo Symbiosis-Lab/moss --pattern moss-linux-x86_64 --pattern SHA256SUMS
+          grep ' moss-linux-x86_64$' SHA256SUMS | sha256sum -c -
+          chmod +x moss-linux-x86_64
+          echo "path=$PWD/moss-linux-x86_64" >> "$GITHUB_OUTPUT"
+          echo "moss $tag"
+
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - name: End to end through moss
+        env:
+          MOSS_BINARY: ${{ steps.moss.outputs.path }}
+          INCLUDE_E2E: "1"
+        run: npm run test:e2e
