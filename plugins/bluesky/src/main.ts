@@ -20,7 +20,7 @@ export interface CopyJob {
   form?: "short" | "thread" | "teaser";
   parts?: Part[];
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
-  previous?: { id: string; url: string; parts: { id: string; url: string }[] } | null;
+  previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
 }
 
@@ -127,7 +127,7 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
     const s = await session(job);
     const previous = job.previous;
     if (!previous) return { success: true };
-    for (const part of [...previous.parts].reverse()) await deletePost(s, rkeyOf(part.id));
+    for (const part of [...(previous.parts ?? [])].reverse()) await deletePost(s, rkeyOf(part.id));
     await deletePost(s, rkeyOf(previous.id));
     return { success: true };
   } catch (e) {

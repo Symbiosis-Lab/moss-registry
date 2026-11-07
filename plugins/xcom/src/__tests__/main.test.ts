@@ -203,4 +203,10 @@ describe("delete_copy", () => {
     expect(x.posts.size).toBe(0);
     expect(x.calls.filter((c) => c.startsWith("DELETE"))).toEqual(["DELETE /2/tweets/1002", "DELETE /2/tweets/1001", "DELETE /2/tweets/1000"]);
   });
+
+  it("has nothing to remove when the delete names no copy", async () => {
+    const x = fakeX();
+    expect((await delete_copy(job({ op: "delete", previous: null }))).success).toBe(true);
+    expect(x.calls.filter((c) => c.startsWith("DELETE"))).toEqual([]);
+  });
 });

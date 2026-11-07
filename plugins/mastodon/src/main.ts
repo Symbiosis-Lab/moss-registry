@@ -20,7 +20,7 @@ export interface CopyJob {
   form?: "short" | "thread" | "teaser";
   parts?: Part[];
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
-  previous?: { id: string; url: string; parts: { id: string; url: string }[] } | null;
+  previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
 }
 
@@ -167,7 +167,7 @@ export async function update_copy(job: CopyJob): Promise<CopyResult> {
   const previous = job.previous;
   const parts = job.parts ?? [];
   if (!previous) return { success: false, message: "no copy to edit", copy: { refused: { cause: "unknown", message: "no copy to edit" } } };
-  const ids = [previous.id, ...previous.parts.map((p) => p.id)];
+  const ids = [previous.id, ...(previous.parts ?? []).map((p) => p.id)];
   if (ids.length !== parts.length) {
     const message = `the thread now has ${parts.length} parts and its copy ${ids.length}; Mastodon can edit a status but not add or remove one`;
     return { success: false, message, copy: { refused: { cause: "content", message } } };
@@ -179,7 +179,7 @@ export async function update_copy(job: CopyJob): Promise<CopyResult> {
       if (job.post.lang) body.language = job.post.lang;
       await call(a, "PUT", `/api/v1/statuses/${ids[i]}`, body);
     }
-    return { success: true, copy: { id: previous.id, url: previous.url, parts: previous.parts } };
+    return { success: true, copy: { id: previous.id, url: previous.url, parts: previous.parts ?? [] } };
   } catch (e) {
     return refused(e);
   }
@@ -190,7 +190,7 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
     const a = await account(job);
     const previous = job.previous;
     if (!previous) return { success: true };
-    for (const id of [...previous.parts.map((p) => p.id).reverse(), previous.id]) {
+    for (const id of [...(previous.parts ?? []).map((p) => p.id).reverse(), previous.id]) {
       try {
         await call(a, "DELETE", `/api/v1/statuses/${id}`);
       } catch (e) {

@@ -123,6 +123,14 @@ describe("update_copy", () => {
     const r = await update_copy(job({ op: "update", parts: thread, previous: { id: "1", url: "u", parts: [] } }));
     expect(r.copy?.refused?.message).toMatch(/3 parts and its copy 1/);
   });
+
+  it("edits a one-status copy whose record lists no parts", async () => {
+    const server = fakeServer();
+    const posted = (await publish_copy(job())).copy!;
+    const r = await update_copy(job({ op: "update", parts: [{ text: "Edited.", links: [] }], previous: { id: posted.id!, url: posted.url! } }));
+    expect(r.copy).toEqual({ id: posted.id, url: posted.url, parts: [] });
+    expect(server.statuses.get(posted.id!).content).toBe("<p>Edited.</p>");
+  });
 });
 
 describe("delete_copy", () => {
@@ -134,6 +142,13 @@ describe("delete_copy", () => {
     expect(r.success).toBe(true);
     expect(server.statuses.size).toBe(0);
     expect(server.calls.filter((c) => c.startsWith("DELETE"))).toEqual(["DELETE /api/v1/statuses/3", "DELETE /api/v1/statuses/2", "DELETE /api/v1/statuses/1"]);
+  });
+
+  it("removes a copy whose record lists no parts", async () => {
+    const server = fakeServer();
+    const posted = (await publish_copy(job())).copy!;
+    expect((await delete_copy(job({ op: "delete", previous: { id: posted.id!, url: posted.url! } }))).success).toBe(true);
+    expect(server.statuses.size).toBe(0);
   });
 });
 

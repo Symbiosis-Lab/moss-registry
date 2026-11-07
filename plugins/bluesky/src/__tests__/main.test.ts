@@ -118,6 +118,14 @@ describe("find_copy and delete_copy", () => {
     expect(r.success).toBe(true);
     expect(pds.records.size).toBe(0);
   });
+
+  it("removes a copy whose record lists no parts", async () => {
+    const pds = fakePds();
+    const posted = await publish_copy(job());
+    const r = await delete_copy(job({ op: "delete", previous: { id: posted.copy!.id!, url: posted.copy!.url! } }));
+    expect(r.success).toBe(true);
+    expect(pds.records.size).toBe(0);
+  });
 });
 
 describe("record keys and facets", () => {

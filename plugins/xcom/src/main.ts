@@ -178,9 +178,9 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
 
 export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   try {
+    const previous = job.previous;
+    if (!previous) return { success: true };
     const a = await account(job);
-    // moss sends every delete with the copy it removes.
-    const previous = job.previous!;
     for (const id of [...(previous.parts ?? []).map((p) => p.id).reverse(), previous.id]) {
       try {
         await call(a, "DELETE", `/2/tweets/${id}`);
