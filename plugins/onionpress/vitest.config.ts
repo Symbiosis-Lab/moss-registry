@@ -8,4 +8,20 @@ export default createSocialPluginConfig(import.meta.dirname, {
   // load main.ts without a ReferenceError.
   unitEnvironment: "happy-dom",
   unitGlobals: true,
+  // Needs a moss binary; run with: MOSS_BINARY=... INCLUDE_E2E=1 vitest run --project e2e
+  extraProjects: process.env.INCLUDE_E2E
+    ? [
+        {
+          extends: true,
+          test: {
+            name: "e2e",
+            include: ["e2e/**/*.test.ts"],
+            environment: "node",
+            testTimeout: 120000,
+            hookTimeout: 30000,
+            globals: true,
+          },
+        },
+      ]
+    : [],
 });
