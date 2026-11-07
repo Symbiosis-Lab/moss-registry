@@ -165,13 +165,13 @@ jobs:
           fi
 
       # A plugin with a `test:e2e` script runs it through the moss pinned in
-      # starters/moss.json, downloaded and sha256-checked: offline, no secrets.
+      # plugins/moss.json, downloaded and sha256-checked: offline, no secrets.
       # It is what catches moss moving something a plugin relies on.
       - name: End to end through moss
         if: hashFiles(format('{0}/e2e/**', matrix.plugin)) != ''
         run: |
           set -euo pipefail
-          moss="$(scripts/fetch-moss.sh "$RUNNER_TEMP/moss")"
+          moss="$(MOSS_PIN=plugins/moss.json scripts/fetch-moss.sh "$RUNNER_TEMP/moss")"
           cd "${{ matrix.plugin }}"
           if ! node -e "process.exit(require('./package.json').scripts?.['test:e2e'] ? 0 : 1)"; then
             echo "::error::${{ matrix.plugin }} has an e2e/ directory but no test:e2e script to run it"
