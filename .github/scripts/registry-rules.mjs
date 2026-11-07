@@ -13,6 +13,15 @@ export const ID_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 /** Strict semver. Pre-release and build metadata are allowed but ignored when comparing. */
 export const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
+/**
+ * A version moss itself can read, as a `min_moss_version` must be: semver
+ * without leading zeros, which moss's parser refuses. moss will not run a
+ * plugin whose floor it cannot read, so the validator rejects one before it
+ * is published.
+ */
+export const MOSS_VERSION_RE =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
 /** Ids that would make a confusing or ambiguous namespace. */
 export const RESERVED_IDS = new Set(["moss", "core", "api", "registry", "plugin", "theme"]);
 
