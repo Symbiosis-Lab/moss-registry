@@ -19,6 +19,14 @@ A moss publishing plugin for GitHub Pages. See [moss.pub](https://mosspub.com) a
 Nothing else is contacted. The plugin sends your site's built files and the
 repository settings you configure; it does not send analytics.
 
+## Building and testing
+
+```bash
+npm ci
+npm run build   # dist/main.bundle.js plus the manifest and icon
+npm test        # unit tests; no network, no moss
+```
+
 ## Stability
 
 This plugin is 0.x. APIs may change between minor versions until 1.0. See [CHANGELOG.md](./CHANGELOG.md).

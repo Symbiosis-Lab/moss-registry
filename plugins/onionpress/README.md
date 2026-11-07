@@ -2,8 +2,8 @@
 
 > Publish moss sites to a self-hosted OnionPress (.onion) receiver.
 
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
-[![status](https://img.shields.io/badge/status-experimental-orange)](../README.md#stability)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
+[![status](https://img.shields.io/badge/status-experimental-orange)](#stability)
 
 A moss deploy plugin that hands the sealed build generation to a locally-running
 [OnionPress](https://github.com/Symbiosis-Lab) receiver, which serves it as a Tor
@@ -12,6 +12,8 @@ onion service. Deploy is loopback-only: the plugin probes for the receiver on
 
 The wire protocol between this plugin and the receiver is pinned in
 `docs/static-publish-protocol.md` in the OnionPress fork.
+
+This is the plugin to start from when you write a deploy plugin of your own: the `deploy` hook in `src/main.ts` finds where the site goes, uploads the build and reports the address it now lives at, which is the whole of a deploy plugin's job. The manifest's `contributes.stack`, which offers to install the OnionPress app, is particular to this plugin; leave it out of yours.
 
 ## How it works
 
@@ -59,10 +61,18 @@ plugin only reads that field.
 
 See [SIDELOAD.md](./SIDELOAD.md).
 
+## Building and testing
+
+```bash
+npm ci
+npm run build   # dist/main.bundle.js plus the manifest and icon
+npm test        # unit tests; no network, no moss
+```
+
 ## Stability
 
 This plugin is 0.x. APIs may change between minor versions until 1.0.
 
 ## License
 
-MIT — see [LICENSE](../LICENSE).
+MIT — see [LICENSE](../../LICENSE).
