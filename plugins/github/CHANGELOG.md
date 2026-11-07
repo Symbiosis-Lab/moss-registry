@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- (`1.6.3`) Publishing works again. Since moss 0.15.1 keeps the built site in `.moss/build.nosync/`, the plugin looked for it in the old place and every publish stopped with "Cannot locate current generation". It now reads the new place, still reads the old one on earlier moss, and stops with git's own reason if the build cannot be staged instead of going on to publish nothing.
+- (`1.6.3`) Publishing works again. Since moss 0.15.1 keeps the built site in `.moss/build.nosync/`, the plugin looked for it in the old place and every publish stopped with "Cannot locate current generation". It now reads the new place, still reads the old one on earlier moss, and stops with git's own reason if the build cannot be staged instead of going on to publish nothing. The build is taken back out of git's index once its tree is written, so the copy of your source pushed to `main` never carries it.
 
 ### Changed
 

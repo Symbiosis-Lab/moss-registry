@@ -311,10 +311,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore (sh -c)
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // git write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // git write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection (always happens):
         .mockResolvedValueOnce(gitResult(true, "nojekyll000\n"))   // hash-object -w --stdin (.nojekyll)
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
@@ -352,10 +353,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -500,10 +502,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
         .mockResolvedValueOnce(gitResult(true, "4b825dc\n"))       // write-tree --prefix (empty tree)
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, ""))                // ls-tree (empty tree — no entries)
@@ -554,10 +557,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -587,10 +591,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -642,8 +647,8 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
         .mockResolvedValueOnce(gitResult(false, "", "fatal: not a valid object name"));  // write-tree --prefix fails
 
@@ -663,10 +668,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -749,10 +755,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -800,10 +807,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -849,10 +857,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -922,10 +931,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1067,10 +1077,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                        // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                        // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))      // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1110,10 +1121,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                        // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                        // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))      // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1266,10 +1278,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll + CNAME injection steps:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (.nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // git ls-tree
@@ -1340,10 +1353,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (empty .nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // ls-tree
@@ -1396,10 +1410,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (empty .nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // ls-tree
@@ -1470,10 +1485,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (.nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // ls-tree
@@ -1542,10 +1558,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1581,10 +1598,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
           .mockResolvedValueOnce(gitResult(true, "4b825dc\n"))       // write-tree --prefix (empty tree)
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, ""))                // ls-tree (empty)
@@ -1610,6 +1628,17 @@ describe("github-deploy", () => {
     // Regression: generation dir path (prevents .moss/build/site/ or .moss/site/ bug)
     // ========================================================================
     describe("path regression: current generation dir", () => {
+      it("takes the build back out of the index before the source backup commits to main", async () => {
+        setupFullDeployMocks();
+
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git" });
+
+        const args = mockExecuteBinary.mock.calls.map((c) => (c[0].args ?? []).join(" "));
+        const unstage = args.indexOf("rm -r --cached -q --ignore-unmatch -- .moss/build.nosync/");
+        expect(unstage).toBeGreaterThan(args.indexOf(`write-tree --prefix=${GEN_DIR}/`));
+        expect(unstage).toBeLessThan(args.indexOf("add --all"));
+      });
+
       it("stops before pushing when git refuses to stage the build", async () => {
         mockExecuteBinary
           .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir
@@ -1627,7 +1656,7 @@ describe("github-deploy", () => {
         expect(mockExecuteBinary.mock.calls.some((c) => c[0].args?.[0] === "push")).toBe(false);
       });
 
-      it("uses .moss/build/generations/<id>/ for git add (not .moss/build/site/ or .moss/site/)", async () => {
+      it("stages the resolved generation dir with -f (not .moss/build/site/ or .moss/site/)", async () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
@@ -1655,7 +1684,7 @@ describe("github-deploy", () => {
         expect(oldPathCalls).toHaveLength(0);
       });
 
-      it("uses .moss/build/generations/<id>/ for write-tree --prefix (not .moss/build/site/ or .moss/site/)", async () => {
+      it("uses the resolved generation dir for write-tree --prefix (not .moss/build/site/ or .moss/site/)", async () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
@@ -1705,10 +1734,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "newSiteTree\n"))   // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "newSiteTree\n"))   // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1742,10 +1772,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1844,10 +1875,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1894,10 +1926,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1942,10 +1975,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -1967,10 +2001,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging (retry):
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree2\n"))      // mktree
@@ -2013,10 +2048,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2051,10 +2087,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2097,10 +2134,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2122,10 +2160,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging (retry):
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree2\n"))      // mktree
@@ -2174,10 +2213,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2224,10 +2264,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2258,10 +2299,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2298,10 +2340,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2370,10 +2413,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // git write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // git write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyll000\n"))   // hash-object -w --stdin (.nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
@@ -2486,10 +2530,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyll000\n"))   // hash-object
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree

@@ -255,7 +255,11 @@ function parsePushProgress(
   }
 }
 
-/** Where moss keeps the build, newest layout first: `.moss/build.nosync/` since moss 0.15.1, `.moss/build/` before. */
+/**
+ * Where moss keeps the build, newest layout first: `.moss/build.nosync/` since
+ * moss 0.15.1, `.moss/build/` before. The old one never sits beside a new one:
+ * moss renames it into the new layout at the start of its first build.
+ */
 const BUILD_ROOTS = [".moss/build.nosync", ".moss/build"] as const;
 
 /**
@@ -288,7 +292,7 @@ export async function resolveCurrentGenDir(): Promise<string> {
  * Deploy site to GitHub Pages via a single git repo.
  *
  * Uses one git repo at the project root. Stages site files from the current
- * generation directory (.moss/build/current → .moss/build/generations/<id>/),
+ * generation directory (`current` → `generations/<id>/` under moss's build directory),
  * extracts the generation tree as an orphan commit and pushes it to gh-pages,
  * then backs up source files to main. This gives GitHub Pages the site content
  * at the branch root while keeping source on main.
@@ -446,6 +450,10 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     onProgress(10, "Preparing gh-pages...");
     const writeTree = await git(["write-tree", `--prefix=${genDir}/`]);
     if (!writeTree.success) throw new Error(`Failed to write site tree: ${sanitize(writeTree.stderr, token)}`);
+    // Out of the index again, or the source backup's `add --all` below would commit the build to main.
+    const buildRoot = genDir.slice(0, genDir.indexOf("/generations/"));
+    const unstaged = await git(["rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", `${buildRoot}/`]);
+    if (!unstaged?.success) throw new Error(`Failed to unstage the built site: ${sanitize(unstaged?.stderr ?? "", token)}`);
 
     // Inject .nojekyll (always) and CNAME (when domain is set) into the
     // gh-pages tree. Without .nojekyll, GitHub runs Jekyll which may skip
