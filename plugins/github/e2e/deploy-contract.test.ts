@@ -18,7 +18,7 @@ if (!MOSS_BINARY) console.warn("github deploy contract skipped: set MOSS_BINARY 
 
 const OWNER = "alex";
 const REPO = "site";
-const run = { site: "", remote: "", env: {} as NodeJS.ProcessEnv };
+const run = { site: "", remote: "", env: {} as NodeJS.ProcessEnv, siteFiles: [] as string[] };
 
 // moss-api's host calls, bound to real processes in the site folder. Any
 // github.com address the plugin hands git points at the local bare repository.
@@ -45,26 +45,37 @@ describe.skipIf(!MOSS_BINARY)("github deploy contract with moss", () => {
     run.remote = path.join(testDir, "remote.git");
     fs.mkdirSync(path.join(run.site, ".moss"), { recursive: true });
     fs.writeFileSync(path.join(run.site, "index.md"), "# Hello\n\nBuilt by moss, published by the plugin.\n");
-    fs.writeFileSync(path.join(run.site, ".moss", "config.toml"), 'environment = "local"\n');
+    // moss builds a draft for the preview but never hands it to a deploy plugin.
+    fs.writeFileSync(path.join(run.site, "secret-plans.md"), "---\ndraft: true\n---\n# Secret plans\n\nNot for publishing.\n");
     execFileSync("git", ["init", "-q", "--bare", run.remote], { env: run.env });
 
-    const build = spawnSync(MOSS_BINARY!, ["build", run.site], { env: run.env, encoding: "utf8", timeout: 120_000 });
-    if (build.status !== 0) throw new Error(`moss build failed:\n${build.stdout}\n${build.stderr}`);
+    // A stand-in deploy plugin records the file list moss hands a deploy hook,
+    // so the plugin below is given exactly what moss would give it.
+    const capture = path.join(run.site, ".moss", "plugins", "capture");
+    fs.mkdirSync(capture, { recursive: true });
+    fs.writeFileSync(path.join(capture, "manifest.json"), JSON.stringify({ name: "capture", version: "0.0.1", entry: "main.bundle.js", global_name: "CapturePlugin", contributes: { deploy_target: {} } }));
+    fs.writeFileSync(path.join(capture, "main.bundle.js"), `globalThis.CapturePlugin = { deploy: async (c) => { console.error("SITE_FILES " + JSON.stringify(c.site_files)); return { success: true, deployment: { method: "local", url: "http://127.0.0.1/", deployed_at: new Date().toISOString(), metadata: {} } }; } };`);
+    fs.writeFileSync(path.join(run.site, ".moss", "config.toml"), 'environment = "local"\n\n[hooks]\ndeploy = "capture"\n');
+    const deploy = spawnSync(MOSS_BINARY!, ["deploy", run.site, "--allow-plugins"], { env: run.env, encoding: "utf8", timeout: 120_000 });
+    const listed = `${deploy.stdout}\n${deploy.stderr}`.match(/SITE_FILES (\[.*\])/);
+    if (deploy.status !== 0 || !listed) throw new Error(`moss deploy did not hand over its file list:\n${deploy.stdout}\n${deploy.stderr}`);
+    run.siteFiles = JSON.parse(listed[1]);
   });
 
   afterAll(() => {
     if (testDir) fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("publishes moss's build to gh-pages and keeps it off main", async () => {
+  it("publishes moss's build to gh-pages, without drafts, and keeps it off main", async () => {
     const { deployViaGitPush } = await import("../src/github-deploy");
-    await deployViaGitPush({ owner: OWNER, repo: REPO, token: "test-token", onProgress: () => {}, gitPath: "git" });
+    await deployViaGitPush({ owner: OWNER, repo: REPO, token: "test-token", onProgress: () => {}, gitPath: "git", siteFiles: run.siteFiles });
 
     const remote = (...args: string[]) => execFileSync("git", ["--git-dir", run.remote, ...args], { env: run.env, encoding: "utf8" });
     const pages = remote("ls-tree", "-r", "--name-only", "gh-pages").split("\n");
     expect(pages).toContain("index.html");
     expect(pages).toContain(".nojekyll");
     expect(remote("show", "gh-pages:index.html")).toContain("Built by moss, published by the plugin.");
+    expect(pages.filter((f) => f.includes("secret-plans"))).toEqual([]);
 
     const main = remote("ls-tree", "-r", "--name-only", "main").split("\n");
     expect(main).toContain("index.md");

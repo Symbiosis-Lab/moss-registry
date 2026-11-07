@@ -184,6 +184,8 @@ export interface DeployViaGitPushOptions {
   gitPath: string;
   /** Custom domain to include as CNAME file in gh-pages branch */
   domain?: string;
+  /** The files to publish, relative to the generation: DeployContext.site_files, which leaves out drafts. */
+  siteFiles: readonly string[];
 }
 
 /**
@@ -433,10 +435,19 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     });
 
     // ── 2. Resolve current generation dir and stage its files ────────────
-    // moss gitignores its build directory, so staging it needs -f.
+    // Only the files moss lists: the generation also holds drafts built for
+    // the preview. moss gitignores its build directory, hence -f; literal
+    // pathspecs, so a file name is never read as a pattern.
     onProgress(5, "Staging site files...");
     const genDir = await resolveCurrentGenDir();
-    const staged = await git(["add", "-f", `${genDir}/`]);
+    const staged = await executeBinary({
+      binaryPath: options.gitPath,
+      args: ["add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"],
+      stdin: options.siteFiles.map((f) => `:(literal)${genDir}/${f}\0`).join(""),
+      workingDir: ".",
+      timeoutMs: 600_000,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
     if (!staged.success) throw new Error(`Failed to stage the built site: ${sanitize(staged.stderr, token)}`);
 
     // ── 3. Get site tree SHA directly from index ─────────────────────────

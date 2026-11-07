@@ -290,6 +290,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       token,
       gitPath,
       domain,
+      siteFiles: context.site_files,
       onProgress: (percent, message) => {
         // The plugin emits percent=100 once when gh-pages push lands
         // ("Deployed!"), then again with a different message for the
