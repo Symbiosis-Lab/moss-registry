@@ -255,43 +255,33 @@ function parsePushProgress(
   }
 }
 
+/** Where moss keeps the build, newest layout first: `.moss/build.nosync/` since moss 0.15.1, `.moss/build/` before. */
+const BUILD_ROOTS = [".moss/build.nosync", ".moss/build"] as const;
+
 /**
- * Resolve the current generation directory path (relative to project root).
+ * The current generation's directory, relative to the project root, such as
+ * `.moss/build.nosync/generations/abc123`: the real directory behind the
+ * `current` symlink, since `git write-tree --prefix` does not follow symlinks.
  *
- * The build pipeline writes output to `.moss/build/generations/<hash>/` and
- * updates `.moss/build/current` (a symlink) to point to that directory.
- * `.moss/build/site/` is empty in the generations model — never stage from there.
- *
- * Returns a path like `.moss/build/generations/abc123def456` — the real directory
- * git can stage and extract a tree from (git does not follow symlinks for
- * `write-tree --prefix`).
- *
- * @throws {Error} if the current symlink is absent or unresolvable
+ * @throws {Error} if no layout has a resolvable `current`
  */
 export async function resolveCurrentGenDir(): Promise<string> {
-  // `readlink` on macOS does NOT support -f, but the symlink target is already
-  // absolute (set_current_ptr uses an absolute path), so plain `readlink` suffices.
-  const result = await executeBinary({
-    binaryPath: "readlink",
-    args: [".moss/build/current"],
-    workingDir: ".",
-    timeoutMs: 5_000,
-    env: {},
-  });
-  if (!result.success || !result.stdout.trim()) {
-    throw new Error(
-      "Cannot locate current generation: .moss/build/current symlink is missing or unresolvable. " +
-      "Run a build first before deploying."
-    );
+  for (const root of BUILD_ROOTS) {
+    // `readlink` on macOS has no -f, but moss writes the target absolute.
+    const result = await executeBinary({
+      binaryPath: "readlink",
+      args: [`${root}/current`],
+      workingDir: ".",
+      timeoutMs: 5_000,
+      env: {},
+    });
+    const genId = result.success ? result.stdout.trim().split("/").filter(Boolean).pop() : undefined;
+    if (genId) return `${root}/generations/${genId}`;
   }
-  // The symlink target is absolute: /abs/path/to/.moss/build/generations/<id>
-  // Extract just the generation ID and reconstruct the relative path.
-  const absTarget = result.stdout.trim();
-  const genId = absTarget.split("/").filter(Boolean).pop();
-  if (!genId) {
-    throw new Error(`Unexpected generation symlink target: ${absTarget}`);
-  }
-  return `.moss/build/generations/${genId}`;
+  throw new Error(
+    `Cannot locate current generation: ${BUILD_ROOTS[0]}/current is missing or unresolvable. ` +
+    "Run a build first before deploying."
+  );
 }
 
 /**
@@ -439,13 +429,11 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     });
 
     // ── 2. Resolve current generation dir and stage its files ────────────
-    // .moss/build/site/ is empty in the generations model (#816). The real
-    // output lives at .moss/build/current → .moss/build/generations/<id>/.
-    // git does not follow symlinks for write-tree --prefix, so we resolve
-    // the symlink to the actual (relative) generation directory first.
+    // moss gitignores its build directory, so staging it needs -f.
     onProgress(5, "Staging site files...");
     const genDir = await resolveCurrentGenDir();
-    await git(["add", `${genDir}/`]);
+    const staged = await git(["add", "-f", `${genDir}/`]);
+    if (!staged.success) throw new Error(`Failed to stage the built site: ${sanitize(staged.stderr, token)}`);
 
     // ── 3. Get site tree SHA directly from index ─────────────────────────
     // Remove index.lock again: iCloud can re-lock the index between git add

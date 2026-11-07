@@ -44,10 +44,10 @@ const TOKEN = "ghp_test-token-123";
 const OWNER = "testuser";
 const REPO = "my-site";
 
-/** Simulated absolute readlink output for .moss/build/current */
-const GEN_ABS = "/Users/test/.../project/.moss/build/generations/gen-abc123def456";
+/** Simulated absolute readlink output for .moss/build.nosync/current */
+const GEN_ABS = "/Users/test/.../project/.moss/build.nosync/generations/gen-abc123def456";
 /** Relative generation directory path (what resolveCurrentGenDir returns) */
-const GEN_DIR = ".moss/build/generations/gen-abc123def456";
+const GEN_DIR = ".moss/build.nosync/generations/gen-abc123def456";
 
 /**
  * Helper to create a mock Response for fetch
@@ -237,48 +237,36 @@ describe("github-deploy", () => {
       mockExecuteBinary.mockReset();
     });
 
-    it("resolves symlink target to relative generation dir path", async () => {
+    it("resolves moss's build layout to the generation directory behind current", async () => {
       mockExecuteBinary.mockResolvedValueOnce(
-        execResult(true, "/Users/test/project/.moss/build/generations/gen-abc123def456\n")
+        execResult(true, "/Users/test/project/.moss/build.nosync/generations/gen-abc123def456\n")
       );
 
-      const result = await resolveCurrentGenDir();
-      expect(result).toBe(".moss/build/generations/gen-abc123def456");
-    });
-
-    it("calls readlink with .moss/build/current argument", async () => {
-      mockExecuteBinary.mockResolvedValueOnce(
-        execResult(true, "/some/path/.moss/build/generations/gen-xyz789\n")
-      );
-
-      await resolveCurrentGenDir();
-
+      expect(await resolveCurrentGenDir()).toBe(".moss/build.nosync/generations/gen-abc123def456");
       expect(mockExecuteBinary).toHaveBeenCalledWith(
-        expect.objectContaining({
-          binaryPath: "readlink",
-          args: [".moss/build/current"],
-        })
+        expect.objectContaining({ binaryPath: "readlink", args: [".moss/build.nosync/current"] })
       );
     });
 
-    it("throws when .moss/build/current symlink is missing (readlink fails)", async () => {
-      mockExecuteBinary.mockResolvedValueOnce(
-        execResult(false, "", "readlink: .moss/build/current: No such file or directory")
-      );
+    it("falls back to the layout moss used before 0.15.1", async () => {
+      mockExecuteBinary
+        .mockResolvedValueOnce(execResult(false, "", "readlink: .moss/build.nosync/current: No such file or directory"))
+        .mockResolvedValueOnce(execResult(true, "/Users/test/project/.moss/build/generations/gen-old\n"));
 
-      await expect(resolveCurrentGenDir()).rejects.toThrow(
-        "Cannot locate current generation"
-      );
+      expect(await resolveCurrentGenDir()).toBe(".moss/build/generations/gen-old");
+      expect(mockExecuteBinary.mock.calls[1][0].args).toEqual([".moss/build/current"]);
+    });
+
+    it("throws when neither layout has a current generation", async () => {
+      mockExecuteBinary.mockResolvedValue(execResult(false, "", "readlink: No such file or directory"));
+
+      await expect(resolveCurrentGenDir()).rejects.toThrow("Cannot locate current generation");
     });
 
     it("throws when readlink returns empty stdout", async () => {
-      mockExecuteBinary.mockResolvedValueOnce(
-        execResult(true, "")
-      );
+      mockExecuteBinary.mockResolvedValue(execResult(true, ""));
 
-      await expect(resolveCurrentGenDir()).rejects.toThrow(
-        "Cannot locate current generation"
-      );
+      await expect(resolveCurrentGenDir()).rejects.toThrow("Cannot locate current generation");
     });
   });
 
@@ -1622,6 +1610,23 @@ describe("github-deploy", () => {
     // Regression: generation dir path (prevents .moss/build/site/ or .moss/site/ bug)
     // ========================================================================
     describe("path regression: current generation dir", () => {
+      it("stops before pushing when git refuses to stage the build", async () => {
+        mockExecuteBinary
+          .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir
+          .mockResolvedValueOnce(gitResult(true, REPO_MARKER + "\n"))  // remote get-url origin
+          .mockResolvedValueOnce(gitResult(true))                    // fetch
+          .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
+          .mockResolvedValueOnce(gitResult(true))                    // rm index.lock
+          .mockResolvedValueOnce(gitResult(true))                    // rm shallow.lock
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink
+          .mockResolvedValueOnce(gitResult(false, "", "The following paths are ignored by one of your .gitignore files"));
+
+        await expect(
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git" })
+        ).rejects.toThrow(/Failed to stage the built site.*ignored/);
+        expect(mockExecuteBinary.mock.calls.some((c) => c[0].args?.[0] === "push")).toBe(false);
+      });
+
       it("uses .moss/build/generations/<id>/ for git add (not .moss/build/site/ or .moss/site/)", async () => {
         setupFullDeployMocks();
 
@@ -1632,7 +1637,7 @@ describe("github-deploy", () => {
         expect(mockExecuteBinary).toHaveBeenCalledWith(
           expect.objectContaining({
             binaryPath: "git",
-            args: ["add", `${GEN_DIR}/`],
+            args: ["add", "-f", `${GEN_DIR}/`],
           })
         );
 
@@ -2398,7 +2403,7 @@ describe("github-deploy", () => {
 
         // First add call should be the resolved generation dir only (NOT --all, NOT .moss/build/site/)
         expect(addCalls.length).toBeGreaterThanOrEqual(1);
-        expect(addCalls[0][0].args).toEqual(["add", `${GEN_DIR}/`]);
+        expect(addCalls[0][0].args).toEqual(["add", "-f", `${GEN_DIR}/`]);
       });
 
       it("uses write-tree --prefix to get site tree SHA directly from index", async () => {
