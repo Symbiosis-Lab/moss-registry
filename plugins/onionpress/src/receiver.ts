@@ -262,15 +262,19 @@ export async function discoverReceiver(
 const PACK_ENV: Record<string, string> = { COPYFILE_DISABLE: "1" };
 
 /**
- * Tar the current generation's CONTENTS to `/tmp/<genId>.tar`, from the first
- * of `buildPaths` tar can enter. The archive holds `index.html`, `assets/…` at
- * its root, the shape the receiver extracts via `PharData`.
+ * Tar `siteFiles` from the current generation to `/tmp/<genId>.tar`, from the
+ * first of `buildPaths` tar can enter. The archive holds `index.html`,
+ * `assets/…` at its root, the shape the receiver extracts via `PharData`.
+ *
+ * `siteFiles` is the deploy context's list, never the whole directory: moss
+ * builds drafts into the generation for the preview and leaves them off it.
  *
  * @returns absolute path to the created tar.
  * @throws if no build path can be packed (no build yet).
  */
 export async function packGeneration(
   genId: string,
+  siteFiles: readonly string[],
   buildPaths: readonly string[] = CURRENT_BUILD_PATHS,
 ): Promise<string> {
   const tarPath = `/tmp/${genId}.tar`;
@@ -278,7 +282,8 @@ export async function packGeneration(
   for (const buildPath of buildPaths) {
     const result = await executeBinary({
       binaryPath: "tar",
-      args: ["-cf", tarPath, "-C", buildPath, "."],
+      args: ["-cf", tarPath, "-C", buildPath, "--null", "-T", "-"],
+      stdin: siteFiles.map((f) => `${f}\0`).join(""),
       workingDir: ".",
       timeoutMs: 300_000, // 5 min — large media generations can be slow to archive
       env: PACK_ENV,

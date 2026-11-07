@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.4.2] - 2026-11-07
 
 - Fixed: publishing works again. Since moss 0.15.1 keeps the built site in `.moss/build.nosync/`, the plugin looked for it in the old place and every publish stopped with "Could not package the built site". It now reads the new place and still reads the old one on earlier moss.
+- Fixed: pages marked `draft: true` are no longer published. moss builds drafts for the preview and leaves them off the list of files it hands a deploy plugin; the plugin packed the whole build instead of that list.
 
 ## [0.4.1] - 2026-08-30
 
