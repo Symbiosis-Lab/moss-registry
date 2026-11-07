@@ -128,6 +128,8 @@ themes/<id>/         a published theme (planned): style.css, assets, manifest,
 starters/<id>/       a starter site: manifest.json, posters/, site/ (what a user's
                      new site starts as), plus .cut, fixups.sh and README.md
                      for maintainers — see starters/README.md
+harness/             end-to-end checks of plugins through real moss, against local
+                     copies of the services they talk to
 scripts/             tooling for starters (cut, check, posters, pack, fetch-moss) and
                      pack-native-plugin, which builds and packages a native plugin
 registry/

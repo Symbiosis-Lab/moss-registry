@@ -18,11 +18,14 @@ A JavaScript plugin is a TypeScript package bundled into one IIFE that moss runs
 sandboxed QuickJS engine. It talks to moss only through
 [`@symbiosis-lab/moss-api`](https://www.npmjs.com/package/@symbiosis-lab/moss-api).
 
-The closest working examples are the first-party plugins in this repository —
-[`github`](./plugins/github) (a `deploy` plugin) and
-[`matters`](./plugins/matters) (`syndicate` + `import` + `login`). Read them and
-copy the shape; just don't *edit* them here, since they carry a `.generated`
-marker and are copied in from moss on each release.
+### Start from an example
+
+Every plugin here is one you can read and copy, and the first-party ones are kept as examples on purpose. Start from the one closest to what you are building:
+
+- [`onionpress`](./plugins/onionpress), for a deploy plugin, which publishes a site somewhere. Its `deploy` hook in `src/main.ts` is the whole job in about 800 lines: find where the site goes, upload the build, report the address. Leave out its `contributes.stack`, which is particular to OnionPress.
+- [`mastodon`](./plugins/mastodon), for a syndication plugin, which posts copies of a site's posts to a network. One file of about 200 lines implements every copy hook (`publish_copy`, `update_copy`, `delete_copy`, `find_copy`) and threads, and [`harness/syndication`](./harness/syndication) runs it end to end against a real Mastodon-compatible server.
+
+The other first-party plugins show more: [`github`](./plugins/github) a deploy with sign-in, [`matters`](./plugins/matters) import and sign-in beside syndication, [`map-layers`](./plugins/map-layers) a `process` plugin that fetches files into the site. Change any of them here by pull request, like any other plugin.
 
 The SDK's own documentation is the reference for what a hook receives and
 returns; everything below is what this repository additionally requires. A
@@ -49,8 +52,7 @@ plugins/<id>/
   "version": "1.0.0",
   "entry": "main.bundle.js",
   "global_name": "<Id>Plugin",
-  "capabilities": ["syndicate"],
-  "min_moss_version": "0.8.0"
+  "min_moss_version": "0.15.19"
 }
 ```
 
@@ -58,8 +60,7 @@ plugins/<id>/
   may not start with `moss-` and may not collide with an existing plugin.
 - `global_name` must match the `--global-name` passed to esbuild in your
   `bundle` script, and `entry` must be the bundle filename it emits.
-- `capabilities` are the hooks you implement (`process`, `generate`, `enhance`,
-  `deploy`, `syndicate`, `import`, `login`).
+- What your plugin does is declared in the manifest as well: `capabilities` for the hooks of a process, deploy, import or sign-in plugin, `contributes.channel.syndication` for a syndication plugin. Copy the declaration from the example you started from.
 - `min_moss_version` is the oldest moss you support — set it to the version you
   developed against.
 - `requires` declares host capabilities that need granting. Today the only
