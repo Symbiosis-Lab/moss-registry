@@ -8,7 +8,7 @@
  */
 
 import { GITHUB_API_BASE, GITHUB_API_HEADERS } from "./github-api";
-import { executeBinary, listSiteFilesWithSizes, type ExecuteResult } from "@symbiosis-lab/moss-api";
+import { executeBinary, listSiteFilesWithSizes, readFile, type ExecuteResult } from "@symbiosis-lab/moss-api";
 import { showToast } from "./utils";
 import { parseGitHubUrl, isSameGitHubRepo } from "./git";
 
@@ -284,6 +284,12 @@ export async function resolveCurrentGenDir(): Promise<string> {
     `Cannot locate current generation: ${BUILD_ROOTS[0]}/current is missing or unresolvable. ` +
     "Run a build first before deploying."
   );
+}
+
+/** Whether a page source's front matter says `draft: true`, which moss never publishes. */
+export function isDraftSource(text: string): boolean {
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---\s*(\r?\n|$)/);
+  return !!fm && /^draft:[ \t]*[Tt][Rr][Uu][Ee][ \t]*(#.*)?$/m.test(fm[1]);
 }
 
 /**
@@ -598,7 +604,26 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
         });
       }
 
+      // Drafts stay out of the backup: the author keeps them private, and the
+      // repository may be public. `git grep` finds candidates; the front matter decides.
+      const candidates = await git(["grep", "--untracked", "-I", "-l", "-z", "-E", "^draft:[[:space:]]*[Tt][Rr][Uu][Ee]", "--", "*.md", "*.markdown"]);
+      const drafts: string[] = [];
+      for (const file of candidates.success ? candidates.stdout.split("\0").filter(Boolean) : []) {
+        if (isDraftSource(await readFile(file))) drafts.push(file);
+      }
       await git(["add", "--all"]);
+      if (drafts.length > 0) {
+        const unstaged = await executeBinary({
+          binaryPath: options.gitPath,
+          args: ["rm", "--cached", "-q", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
+          stdin: drafts.map((f) => `:(literal)${f}\0`).join(""),
+          workingDir: ".",
+          timeoutMs: 60_000,
+          env: { GIT_TERMINAL_PROMPT: "0" },
+        });
+        // Better no backup than a backup that publishes drafts.
+        if (!unstaged.success) throw new Error(`could not keep drafts out of the backup: ${sanitize(unstaged.stderr, token)}`);
+      }
       const diff = await git(["diff", "--cached", "--quiet"]);
       if (!diff.success) {
         // Has changes to commit

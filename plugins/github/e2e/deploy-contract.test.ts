@@ -31,6 +31,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
     return { success: r.status === 0, exitCode: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
   },
   listSiteFilesWithSizes: async () => [],
+  readFile: async (p: string) => fs.readFileSync(path.join(run.site, p), "utf8"),
 }));
 vi.mock("../src/utils", () => ({ showToast: async () => {} }));
 
@@ -68,7 +69,7 @@ describe.skipIf(!MOSS_BINARY)("github deploy contract with moss", () => {
     if (testDir) fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("publishes moss's build to gh-pages, without drafts, and keeps it off main", async () => {
+  it("publishes moss's build to gh-pages, without drafts, and backs up only non-draft sources to main", async () => {
     const { deployViaGitPush } = await import("../src/github-deploy");
     await deployViaGitPush({ owner: OWNER, repo: REPO, token: "test-token", onProgress: () => {}, gitPath: "git", siteFiles: run.siteFiles });
 
@@ -81,6 +82,8 @@ describe.skipIf(!MOSS_BINARY)("github deploy contract with moss", () => {
 
     const main = remote("ls-tree", "-r", "--name-only", "main").split("\n");
     expect(main).toContain("index.md");
+    // A draft is private by the author's intent, and main may be public.
+    expect(main).not.toContain("secret-plans.md");
     expect(main.filter((f) => f.startsWith(".moss/build"))).toEqual([]);
   });
 });

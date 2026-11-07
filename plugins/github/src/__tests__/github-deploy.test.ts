@@ -20,6 +20,7 @@ vi.mock("../utils", () => ({
 vi.mock("@symbiosis-lab/moss-api", () => ({
   executeBinary: vi.fn(),
   listSiteFilesWithSizes: vi.fn().mockResolvedValue([]),
+  readFile: vi.fn(),
 }));
 
 import { executeBinary, listSiteFilesWithSizes } from "@symbiosis-lab/moss-api";
@@ -32,6 +33,7 @@ import {
   getOriginOwnerRepo,
   looksLikeCorruptGit,
   resolveCurrentGenDir,
+  isDraftSource,
   type DeployViaGitPushOptions,
   type DeployResult,
 } from "../github-deploy";
@@ -227,6 +229,21 @@ describe("github-deploy", () => {
   });
 
   // ==========================================================================
+  // isDraftSource
+  // ==========================================================================
+  describe("isDraftSource", () => {
+    it("reads draft: true from the front matter only", () => {
+      expect(isDraftSource("---\ntitle: Plans\ndraft: true\n---\n# Plans\n")).toBe(true);
+      expect(isDraftSource("---\r\ndraft: true # not yet\r\n---\r\nbody")).toBe(true);
+      expect(isDraftSource("---\ndraft: True\n---\n")).toBe(true);
+      expect(isDraftSource("---\ndraft: false\n---\n")).toBe(false);
+      expect(isDraftSource('---\ndraft: "true"\n---\n')).toBe(false);
+      expect(isDraftSource("---\ntitle: Notes\n---\n\ndraft: true\n")).toBe(false);
+      expect(isDraftSource("# No front matter\n\ndraft: true\n")).toBe(false);
+    });
+  });
+
+  // ==========================================================================
   // resolveCurrentGenDir
   // ==========================================================================
   describe("resolveCurrentGenDir", () => {
@@ -328,6 +345,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // git push --force gh-pages only
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none found)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -370,6 +388,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages only
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -519,6 +538,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(true));                   // git diff --cached --quiet (no changes)
 
@@ -574,6 +594,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -772,6 +793,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -824,6 +846,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -874,6 +897,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -948,6 +972,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (no changes)
         .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
@@ -1095,6 +1120,7 @@ describe("github-deploy", () => {
           // Deferred source backup — find returns large files:
           .mockResolvedValueOnce(gitResult(true, "big-model.bin\ndata/huge.csv\n"))  // find large files
           .mockResolvedValueOnce(gitResult(true))                        // append .gitignore (sh -c)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                        // git add --all
           .mockResolvedValueOnce(gitResult(false))                       // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1139,6 +1165,7 @@ describe("github-deploy", () => {
           // Deferred source backup — find returns large files:
           .mockResolvedValueOnce(gitResult(true, "large-file.bin\n"))    // find large files
           .mockResolvedValueOnce(gitResult(true))                        // append .gitignore (sh -c)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                        // git add --all
           .mockResolvedValueOnce(gitResult(false))                       // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1296,6 +1323,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1373,6 +1401,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1427,6 +1456,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1505,6 +1535,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1575,6 +1606,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (no changes)
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
@@ -1615,6 +1647,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet (no changes)
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
@@ -1754,6 +1787,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -1792,6 +1826,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -1893,6 +1928,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files (none)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (clean working tree)
           // But local has unpushed commits:
@@ -1944,6 +1980,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files (none)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (clean)
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count → 0 (no unpushed)
@@ -2018,6 +2055,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages SUCCEEDS
           // Deferred source backup (retry):
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main def] Deploy\n"))  // commit
@@ -2231,6 +2269,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // git commit
@@ -2281,6 +2320,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -2317,6 +2357,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -2357,6 +2398,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -2431,6 +2473,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // git push gh-pages ONLY
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none found)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
           .mockResolvedValueOnce(gitResult(true, `[main ${commitSha}] Deploy site\n`))  // git commit
@@ -2548,6 +2591,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages (succeeds)
           // Deferred source backup FAILS:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(false, "", "fatal: error"));  // git add --all fails
 
         const onProgress = vi.fn();
