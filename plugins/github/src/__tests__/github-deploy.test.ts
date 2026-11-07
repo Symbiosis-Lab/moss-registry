@@ -48,6 +48,9 @@ const REPO = "my-site";
 const GEN_ABS = "/Users/test/.../project/.moss/build.nosync/generations/gen-abc123def456";
 /** Relative generation directory path (what resolveCurrentGenDir returns) */
 const GEN_DIR = ".moss/build.nosync/generations/gen-abc123def456";
+/** What moss lists for a deploy: the generation's files, drafts left out */
+const SITE_FILES = ["index.html", "notes/a [draft?].html"];
+const STAGE_ARGS = ["add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"];
 
 /**
  * Helper to create a mock Response for fetch
@@ -374,7 +377,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify git init was called
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -402,7 +405,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify remote get-url origin was checked
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -423,7 +426,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Gitignore ownership for .moss/ lives in .moss/.gitignore (written by Rust).
       // Here we only strip stale .moss/* rules from the root .gitignore via sed.
@@ -442,7 +445,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
 
@@ -468,7 +471,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify tree extraction via write-tree --prefix on the resolved generation dir
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -520,7 +523,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // git diff --cached --quiet (no changes)
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("");
       expect((result as DeployResult).orphanSha).toBe("orphan123");
@@ -535,7 +538,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks("abc1234");
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -577,7 +580,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(false));                  // rev-parse --short HEAD FAILS
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("");
     });
@@ -607,7 +610,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow(expect.objectContaining({
         message: expect.not.stringContaining(TOKEN),
       }));
@@ -617,7 +620,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect(onProgress).toHaveBeenCalledWith(0, "Preparing deploy...");
       expect(onProgress).toHaveBeenCalledWith(5, "Staging site files...");
@@ -630,7 +633,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // All calls should use workingDir "." (project root)
       for (const call of mockExecuteBinary.mock.calls) {
@@ -655,7 +658,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow("Failed to write site tree");
     });
 
@@ -683,7 +686,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow("Failed to create gh-pages commit");
     });
 
@@ -701,7 +704,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow(expect.objectContaining({
         message: expect.stringContaining(foreignOrigin),
       }));
@@ -732,7 +735,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow(expect.objectContaining({
         message: expect.stringContaining(`${OWNER}/${REPO}`),
       }));
@@ -776,7 +779,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -828,7 +831,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -878,7 +881,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -907,7 +910,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify rm -f .git/index.lock was called
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -950,7 +953,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Returns empty commitSha (no source changes) but orphanSha populated
       expect((result as DeployResult).commitSha).toBe("");
@@ -991,7 +994,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("assets/huge-video.mp4");
       });
 
@@ -1004,7 +1007,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("100");
       });
 
@@ -1019,7 +1022,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         try {
-          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
           expect.fail("Expected to throw");
         } catch (err: unknown) {
           const error = err as Error;
@@ -1039,7 +1042,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect((result as DeployResult).commitSha).toBe("abc1234");
       });
@@ -1053,7 +1056,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         try {
-          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
         } catch {
           // Expected
         }
@@ -1099,7 +1102,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                       // push main
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify a second sh -c call was made to append to .gitignore
         const shCalls = mockExecuteBinary.mock.calls.filter(
@@ -1143,7 +1146,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                       // push main
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // showToast should have been called with a warning
         expect(mockShowToast).toHaveBeenCalledWith(
@@ -1158,7 +1161,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Should only have one sh -c call (base .gitignore write)
         const shCalls = mockExecuteBinary.mock.calls.filter(
@@ -1174,7 +1177,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify find command was called with correct args
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1194,7 +1197,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // The deferred source backup uses git add --all (no -v)
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1209,7 +1212,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
         // First push: gh-pages only
@@ -1225,7 +1228,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find the gh-pages push call
         const pushCall = mockExecuteBinary.mock.calls.find(
@@ -1241,7 +1244,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find the gh-pages push call and invoke its onStderr
         const pushCall = mockExecuteBinary.mock.calls.find(
@@ -1301,7 +1304,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           domain: "example.com",
         });
 
@@ -1378,7 +1381,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           domain: "example.com",
         });
 
@@ -1432,7 +1435,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           // no domain — .nojekyll should still be injected
         });
 
@@ -1510,7 +1513,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           domain: "example.com",
         });
 
@@ -1540,7 +1543,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks("abc1234");
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Should return DeployResult object instead of string
         expect(result).toHaveProperty("commitSha");
@@ -1577,7 +1580,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect((result as DeployResult).commitSha).toBe("");
         expect((result as DeployResult).orphanSha).toBe("bbb222");
@@ -1617,7 +1620,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect((result as DeployResult).commitSha).toBe("");
         expect((result as DeployResult).orphanSha).toBe("orphan123");
@@ -1631,7 +1634,7 @@ describe("github-deploy", () => {
       it("takes the build back out of the index before the source backup commits to main", async () => {
         setupFullDeployMocks();
 
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git", siteFiles: SITE_FILES });
 
         const args = mockExecuteBinary.mock.calls.map((c) => (c[0].args ?? []).join(" "));
         const unstage = args.indexOf("rm -r --cached -q --ignore-unmatch -- .moss/build.nosync/");
@@ -1651,7 +1654,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(false, "", "The following paths are ignored by one of your .gitignore files"));
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow(/Failed to stage the built site.*ignored/);
         expect(mockExecuteBinary.mock.calls.some((c) => c[0].args?.[0] === "push")).toBe(false);
       });
@@ -1660,13 +1663,14 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify git add uses the resolved generation dir, not the legacy .moss/build/site/
         expect(mockExecuteBinary).toHaveBeenCalledWith(
           expect.objectContaining({
             binaryPath: "git",
-            args: ["add", "-f", `${GEN_DIR}/`],
+            args: STAGE_ARGS,
+            stdin: `:(literal)${GEN_DIR}/index.html\0:(literal)${GEN_DIR}/notes/a [draft?].html\0`,
           })
         );
 
@@ -1688,7 +1692,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify write-tree uses the resolved generation dir prefix
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1703,7 +1707,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Gitignore ownership for .moss/ moved to .moss/.gitignore (Rust-managed).
         // The plugin only strips stale .moss/* and !.moss/* lines from the root
@@ -1757,7 +1761,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // push main
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.treeChanged).toBe(true);
       });
@@ -1795,7 +1799,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // push main
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.treeChanged).toBe(false);
       });
@@ -1804,7 +1808,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // First deploy: no previous gh-pages ref, so tree is always "changed"
         expect(result.treeChanged).toBe(true);
@@ -1819,7 +1823,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify rm -f .git/index.lock was called
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1842,7 +1846,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find the indices of the lock removal and first git add
         const indexLockIdx = mockExecuteBinary.mock.calls.findIndex(
@@ -1896,7 +1900,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // git push main (pushes the 3 pending commits)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.commitSha).toBe("");  // No new commit (working tree was clean)
         expect(result.orphanSha).toBe("orphanSha");
@@ -1945,7 +1949,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count → 0 (no unpushed)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.commitSha).toBe("");
 
@@ -2021,7 +2025,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // push main SUCCEEDS
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Should succeed on retry
         expect((result as DeployResult).commitSha).toBe("def5678");
@@ -2063,7 +2067,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("git push failed");
 
         // Should NOT have tried to rm -rf .git for recovery
@@ -2105,7 +2109,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow(expect.objectContaining({
           message: expect.stringContaining("Could not read"),
         }));
@@ -2175,7 +2179,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("git push failed");
       });
     });
@@ -2234,7 +2238,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify git fetch was called
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -2284,7 +2288,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Deploy should succeed despite fetch failure
       expect(result.commitSha).toBe("abc1234");
@@ -2320,7 +2324,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify commit-tree uses -p with previous gh-pages tip
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -2360,7 +2364,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify commit-tree WITHOUT -p (orphan commit)
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -2438,7 +2442,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find all git add calls
         const addCalls = mockExecuteBinary.mock.calls.filter(
@@ -2447,14 +2451,14 @@ describe("github-deploy", () => {
 
         // First add call should be the resolved generation dir only (NOT --all, NOT .moss/build/site/)
         expect(addCalls.length).toBeGreaterThanOrEqual(1);
-        expect(addCalls[0][0].args).toEqual(["add", "-f", `${GEN_DIR}/`]);
+        expect(addCalls[0][0].args).toEqual(STAGE_ARGS);
       });
 
       it("uses write-tree --prefix to get site tree SHA directly from index", async () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(mockExecuteBinary).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -2476,7 +2480,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
 
@@ -2505,7 +2509,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
 
@@ -2548,7 +2552,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         // Should NOT throw even though source backup failed
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
         expect(result.orphanSha).toBe("orphan999");
       });
 
@@ -2556,7 +2560,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // "Deployed!" should be called
         expect(onProgress).toHaveBeenCalledWith(100, "Deployed!");
