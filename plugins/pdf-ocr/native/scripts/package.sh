@@ -113,7 +113,7 @@ if [ "$(cat "$prefix/.stamp" 2>/dev/null)" != "$stamp" ]; then
   # shellcheck disable=SC2086
   cmake -S "$deps/src/tesseract-$tv" -B "$deps/src/tesseract-build" $os_flags \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_PREFIX_PATH="$prefix" \
-    -DBUILD_SHARED_LIBS=OFF -DBUILD_TRAINING_TOOLS=OFF -DBUILD_TESTS=OFF \
+    -DBUILD_SHARED_LIBS=OFF -DBUILD_TRAINING_TOOLS=OFF -DBUILD_TESTS=OFF -DSW_BUILD=OFF \
     -DENABLE_NATIVE=OFF -DOPENMP_BUILD=OFF -DGRAPHICS_DISABLED=ON -DENABLE_CCACHE=OFF \
     -DDISABLE_ARCHIVE=ON -DDISABLE_CURL=ON -DDISABLE_TIFF=ON \
     -DCMAKE_EXE_LINKER_FLAGS="$link_flags"
@@ -143,9 +143,11 @@ if [ "$plat" = darwin-arm64 ]; then
   floor=$MACOSX_DEPLOYMENT_TARGET
   num() { echo "$1" | awk -F. '{ printf "%d", $1 * 10000 + $2 * 100 + $3 }'; }
   echo "minimum macOS of each Mach-O in the archive:"
+  checked=""
   for f in $(find "$out" -type f | sort); do
     file -b "$f" | grep -q '^Mach-O' || continue
     name=${f#"$stage/"}
+    checked="$checked ${f##*/}"
     extra=$(otool -L "$f" | tail -n +2 | awk '{ print $1 }' \
       | grep -vxF "$(otool -D "$f" | sed -n 2p)" | grep -vE '^(/usr/lib/|/System/Library/)' || true)
     [ -z "$extra" ] || { echo "$name loads libraries beyond the system's: $extra" >&2; exit 1; }
@@ -159,6 +161,10 @@ if [ "$plat" = darwin-arm64 ]; then
         echo "  note: pdfium $(scripts/pin.sh pdfium.darwin-arm64 release) is prebuilt and declares macOS $minos, above the $floor everything built here targets" ;;
       *) echo "$name declares macOS $minos; everything built here must target $floor" >&2; exit 1 ;;
     esac
+  done
+  # A check that found nothing to check would pass.
+  for want in pdf-ocr tesseract libpdfium.dylib; do
+    case " $checked " in *" $want "*) ;; *) echo "the macOS check never saw $want" >&2; exit 1 ;; esac
   done
 else
   for f in "$out/pdf-ocr" "$out/tesseract" "$out/libpdfium.so"; do
