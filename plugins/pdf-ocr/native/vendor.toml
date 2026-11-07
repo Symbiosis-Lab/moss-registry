@@ -1,5 +1,5 @@
-# Pinned third-party inputs (not committed; fetched by scripts/fetch-pdfium.sh and,
-# on Linux, scripts/package-linux.sh). Sections are keyed by moss's platform names.
+# Pinned third-party inputs (not committed; fetched by scripts/fetch-pdfium.sh and
+# scripts/package.sh). Sections are keyed by moss's platform names.
 [pdfium.darwin-arm64]
 release = "chromium/8086"
 url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8086/pdfium-mac-arm64.tgz"
@@ -16,13 +16,11 @@ url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8
 sha256 = "e7e2fe4686925618330103cb167950aca5a84bb00fd977a41b86be59dd1480a2"
 
 # Inputs to the OCR fingerprint, whose first two parts are the lines
-# `tesseract 5.5.3` and ` leptonica-1.87.0` of `tesseract --version`. On macOS,
-# package-macos.py refuses any other Homebrew tesseract; on Linux,
-# package-linux.sh builds both from these sources. Both ship this traineddata
-# (tessdata_fast 4.1.0, byte-identical to Homebrew's), so every build reads a
-# page the same way and a new release keeps a site's cached readings.
-# Homebrew's last tesseract for macOS 14 is 5.5.3, so the darwin runner stays
-# on macos-14 until this pin moves; moving it redoes every cached reading.
+# `tesseract 5.5.3` and ` leptonica-1.87.0` of `tesseract --version`.
+# scripts/package.sh builds both from these sources on every platform and ships
+# this traineddata (tessdata_fast 4.1.0), so every build reads a page the same
+# way and a new release keeps a site's cached readings. Moving either pin redoes
+# every cached reading.
 [tesseract]
 version = "5.5.3"
 url = "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz"
@@ -32,6 +30,13 @@ sha256 = "9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884"
 version = "1.87.0"
 url = "https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz"
 sha256 = "c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7"
+
+# macOS only: leptonica reads pdf-ocr's PNG pages through it (Linux links the
+# distribution's static libpng; zlib comes with both systems).
+[libpng]
+version = "1.6.59"
+url = "https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.59.tar.gz"
+sha256 = "2540302a1844ad2b2b501977abecfa850f265f97b78f065a712ab4074a89f5b5"
 
 [eng-traineddata]
 url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/65727574dfcd264acbb0c3e07860e4e9e9b22185/eng.traineddata"

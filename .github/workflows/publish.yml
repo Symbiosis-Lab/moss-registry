@@ -274,6 +274,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # native/vendor/<platform>/ is kept between runs; see validate.yml.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ matrix.plugin }}/native/vendor/${{ matrix.platform }}
+          key: native-${{ matrix.id }}-${{ matrix.platform }}-${{ matrix.runner }}-${{ hashFiles(format('{0}/native/vendor.toml', matrix.plugin), format('{0}/native/scripts/**', matrix.plugin), format('{0}/native/build-*.sh', matrix.plugin)) }}
+
       - name: Build and run the ${{ matrix.platform }} program
         env:
           PLUGIN: ${{ matrix.plugin }}

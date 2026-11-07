@@ -34,7 +34,7 @@ About fifteen outputs: meeting agendas and minutes, audit letters, two scanned a
 ## Packaging notes
 
 - pdfium: `libpdfium.dylib` from bblanchon/pdfium-binaries `chromium/8086` (sha256 in `vendor.toml`) sits next to the executable; one build per platform (`pdfium-mac-arm64`, `-mac-x64`, `-linux-x64`, `-win-x64`). The binary has no other native dependency.
-- tesseract: Homebrew's tesseract is dynamically linked against leptonica, libpng, libtiff and so on, so copying only the executable does not work. Ship either a relocatable bundle (executable plus its dylibs, rewritten with `install_name_tool -change ... @executable_path/`, plus a `tessdata/eng.traineddata` next to it; the binary sets `TESSDATA_PREFIX` to that directory when it exists) or a static build per platform. Language data is about 4 MB for `eng` (fast) and 15 MB for `eng` (best); the corpus was run with Homebrew's default data.
+- tesseract (as found when this evaluation was run; the plugin now builds a static Tesseract, see `../README.md`): Homebrew's tesseract is dynamically linked against leptonica, libpng, libtiff and so on, so copying only the executable does not work. Ship either a relocatable bundle (executable plus its dylibs, rewritten with `install_name_tool -change ... @executable_path/`, plus a `tessdata/eng.traineddata` next to it; the binary sets `TESSDATA_PREFIX` to that directory when it exists) or a static build per platform. Language data is about 4 MB for `eng` (fast) and 15 MB for `eng` (best); the corpus was run with Homebrew's default data.
 - OCR work is capped by rasterising at no more than 6,000 pixels on the long side, so oversized sheets are recognised at under 300 dpi.
 
 ## Second pass (side columns, section titles)
