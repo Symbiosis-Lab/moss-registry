@@ -11,6 +11,7 @@
 import {
   getPluginCookie,
   setPluginCookie,
+  clearPluginCookies,
   getPluginEnvVar,
 } from "@symbiosis-lab/moss-api";
 
@@ -67,12 +68,12 @@ export function clearJwtCache(): void {
   cachedJwt = null;
 }
 
-/** Remove the stored Pinata JWT. */
+/** Remove the stored Pinata JWT. Callers go on to ask for a new one, so a failure is logged, not thrown. */
 export async function clearPinataJwt(): Promise<void> {
-  try {
-    await setPluginCookie([]);
-  } catch {
-    // Ignore.
-  }
   cachedJwt = null;
+  try {
+    await clearPluginCookies();
+  } catch (e) {
+    console.error(`Could not clear the stored Pinata token: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }

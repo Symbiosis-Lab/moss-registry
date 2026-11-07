@@ -1,5 +1,9 @@
 # Changelog — moss-plugin-ipfs
 
+## 0.1.1
+
+- Fixed: a Pinata token Pinata rejects is now actually forgotten, so the next publish asks you to reconnect. The plugin cleared it by storing an empty cookie set, which moss refuses; it now asks moss to clear the plugin's cookies, and logs it if that fails.
+
 ## 0.1.0
 
 Initial release.
