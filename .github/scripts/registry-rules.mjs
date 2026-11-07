@@ -78,7 +78,7 @@ export function parseReleaseTag(tag) {
  * runner because the glibc a program is built against is the oldest it runs on.
  */
 export const NATIVE_RUNNERS = {
-  "darwin-arm64": "macos-14",
+  "darwin-arm64": "macos-15",
   "linux-arm64": "ubuntu-22.04-arm",
   "linux-x64": "ubuntu-22.04",
 };
