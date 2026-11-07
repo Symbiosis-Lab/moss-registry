@@ -93,6 +93,8 @@ function createSite(): string {
   const pluginDir = path.join(site, ".moss", "plugins", "onionpress");
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(path.join(site, "index.md"), "# Hello onion\n\nPublished over Tor.\n");
+  // moss builds a draft for the preview but never hands it to a deploy plugin.
+  fs.writeFileSync(path.join(site, "secret-plans.md"), "---\ndraft: true\n---\n# Secret plans\n\nNot for publishing.\n");
   for (const file of fs.readdirSync(PLUGIN_DIST)) {
     fs.copyFileSync(path.join(PLUGIN_DIST, file), path.join(pluginDir, file));
   }
@@ -172,6 +174,8 @@ describe.skipIf(!MOSS_BINARY)("onionpress plugin through moss deploy", () => {
     const upload = seen.uploaded[0].toString("latin1");
     expect(upload).toContain("index.html");
     expect(upload).toContain("Hello onion");
+    expect(upload).not.toContain("secret-plans");
+    expect(upload).not.toContain("Not for publishing.");
 
     // The commit names the generation that was uploaded.
     const genId = new URLSearchParams(seen.generationQuery).get("id");
