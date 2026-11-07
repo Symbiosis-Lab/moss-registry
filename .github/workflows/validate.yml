@@ -143,7 +143,9 @@ jobs:
 
       - name: Build from source
         working-directory: ${{ matrix.plugin }}
-        run: npm run build
+        run: |
+          npm run build
+          npm run typecheck --if-present
 
       - name: Test (unit scope only)
         working-directory: ${{ matrix.plugin }}
@@ -171,9 +173,11 @@ jobs:
           set -euo pipefail
           moss="$(scripts/fetch-moss.sh "$RUNNER_TEMP/moss")"
           cd "${{ matrix.plugin }}"
-          if node -e "process.exit(require('./package.json').scripts?.['test:e2e'] ? 0 : 1)"; then
-            MOSS_BINARY="$moss" INCLUDE_E2E=1 npm run test:e2e
+          if ! node -e "process.exit(require('./package.json').scripts?.['test:e2e'] ? 0 : 1)"; then
+            echo "::error::${{ matrix.plugin }} has an e2e/ directory but no test:e2e script to run it"
+            exit 1
           fi
+          MOSS_BINARY="$moss" INCLUDE_E2E=1 npm run test:e2e
 
       # dist/ is gitignored, so what ships is always built here from the source
       # under review — there is no committed build that could drift from it.

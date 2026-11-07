@@ -10,6 +10,7 @@
     "build": "npm run clean && npm run bundle && npm run copy-assets",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },

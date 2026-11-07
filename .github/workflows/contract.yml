@@ -69,3 +69,25 @@ jobs:
           MOSS_BINARY: ${{ steps.moss.outputs.path }}
           INCLUDE_E2E: "1"
         run: npm run test:e2e
+
+  # A red scheduled run notifies nobody by itself, so a failure keeps one open
+  # issue current instead.
+  report:
+    needs: plugins
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="A plugin fails against the newest moss release"
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "Still failing: $RUN"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The daily contract run failed: $RUN"
+          fi

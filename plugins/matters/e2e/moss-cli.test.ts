@@ -12,6 +12,8 @@ import * as os from "os";
 import * as path from "path";
 
 const MOSS_BINARY = process.env.MOSS_BINARY;
+// In CI a skipped suite would read as a pass, so a missing binary fails there.
+if (!MOSS_BINARY && process.env.CI) throw new Error("MOSS_BINARY is not set; CI must run this suite");
 if (!MOSS_BINARY) console.warn("matters e2e skipped: set MOSS_BINARY to a moss CLI binary");
 
 const PLUGIN_DIST = path.join(__dirname, "../dist");

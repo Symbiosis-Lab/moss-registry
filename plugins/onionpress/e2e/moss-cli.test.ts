@@ -15,6 +15,8 @@ import * as path from "path";
 import { RECEIVER_API_PATH, RECEIVER_PORTS } from "../src/constants";
 
 const MOSS_BINARY = process.env.MOSS_BINARY;
+// In CI a skipped suite would read as a pass, so a missing binary fails there.
+if (!MOSS_BINARY && process.env.CI) throw new Error("MOSS_BINARY is not set; CI must run this suite");
 if (!MOSS_BINARY) console.warn("onionpress e2e skipped: set MOSS_BINARY to a moss CLI binary");
 
 const PLUGIN_DIST = path.join(__dirname, "../dist");
@@ -159,6 +161,7 @@ describe.skipIf(!MOSS_BINARY)("onionpress plugin through moss deploy", () => {
 
   function skipIfNoStub(ctx: { skip: () => never }) {
     if (!skipReason) return;
+    if (process.env.CI) throw new Error(`onionpress deploy case cannot run in CI: ${skipReason}`);
     console.warn(`onionpress deploy case skipped: ${skipReason}`);
     ctx.skip();
   }

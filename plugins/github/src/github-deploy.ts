@@ -257,11 +257,7 @@ function parsePushProgress(
   }
 }
 
-/**
- * Where moss keeps the build, newest layout first: `.moss/build.nosync/` since
- * moss 0.15.1, `.moss/build/` before. The old one never sits beside a new one:
- * moss renames it into the new layout at the start of its first build.
- */
+/** moss's build directory, newest layout first (moss ≥0.15.1); moss renames the old one away at its first build, so the two never coexist. */
 const BUILD_ROOTS = [".moss/build.nosync", ".moss/build"] as const;
 
 /**
