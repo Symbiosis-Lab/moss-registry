@@ -189,6 +189,13 @@ async function deploy(context: DeployContext): Promise<HookResult> {
   // Pre-flight: find git; if this machine has none, offer its download and wait.
   await reportProgress("configuring", 1, 10, "Checking git...");
   const gitPath = (await resolveGitPath()) ?? (await waitForGit());
+  // Publishing runs readlink, rm and sh, which Windows lacks; a moss-resolved
+  // git at a drive-letter path is how a plugin can tell it is on Windows.
+  if (gitPath && /^[A-Za-z]:[\\/]/.test(gitPath)) {
+    const msg = "Publishing to GitHub Pages from Windows arrives in the next moss update.";
+    await reportError(msg, "validation", true);
+    return { success: false, message: msg };
+  }
   if (!gitPath) {
     const msg = "Git is required for deployment.\n\nInstall git by running: xcode-select --install";
     await reportError(msg, "validation", true);
