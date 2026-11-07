@@ -168,7 +168,7 @@ describe("packGeneration", () => {
     expect(mockExecuteBinary).toHaveBeenCalledWith(
       expect.objectContaining({
         binaryPath: "tar",
-        args: ["-cf", "/tmp/moss-42.tar", "-C", ".moss/build/current", "."],
+        args: ["-cf", "/tmp/moss-42.tar", "-C", ".moss/build.nosync/current", "."],
         workingDir: ".",
       }),
     );
@@ -186,10 +186,21 @@ describe("packGeneration", () => {
     expect(mockExecuteBinary.mock.calls[0][0].env).toEqual({ COPYFILE_DISABLE: "1" });
   });
 
-  it("throws a build-first error when tar fails", async () => {
-    mockExecuteBinary.mockResolvedValueOnce(exec(false, "", "tar: .moss/build/current: No such file"));
+  it("falls back to the layout moss used before 0.15.1", async () => {
+    mockExecuteBinary
+      .mockResolvedValueOnce(exec(false, "", "tar: could not chdir to '.moss/build.nosync/current'"))
+      .mockResolvedValueOnce(exec(true));
 
-    await expect(packGeneration("moss-42")).rejects.toThrow("Run a build first");
+    await expect(packGeneration("moss-42")).resolves.toBe("/tmp/moss-42.tar");
+    expect(mockExecuteBinary.mock.calls[1][0].args).toEqual(["-cf", "/tmp/moss-42.tar", "-C", ".moss/build/current", "."]);
+  });
+
+  it("throws a build-first error naming the current layout when no build exists", async () => {
+    mockExecuteBinary
+      .mockResolvedValueOnce(exec(false, "", "tar: could not chdir to '.moss/build.nosync/current'"))
+      .mockResolvedValueOnce(exec(false, "", "tar: could not chdir to '.moss/build/current'"));
+
+    await expect(packGeneration("moss-42")).rejects.toThrow(/Run a build first.*build\.nosync/);
   });
 });
 
