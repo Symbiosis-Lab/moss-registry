@@ -71,6 +71,7 @@ export async function start() {
   return {
     config: { api: base },
     secrets: creds,
+    edits: false,
     owns: (page) => /syndicated:[\s\S]*https:\/\/x\.com\/i\/status\/\d+/.test(page),
     count: async () => posts.size,
     async verify(copies, check) {

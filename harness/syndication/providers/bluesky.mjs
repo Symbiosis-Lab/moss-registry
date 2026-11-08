@@ -26,6 +26,7 @@ export async function start() {
   return {
     config: { handle: "alex.test", service: pds },
     secrets: { app_password: appPassword.password },
+    edits: false,
     owns: (page) => /syndicated:[\s\S]*https:\/\/bsky\.app\/profile\/alex\.test\/post\//.test(page),
     count: async () => (await records()).length,
     async verify(copies, check) {

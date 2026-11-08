@@ -18,7 +18,8 @@ What one run does:
 4. Runs `moss deploy --dry-run --json` and keeps the copies it plans: each copy's form and the exact text of each part.
 5. Runs `moss deploy`, and checks that each network holds exactly those copies, threads as replies in order, links marked as links, teasers with a card to the original, and that each post's `syndicated:` lists its copy.
 6. Runs `moss deploy` again and checks that no network gained a post.
-7. Stops every network and server it started, and removes the scratch folder unless `--keep`.
+7. Edits two posted notes and runs `moss deploy` once more: a network that edits its posts (Mastodon, LinkedIn) must hold the edited text in the same posts, and moss must say the copy cannot change on one that does not (Bluesky, X). No network gains a post.
+8. Stops every network and server it started, and removes the scratch folder unless `--keep`.
 
 Exit status 0 means every check passed; each check prints one line.
 
@@ -31,6 +32,7 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 - `verify(copies, check)`: reads the network and calls `check(ok, what)` for each planned copy;
 - `count()`: how many posts the account has, for the second-publish check;
 - `owns(frontMatter)`: whether a post's front matter lists a copy on this network;
+- `edits`: whether the network edits a post in place, so the plugin offers `update_copy`;
 - `stop()`.
 
 | Network | Local copy |
@@ -40,6 +42,6 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 | LinkedIn | a stand-in for the Posts API in process, written from LinkedIn's API reference: LinkedIn has no test environment, and its development tier posts to the live network. It requires the version and protocol headers, posts only as the token's own member, refuses commentary with an unescaped reserved character, and holds 3,000 characters as the limit. |
 | X | a stand-in for the v2 posting API in process, written from X's API reference: X has no test environment, and every real post is billed. It checks each request's OAuth 1.0a signature with Node's own HMAC, refuses a post over 280 weighted characters, a duplicate, or a reply to a post it does not hold, and shortens links as X does. |
 
-A run checks publishing only: editing and deleting a copy, and undoing a thread that fails part-way, are covered by each plugin's unit tests, not here.
+Deleting a copy, and undoing a thread that fails part-way, are covered by each plugin's unit tests, not here: moss 0.15.19 has nothing that asks a channel to delete a copy.
 
 The two stand-ins are not recorded responses: nothing was recorded from either network. They hold the request and response shapes the API references document, so a live run on a test account is what confirms those shapes.

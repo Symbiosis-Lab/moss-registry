@@ -8,7 +8,8 @@
 // serves the build at, and lets moss post the copies. It then checks that each
 // network holds exactly the copies `moss deploy --dry-run --json` said it
 // would post, in order, with their replies, that each address is written back
-// into its post, and that a second publish posts nothing.
+// into its post, that a second publish posts nothing, and that an edited post
+// edits its copy where the network allows it.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -163,6 +164,31 @@ try {
   const after = await Promise.all(started.map((s) => s.net.count()));
   started.forEach((s, i) => check(after[i] === counts[i], `a second publish posts nothing to ${s.id} (${counts[i]} → ${after[i]})`));
   for (const s of started) check(posted(second.stderr, s.id) === 0, `a second publish reports no new copy to ${s.id}`);
+
+  // Editing a posted note and publishing again edits its copy in place where
+  // the network allows it, and elsewhere moss says the copy cannot change.
+  const edits = { "notes/2026-11-06 1432.md": ["Autumn's first hotpot", "Autumn's first hotpot, and a second bowl"], "notes/2026-11-06 1500.md": ["The second part.", "The second part, edited."] };
+  for (const [rel, [from, to]] of Object.entries(edits)) {
+    const p = path.join(site, rel);
+    fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace(from, to));
+  }
+  const third = await runMoss(["deploy", site, "--allow-plugins"]);
+  for (const line of third.stderr.split("\n").filter((l) => l.includes(" — "))) console.log(`  moss: ${line}`);
+  const edited = await Promise.all(started.map((s) => s.net.count()));
+  started.forEach((s, i) => check(edited[i] === after[i], `publishing the edits posts nothing new to ${s.id} (${after[i]} → ${edited[i]})`));
+  for (const s of started) {
+    const said = (rel) => third.stderr.split("\n").find((l) => l.includes(`${rel} — `) && l.includes(` ${s.id}`)) ?? "";
+    for (const rel of Object.keys(edits)) {
+      const want = s.net.edits ? `updated on ${s.id}: ` : `${s.id} cannot edit its copy`;
+      check(said(rel).includes(want), `${rel}: moss reports "${want.trim()}" (${said(rel).split(" — ")[1] ?? "nothing"})`);
+    }
+    if (!s.net.edits) continue;
+    console.log(`checking ${s.id}'s edited copies…`);
+    const changed = due
+      .filter((c) => c.channel === s.id && edits[c.source_path])
+      .map((c) => ({ ...c, parts: c.parts.map((p) => ({ ...p, text: p.text.replace(...edits[c.source_path]) })) }));
+    await s.net.verify(changed, check);
+  }
 } catch (e) {
   failures.push(String(e?.stack ?? e));
   console.error(e);

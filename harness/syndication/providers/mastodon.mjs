@@ -104,6 +104,7 @@ export async function start({ scratch }) {
     return {
       config: { server: base },
       secrets: { access_token: author },
+      edits: true,
       owns: (page) => new RegExp(`syndicated:[\\s\\S]*${base}/@alex/statuses/`).test(page),
       count: async () => (await statuses()).length,
       async verify(copies, check) {

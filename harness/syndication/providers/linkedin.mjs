@@ -72,6 +72,7 @@ export async function start() {
   return {
     config: { api: `http://127.0.0.1:${server.address().port}` },
     secrets: { access_token: TOKEN },
+    edits: true,
     owns: (page) => /syndicated:[\s\S]*https:\/\/www\.linkedin\.com\/feed\/update\/urn:li:share:\d+\//.test(page),
     count: async () => posts.size,
     async verify(copies, check) {
