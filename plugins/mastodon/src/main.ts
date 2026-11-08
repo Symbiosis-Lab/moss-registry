@@ -155,14 +155,15 @@ const PAGES = 10;
 /** Mastodon's ids are numbers and GoToSocial's are ULIDs; both sort by length, then character by character. */
 const later = (a: string, b: string) => (a.length !== b.length ? a.length > b.length : a > b);
 
-/** The author's own statuses after `id`, or null when there are more than this reads. */
+/** The author's own statuses after `id`, or null when they fill every page read. */
 async function statusesAfter(a: Account, me: string, id: string): Promise<Status[] | null> {
   const all: Status[] = [];
   let after = id;
   for (let page = 0; page < PAGES; page++) {
     const batch: Status[] = await call(a, "GET", `/api/v1/accounts/${me}/statuses?limit=${PAGE}&min_id=${after}`);
+    // Only an empty page ends it: a server that filters after its limit answers short pages before the last.
+    if (!batch.length) return all;
     all.push(...batch);
-    if (batch.length < PAGE) return all;
     after = batch.reduce((max, s) => (later(s.id, max) ? s.id : max), after);
   }
   return null;

@@ -12,7 +12,7 @@ const html = (text: string) =>
     .replace(/https?:\/\/(\S+)/g, (url, rest) => `<a href="${url}" rel="nofollow noopener" target="_blank"><span class="invisible">https://</span><span class="ellipsis">${rest.slice(0, 20)}</span></a>`);
 
 /** An in-memory server: one account, the client API calls the plugin makes. */
-function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number; contextCut?: boolean } = {}) {
+function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number; contextCut?: boolean; pageCap?: number } = {}) {
   const statuses = new Map<string, any>();
   const calls: string[] = [];
   let next = 1;
@@ -48,7 +48,8 @@ function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; s
       if (u.searchParams.get("exclude_replies") === "true") mine = mine.filter((s) => !s.in_reply_to_id);
       const after = u.searchParams.get("min_id");
       if (after) mine = mine.filter((s) => Number(s.id) > Number(after));
-      const limit = Number(u.searchParams.get("limit") ?? 20);
+      // A server that filters after its database limit answers pages shorter than asked.
+      const limit = Math.min(Number(u.searchParams.get("limit") ?? 20), opts.pageCap ?? Infinity);
       return reply(200, (after ? mine.slice(0, limit) : mine.slice(-limit)).reverse());
     }
     if (method === "GET" && u.pathname.endsWith("/context")) {
@@ -161,6 +162,12 @@ describe("find_copy", () => {
     const posted = await publish_copy(job({ form: "thread", parts: thread }));
     expect(await find_copy(job({ op: "find", form: "thread", parts: thread }))).toEqual(posted);
     expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
+  });
+
+  it("reads on past a page shorter than asked, as a server that filters after its limit answers", async () => {
+    fakeServer({ pageCap: 1 });
+    const posted = await publish_copy(job({ form: "thread", parts: thread }));
+    expect(await find_copy(job({ op: "find", form: "thread", parts: thread }))).toEqual(posted);
   });
 
   it("reads past one page of the author's statuses, and cannot tell when there are too many since the copy", async () => {
