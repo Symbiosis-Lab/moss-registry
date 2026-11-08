@@ -20,7 +20,7 @@ printf '%s' 'the-access-token' | moss plugin secret set mastodon access_token ~/
 
 A post that fits in 500 characters is posted whole, with every link counted as 23 characters, as Mastodon counts it. A post written in parts, with a line holding only `---` between blank lines, is posted as a thread of replies. Anything longer, and every titled article, is posted as its opening and a link to the original, which Mastodon shows as a card.
 
-When a post changes, each status of its copy is edited in place. A thread can change its words but not its number of parts; moss says so if it does. A send that is interrupted is looked up among your recent statuses before anything is posted again: by its text, or a teaser by its link to the post. If no single status matches, or a thread is only partly there, moss asks you rather than risk a second copy.
+When a post changes, each status of its copy is edited in place. A thread can change its words but not its number of parts; moss says so if it does. A send that is interrupted is looked up among your recent statuses before anything is posted again: by its text, or a teaser by its link to the post. If no single status matches, or a thread is only partly there or goes on past the post's last part, moss asks you rather than risk a second copy.
 
 ## Network access
 

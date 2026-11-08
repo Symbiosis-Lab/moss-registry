@@ -140,6 +140,13 @@ describe("find_copy", () => {
     expect(edited.message).toMatch(/retry-copies/);
   });
 
+  it("cannot tell when the copy has more replies than the post has parts, as when it was shortened after the send", async () => {
+    fakeServer();
+    await publish_copy(job({ form: "thread", parts: thread }));
+    expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread.slice(0, 2) }))).success).toBe(false);
+  });
+
   it("cannot tell when two statuses match, or a thread is only partly there", async () => {
     const server = fakeServer();
     await publish_copy(job());

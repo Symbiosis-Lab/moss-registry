@@ -173,14 +173,15 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
     const matches = statuses.filter((s) => !s.in_reply_to_id && (same(plainText(s.content), parts[0]?.text ?? "") || s.content.includes(`href="${job.post.url}"`)));
     if (matches.length !== 1) return unsure(matches.length ? `${matches.length} statuses match the copy` : "no recent status matches the copy");
     const chain = [matches[0]];
-    if (parts.length > 1) {
-      const { descendants }: { descendants: Status[] } = await call(a, "GET", `/api/v1/statuses/${chain[0].id}/context`);
-      for (const part of parts.slice(1)) {
-        const next = descendants.find((s) => s.account.id === me.id && s.in_reply_to_id === chain[chain.length - 1].id && same(plainText(s.content), part.text));
-        if (!next) return unsure(`only ${chain.length} of the thread's ${parts.length} parts are on the account`);
-        chain.push(next);
-      }
+    const { descendants }: { descendants: Status[] } = await call(a, "GET", `/api/v1/statuses/${chain[0].id}/context`);
+    const replies = (s: Status) => descendants.filter((d) => d.account.id === me.id && d.in_reply_to_id === s.id);
+    for (const part of parts.slice(1)) {
+      const next = replies(chain[chain.length - 1]).find((s) => same(plainText(s.content), part.text));
+      if (!next) return unsure(`only ${chain.length} of the thread's ${parts.length} parts are on the account`);
+      chain.push(next);
     }
+    // The post may have lost parts since the send, or the author replied to the copy: either way it is not certain which statuses are the copy.
+    if (replies(chain[chain.length - 1]).length) return unsure("the copy on the account goes on past the post's last part");
     const [first, ...rest] = chain;
     return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
   } catch (e) {

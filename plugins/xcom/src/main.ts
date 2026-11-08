@@ -180,6 +180,8 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
       if (!matches.length) return unsure(chain.length ? `only ${chain.length} of the thread's ${parts.length} parts are among the latest posts` : "none of the latest posts is the copy");
       chain.push(matches[0].id);
     }
+    // The post may have lost parts since the send, or the author replied to the copy: either way it is not certain which posts are the copy.
+    if (latest.some((p) => repliesTo(p) === chain[chain.length - 1])) return unsure("the copy goes on past the post's last part among the latest posts");
     const [first, ...rest] = chain;
     return { success: true, copy: { id: first, url: address(first), parts: rest.map((id) => ({ id, url: address(id) })) } };
   } catch (e) {

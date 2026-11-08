@@ -209,6 +209,13 @@ describe("find_copy", () => {
     expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
   });
 
+  it("cannot tell when the copy has more replies than the post has parts, as when it was shortened after the send", async () => {
+    fakeX();
+    await publish_copy(job({ form: "thread", parts: thread }));
+    expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread.slice(0, 2) }))).success).toBe(false);
+  });
+
   it("cannot tell when a thread is only partly there, and leaves its posts alone", async () => {
     const x = fakeX();
     await publish_copy(job({ form: "thread", parts: thread.slice(0, 2) }));

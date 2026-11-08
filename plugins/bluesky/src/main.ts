@@ -75,6 +75,17 @@ function refused(e: unknown): CopyResult {
   throw e;
 }
 
+/** The parts already on the network from part `from` on, by their keys: a copy may have had more parts when first sent. */
+async function postedFrom(s: Session, idempotencyKey: string, from: number): Promise<StrongRef[]> {
+  const refs: StrongRef[] = [];
+  for (let i = from; i < 100; i++) {
+    const ref = await getPost(s, recordKey(idempotencyKey, i));
+    if (!ref) break;
+    refs.push(ref);
+  }
+  return refs;
+}
+
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   let s: Session;
   try {
@@ -99,6 +110,8 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
       }
       refs.push(await putPost(s, recordKey(job.idempotency_key, i), record));
     }
+    // A retry of a send whose post has since lost parts: the parts sent then are the copy's too.
+    refs.push(...(await postedFrom(s, job.idempotency_key, parts.length)));
   } catch (e) {
     // A thread that stopped part way is retried whole: the parts already sent
     // keep their record keys and are found again, not posted twice.
@@ -115,12 +128,7 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const s = await session(job);
     // Every part on the network, the planned count or not, so a later delete reaches them all.
-    const refs: StrongRef[] = [];
-    while (refs.length < 100) {
-      const ref = await getPost(s, recordKey(job.idempotency_key, refs.length));
-      if (!ref) break;
-      refs.push(ref);
-    }
+    const refs = await postedFrom(s, job.idempotency_key, 0);
     // A thread cut short is sent again whole: its parts keep their keys.
     if (refs.length === 0 || refs.length < (job.parts ?? []).length) return { success: true, copy: null };
     const [first, ...rest] = refs;

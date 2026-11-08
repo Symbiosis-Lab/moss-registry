@@ -128,6 +128,15 @@ describe("find_copy and delete_copy", () => {
     expect(found.copy).toEqual(posted.copy);
   });
 
+  it("returns a thread's earlier parts when a retry's post was shortened, so none is left untracked", async () => {
+    const pds = fakePds();
+    const parts = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text: "Three.", links: [] }];
+    const first = await publish_copy(job({ form: "thread", parts }));
+    const again = await publish_copy(job({ form: "short", parts: parts.slice(0, 1) }));
+    expect(pds.records.size).toBe(3);
+    expect(again.copy).toEqual(first.copy);
+  });
+
   it("removes every part of a thread", async () => {
     const pds = fakePds();
     const posted = await publish_copy(job({ form: "thread", parts: [{ text: "One.", links: [] }, { text: "Two.", links: [] }] }));
