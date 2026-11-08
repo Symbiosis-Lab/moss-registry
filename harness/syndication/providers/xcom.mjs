@@ -71,6 +71,8 @@ export async function start() {
   return {
     config: { api: base },
     secrets: creds,
+    // After a lost answer: its copy kept the words the edit step changed, so the lookup cannot match it.
+    recovers: "ask",
     edits: false,
     owns: (page) => /syndicated:[\s\S]*https:\/\/x\.com\/i\/status\/\d+/.test(page),
     count: async () => posts.size,

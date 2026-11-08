@@ -26,6 +26,8 @@ export async function start() {
   return {
     config: { handle: "alex.test", service: pds },
     secrets: { app_password: appPassword.password },
+    // After a lost answer: the copy's keys come from the post, so it is found though its words changed.
+    recovers: "adopt",
     edits: false,
     owns: (page) => /syndicated:[\s\S]*https:\/\/bsky\.app\/profile\/alex\.test\/post\//.test(page),
     count: async () => (await records()).length,

@@ -104,6 +104,8 @@ export async function start({ scratch }) {
     return {
       config: { server: base },
       secrets: { access_token: author },
+      // After a lost answer: found by its text, which the edit step changed in place.
+      recovers: "adopt",
       edits: true,
       owns: (page) => new RegExp(`syndicated:[\\s\\S]*${base}/@alex/statuses/`).test(page),
       count: async () => (await statuses()).length,

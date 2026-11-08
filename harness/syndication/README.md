@@ -19,7 +19,8 @@ What one run does:
 5. Runs `moss deploy`, and checks that each network holds exactly those copies, threads as replies in order, links marked as links, teasers with a card to the original, and that each post's `syndicated:` lists its copy.
 6. Runs `moss deploy` again and checks that no network gained a post.
 7. Edits two posted notes and runs `moss deploy` once more: a network that edits its posts (Mastodon, LinkedIn) must hold the edited text in the same posts, and moss must say the copy cannot change on one that does not (Bluesky, X). No network gains a post.
-8. Stops every network and server it started, and removes the scratch folder unless `--keep`.
+8. Makes the thread's copy look like a send whose answer was lost, as moss records one (its copy record unconfirmed, with no address, and nothing written back into the post), and runs `moss deploy` again: Bluesky and Mastodon must find every part of the copy without posting, and moss must ask the author where the channel cannot be sure (LinkedIn has no lookup; X's copy kept the words the edit changed).
+9. Stops every network and server it started, and removes the scratch folder unless `--keep`.
 
 Exit status 0 means every check passed; each check prints one line.
 
@@ -33,6 +34,7 @@ A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which s
 - `count()`: how many posts the account has, for the second-publish check;
 - `owns(frontMatter)`: whether a post's front matter lists a copy on this network;
 - `edits`: whether the network edits a post in place, so the plugin offers `update_copy`;
+- `recovers`: after a lost answer, `"adopt"` where the lookup finds the copy, `"ask"` where moss must ask the author;
 - `stop()`.
 
 | Network | Local copy |

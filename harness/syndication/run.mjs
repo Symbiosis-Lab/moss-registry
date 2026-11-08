@@ -189,6 +189,37 @@ try {
       .map((c) => ({ ...c, parts: c.parts.map((p) => ({ ...p, text: p.text.replace(...edits[c.source_path]) })) }));
     await s.net.verify(changed, check);
   }
+
+  // A send whose answer was lost leaves its copy's record unconfirmed, with
+  // no address and nothing written back into the post. The next publish looks
+  // the copy up where the channel can (Bluesky by its keys, Mastodon by its
+  // text and the author's statuses since), adopting every part without
+  // posting, and asks the author where it cannot be sure.
+  const lost = "notes/2026-11-06 1500.md";
+  const lostPage = path.join(site, lost);
+  const uid = fs.readFileSync(lostPage, "utf8").match(/^uid:\s*"?([^"\n]+)"?$/m)?.[1];
+  for (const s of started) {
+    const file = path.join(site, ".moss/deploy/copies", `${uid}.${s.id}.json`);
+    const { remote, parts, hash, ...record } = JSON.parse(fs.readFileSync(file, "utf8"));
+    fs.writeFileSync(file, JSON.stringify({ ...record, state: "unconfirmed", reason: "the send stopped before its answer" }));
+  }
+  fs.writeFileSync(lostPage, fs.readFileSync(lostPage, "utf8").replace(/^syndicated:\n(?:\s+- .*\n)+/m, ""));
+  const before = await Promise.all(started.map((s) => s.net.count()));
+  const fourth = await runMoss(["deploy", site, "--allow-plugins"]);
+  for (const line of fourth.stderr.split("\n").filter((l) => l.includes(`${lost} — `))) console.log(`  moss: ${line}`);
+  const recovered = await Promise.all(started.map((s) => s.net.count()));
+  const page = fs.readFileSync(lostPage, "utf8");
+  started.forEach((s, i) => {
+    check(recovered[i] === before[i], `publishing after a lost answer posts nothing new to ${s.id} (${before[i]} → ${recovered[i]})`);
+    const record = JSON.parse(fs.readFileSync(path.join(site, ".moss/deploy/copies", `${uid}.${s.id}.json`), "utf8"));
+    const said = fourth.stderr.split("\n").find((l) => l.includes(`${lost} — `) && l.includes(` ${s.id}`)) ?? "";
+    if (s.net.recovers === "adopt") {
+      check(record.state === "posted" && (record.parts ?? []).length === 2, `${lost}: the ${s.id} copy is found again with all its parts (${record.state}, ${(record.parts ?? []).length} later parts)`);
+      check(s.net.owns(page.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? ""), `${lost} lists its found ${s.id} copy under syndicated:`);
+    } else {
+      check(record.state === "unconfirmed" && said.includes(`unconfirmed on ${s.id}`), `${lost}: moss asks the author about the ${s.id} copy (${said.split(" — ")[1] ?? record.state})`);
+    }
+  });
 } catch (e) {
   failures.push(String(e?.stack ?? e));
   console.error(e);
