@@ -4,6 +4,13 @@ vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async () => "token"
 
 import { delete_copy, find_copy, plainText, publish_copy, update_copy, type CopyJob } from "../main";
 
+/** A status as servers render it: links as anchors whose visible text is shortened. */
+const html = (text: string) =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/https?:\/\/(\S+)/g, (url, rest) => `<a href="${url}" rel="nofollow noopener" target="_blank"><span class="invisible">https://</span><span class="ellipsis">${rest.slice(0, 20)}</span></a>`);
+
 /** An in-memory server: one account, the client API calls the plugin makes. */
 function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number } = {}) {
   const statuses = new Map<string, any>();
@@ -20,14 +27,14 @@ function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; s
     if (method === "POST" && u.pathname === "/api/v1/statuses") {
       if (opts.failAt === statuses.size) return reply(opts.status ?? 422, { error: "Validation failed: Text character limit of 500 exceeded" });
       if (body.status.length > (opts.maxText ?? 500)) return reply(422, { error: "Validation failed: Text character limit of 500 exceeded" });
-      const s = { id: String(next++), url: `https://example.social/@alex/${next - 1}`, uri: "", content: `<p>${body.status.replace(/&/g, "&amp;").replace(/\n\n/g, "</p><p>")}</p>`, in_reply_to_id: body.in_reply_to_id ?? null, language: body.language, key: init.headers["Idempotency-Key"] };
+      const s = { id: String(next++), url: `https://example.social/@alex/${next - 1}`, uri: "", content: `<p>${html(body.status)}</p>`, in_reply_to_id: body.in_reply_to_id ?? null, account: { id: "7" }, language: body.language, key: init.headers["Idempotency-Key"] };
       statuses.set(s.id, s);
       return reply(200, s);
     }
     if (method === "PUT") {
       const s = statuses.get(id);
       if (!s) return reply(404, { error: "Record not found" });
-      s.content = `<p>${body.status}</p>`;
+      s.content = `<p>${html(body.status)}</p>`;
       return reply(200, s);
     }
     if (method === "DELETE") {
@@ -36,6 +43,11 @@ function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; s
     }
     if (u.pathname === "/api/v1/accounts/verify_credentials") return reply(200, { id: "7" });
     if (u.pathname === "/api/v1/accounts/7/statuses") return reply(200, [...statuses.values()].reverse());
+    if (method === "GET" && u.pathname.endsWith("/context")) {
+      const root = u.pathname.split("/")[4];
+      const below = (id: string): any[] => [...statuses.values()].filter((s) => s.in_reply_to_id === id).flatMap((s) => [s, ...below(s.id)]);
+      return reply(200, { ancestors: [], descendants: below(root) });
+    }
     return reply(404, { error: "not found" });
   });
   vi.stubGlobal("fetch", fetchFn);
@@ -98,12 +110,45 @@ describe("publish_copy", () => {
 });
 
 describe("find_copy", () => {
-  it("finds the copy by its text among the account's statuses, and nothing when there is none", async () => {
+  it("finds the copy by its text among the account's statuses", async () => {
     fakeServer();
-    expect((await find_copy(job())).copy).toBeNull();
     await publish_copy(job({ parts: [{ text: "Fish & chips\n\nby the sea", links: [] }] }));
-    const found = await find_copy(job({ parts: [{ text: "Fish & chips\n\nby the sea", links: [] }] }));
-    expect(found.copy).toEqual({ id: "1", url: "https://example.social/@alex/1" });
+    const found = await find_copy(job({ op: "find", parts: [{ text: "Fish & chips\n\nby the sea", links: [] }] }));
+    expect(found).toEqual({ success: true, copy: { id: "1", url: "https://example.social/@alex/1", parts: [] } });
+  });
+
+  it("finds every status of a thread, so a later delete removes them all", async () => {
+    fakeServer();
+    const posted = await publish_copy(job({ form: "thread", parts: thread }));
+    expect(await find_copy(job({ op: "find", form: "thread", parts: thread }))).toEqual(posted);
+  });
+
+  it("finds a teaser by its link to the post though its words changed", async () => {
+    fakeServer();
+    const teaser = (text: string) => job({ op: "find", form: "teaser", parts: [{ text: `${text} https://notes.example.org/notes/a/`, links: ["https://notes.example.org/notes/a/"] }] });
+    const posted = await publish_copy(teaser("On autumn."));
+    expect((await find_copy(teaser("On autumn, revised."))).copy).toEqual(posted.copy);
+  });
+
+  // moss posts again on "none"; a status may exist that the lookup cannot recognise.
+  it("cannot tell when no status matches, as when the text was edited after the send", async () => {
+    fakeServer();
+    expect((await find_copy(job({ op: "find" }))).success).toBe(false);
+    await publish_copy(job());
+    const edited = await find_copy(job({ op: "find", parts: [{ text: "Autumn's first hotpot, and a second bowl https://example.org", links: [] }] }));
+    expect(edited.success).toBe(false);
+    expect(edited.message).toMatch(/retry-copies/);
+  });
+
+  it("cannot tell when two statuses match, or a thread is only partly there", async () => {
+    const server = fakeServer();
+    await publish_copy(job());
+    await publish_copy(job());
+    expect((await find_copy(job({ op: "find" }))).success).toBe(false);
+    server.statuses.clear();
+    await publish_copy(job({ form: "thread", parts: thread.slice(0, 2) }));
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
+    expect(server.statuses.size).toBe(2);
   });
 });
 

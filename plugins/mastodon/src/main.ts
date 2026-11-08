@@ -43,6 +43,7 @@ interface Status {
   uri: string;
   content: string;
   in_reply_to_id: string | null;
+  account: { id: string };
 }
 
 /** An answer the server gave, with the HTTP status that says what kind it was. */
@@ -148,15 +149,40 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
 }
 
-/** The copy among the account's recent statuses: its first part's text, or a status linking to the post. */
+/**
+ * The answer when the copy cannot be recognised. A status carries nothing a
+ * client chose, only its text, and the text may have been edited since the
+ * send; moss posts again on "none", so it is told nothing is certain instead.
+ */
+const unsure = (why: string): CopyResult => ({
+  success: false,
+  message: `${why}; if the copy is on Mastodon, add its address to syndicated:, otherwise run moss deploy --retry-copies=mastodon`,
+});
+
+/**
+ * The copy among the account's recent statuses: the one status with its first
+ * part's text or a link to the post, then each later part as the author's
+ * reply to the part before.
+ */
 export async function find_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const a = await account(job);
     const me = await call(a, "GET", "/api/v1/accounts/verify_credentials");
     const statuses: Status[] = await call(a, "GET", `/api/v1/accounts/${me.id}/statuses?limit=40&exclude_replies=true`);
-    const text = job.parts?.[0]?.text ?? "";
-    const found = statuses.find((s) => !s.in_reply_to_id && (same(plainText(s.content), text) || s.content.includes(job.post.url)));
-    return { success: true, copy: found ? { id: found.id, url: address(found) } : null };
+    const parts = job.parts ?? [];
+    const matches = statuses.filter((s) => !s.in_reply_to_id && (same(plainText(s.content), parts[0]?.text ?? "") || s.content.includes(`href="${job.post.url}"`)));
+    if (matches.length !== 1) return unsure(matches.length ? `${matches.length} statuses match the copy` : "no recent status matches the copy");
+    const chain = [matches[0]];
+    if (parts.length > 1) {
+      const { descendants }: { descendants: Status[] } = await call(a, "GET", `/api/v1/statuses/${chain[0].id}/context`);
+      for (const part of parts.slice(1)) {
+        const next = descendants.find((s) => s.account.id === me.id && s.in_reply_to_id === chain[chain.length - 1].id && same(plainText(s.content), part.text));
+        if (!next) return unsure(`only ${chain.length} of the thread's ${parts.length} parts are on the account`);
+        chain.push(next);
+      }
+    }
+    const [first, ...rest] = chain;
+    return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
   } catch (e) {
     return refused(e);
   }
