@@ -12,7 +12,7 @@ const html = (text: string) =>
     .replace(/https?:\/\/(\S+)/g, (url, rest) => `<a href="${url}" rel="nofollow noopener" target="_blank"><span class="invisible">https://</span><span class="ellipsis">${rest.slice(0, 20)}</span></a>`);
 
 /** An in-memory server: one account, the client API calls the plugin makes. */
-function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number } = {}) {
+function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number; othersReplies?: number } = {}) {
   const statuses = new Map<string, any>();
   const calls: string[] = [];
   let next = 1;
@@ -46,7 +46,9 @@ function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; s
     if (method === "GET" && u.pathname.endsWith("/context")) {
       const root = u.pathname.split("/")[4];
       const below = (id: string): any[] => [...statuses.values()].filter((s) => s.in_reply_to_id === id).flatMap((s) => [s, ...below(s.id)]);
-      return reply(200, { ancestors: [], descendants: below(root) });
+      // Other people's replies come first in the server's order, and it lists at most 4,096.
+      const others = Array.from({ length: opts.othersReplies ?? 0 }, (_, i) => ({ id: `o${i}`, content: "<p>Nice.</p>", in_reply_to_id: root, account: { id: "99" } }));
+      return reply(200, { ancestors: [], descendants: [...others, ...below(root)].slice(0, 4096) });
     }
     return reply(404, { error: "not found" });
   });
@@ -145,6 +147,19 @@ describe("find_copy", () => {
     await publish_copy(job({ form: "thread", parts: thread }));
     expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
     expect((await find_copy(job({ op: "find", form: "thread", parts: thread.slice(0, 2) }))).success).toBe(false);
+  });
+
+  it("cannot tell when the server lists as many replies as it ever lists, since the copy's own may be past them", async () => {
+    fakeServer({ othersReplies: 4096 });
+    await publish_copy(job({ form: "thread", parts: thread }));
+    expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
+  });
+
+  it("says what each way out of an uncertain copy costs", async () => {
+    fakeServer();
+    const r = await find_copy(job({ op: "find" }));
+    expect(r.message).toMatch(/syndicated:.*first status/);
+    expect(r.message).toMatch(/retry-copies.*twice/);
   });
 
   it("cannot tell when two statuses match, or a thread is only partly there", async () => {

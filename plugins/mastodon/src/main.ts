@@ -149,6 +149,9 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
 }
 
+/** Mastodon lists at most this many replies under a status, so a list this long may leave out the copy's own. */
+const CONTEXT_LIMIT = 4096;
+
 /**
  * The answer when the copy cannot be recognised. A status carries nothing a
  * client chose, only its text, and the text may have been edited since the
@@ -156,7 +159,7 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
  */
 const unsure = (why: string): CopyResult => ({
   success: false,
-  message: `${why}; if the copy is on Mastodon, add its address to syndicated:, otherwise run moss deploy --retry-copies=mastodon`,
+  message: `${why}. Listing the copy under syndicated: tracks only its first status, so removing it later leaves a thread's replies; with --retry-copies, any of it that is there is posted twice`,
 });
 
 /**
@@ -174,6 +177,7 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
     if (matches.length !== 1) return unsure(matches.length ? `${matches.length} statuses match the copy` : "no recent status matches the copy");
     const chain = [matches[0]];
     const { descendants }: { descendants: Status[] } = await call(a, "GET", `/api/v1/statuses/${chain[0].id}/context`);
+    if (descendants.length >= CONTEXT_LIMIT) return unsure(`the copy has ${CONTEXT_LIMIT} replies, as many as the server lists`);
     const replies = (s: Status) => descendants.filter((d) => d.account.id === me.id && d.in_reply_to_id === s.id);
     for (const part of parts.slice(1)) {
       const next = replies(chain[chain.length - 1]).find((s) => same(plainText(s.content), part.text));

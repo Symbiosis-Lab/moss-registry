@@ -78,7 +78,7 @@ function refused(e: unknown): CopyResult {
 /** The parts already on the network from part `from` on, by their keys: a copy may have had more parts when first sent. */
 async function postedFrom(s: Session, idempotencyKey: string, from: number): Promise<StrongRef[]> {
   const refs: StrongRef[] = [];
-  for (let i = from; i < 100; i++) {
+  for (let i = from; ; i++) {
     const ref = await getPost(s, recordKey(idempotencyKey, i));
     if (!ref) break;
     refs.push(ref);

@@ -203,6 +203,13 @@ describe("find_copy", () => {
     expect(r.message).toMatch(/retry-copies/);
   });
 
+  it("says what each way out of an uncertain copy costs", async () => {
+    fakeX();
+    const r = await find_copy(job({ op: "find" }));
+    expect(r.message).toMatch(/syndicated:.*first post/);
+    expect(r.message).toMatch(/retry-copies.*twice/);
+  });
+
   it("does not take posts with the parts' words for the thread unless each replies to the part before", async () => {
     fakeX();
     for (const part of thread) await publish_copy(job({ parts: [part] }));

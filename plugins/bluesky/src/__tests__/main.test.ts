@@ -137,6 +137,15 @@ describe("find_copy and delete_copy", () => {
     expect(again.copy).toEqual(first.copy);
   });
 
+  it("returns every earlier part however long the thread was", async () => {
+    const pds = fakePds();
+    const parts = Array.from({ length: 101 }, (_, i) => ({ text: `Part ${i + 1}.`, links: [] }));
+    await publish_copy(job({ form: "thread", parts }));
+    const again = await publish_copy(job({ form: "thread", parts: parts.slice(0, 100) }));
+    expect(pds.records.size).toBe(101);
+    expect(again.copy?.parts).toHaveLength(100);
+  });
+
   it("removes every part of a thread", async () => {
     const pds = fakePds();
     const posted = await publish_copy(job({ form: "thread", parts: [{ text: "One.", links: [] }, { text: "Two.", links: [] }] }));
@@ -161,6 +170,11 @@ describe("record keys and facets", () => {
     expect(recordKey("0123456789abcdef0123456789abcdef", 0)).toBe(a);
     expect(recordKey("0123456789abcdef0123456789abcdef", 1)).not.toBe(a);
     expect(recordKey("fedcba9876543210fedcba9876543210", 0)).not.toBe(a);
+  });
+
+  it("a record key is different for every part of a long thread", () => {
+    const keys = new Set(Array.from({ length: 2048 }, (_, i) => recordKey("0123456789abcdef0123456789abcdef", i)));
+    expect(keys.size).toBe(2048);
   });
 
   it("facet offsets count UTF-8 bytes, so a link after Chinese text is marked where it is", () => {

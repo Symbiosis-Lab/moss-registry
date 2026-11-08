@@ -159,7 +159,7 @@ const same = (a: string, b: string) => a.replace(/\s+/g, " ").trim() === b.repla
  */
 const unsure = (why: string): CopyResult => ({
   success: false,
-  message: `${why}; if the copy is on X, add its address to syndicated:, otherwise run moss deploy --retry-copies=xcom`,
+  message: `${why}. Listing the copy under syndicated: tracks only its first post, so removing it later leaves a thread's replies; with --retry-copies, any of it that is there is posted twice`,
 });
 
 /**
