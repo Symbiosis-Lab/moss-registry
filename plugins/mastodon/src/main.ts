@@ -43,7 +43,6 @@ interface Status {
   uri: string;
   content: string;
   in_reply_to_id: string | null;
-  account: { id: string };
 }
 
 /** An answer the server gave, with the HTTP status that says what kind it was. */
@@ -149,8 +148,25 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
 }
 
-/** Mastodon lists at most this many replies under a status, so a list this long may leave out the copy's own. */
-const CONTEXT_LIMIT = 4096;
+/** How far the author's statuses since a copy are read before the copy is called uncertain: an interrupted send is looked up at the next publish. */
+const PAGE = 40;
+const PAGES = 10;
+
+/** Mastodon's ids are numbers and GoToSocial's are ULIDs; both sort by length, then character by character. */
+const later = (a: string, b: string) => (a.length !== b.length ? a.length > b.length : a > b);
+
+/** The author's own statuses after `id`, or null when there are more than this reads. */
+async function statusesAfter(a: Account, me: string, id: string): Promise<Status[] | null> {
+  const all: Status[] = [];
+  let after = id;
+  for (let page = 0; page < PAGES; page++) {
+    const batch: Status[] = await call(a, "GET", `/api/v1/accounts/${me}/statuses?limit=${PAGE}&min_id=${after}`);
+    all.push(...batch);
+    if (batch.length < PAGE) return all;
+    after = batch.reduce((max, s) => (later(s.id, max) ? s.id : max), after);
+  }
+  return null;
+}
 
 /**
  * The answer when the copy cannot be recognised. A status carries nothing a
@@ -176,9 +192,10 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
     const matches = statuses.filter((s) => !s.in_reply_to_id && (same(plainText(s.content), parts[0]?.text ?? "") || s.content.includes(`href="${job.post.url}"`)));
     if (matches.length !== 1) return unsure(matches.length ? `${matches.length} statuses match the copy` : "no recent status matches the copy");
     const chain = [matches[0]];
-    const { descendants }: { descendants: Status[] } = await call(a, "GET", `/api/v1/statuses/${chain[0].id}/context`);
-    if (descendants.length >= CONTEXT_LIMIT) return unsure(`the copy has ${CONTEXT_LIMIT} replies, as many as the server lists`);
-    const replies = (s: Status) => descendants.filter((d) => d.account.id === me.id && d.in_reply_to_id === s.id);
+    // The author's own statuses, not the replies under the copy: a server cuts that list before dropping muted accounts, so it can hide the copy's own.
+    const since = await statusesAfter(a, me.id, chain[0].id);
+    if (!since) return unsure(`the account has more than ${PAGE * PAGES} statuses since the copy`);
+    const replies = (s: Status) => since.filter((d) => d.in_reply_to_id === s.id);
     for (const part of parts.slice(1)) {
       const next = replies(chain[chain.length - 1]).find((s) => same(plainText(s.content), part.text));
       if (!next) return unsure(`only ${chain.length} of the thread's ${parts.length} parts are on the account`);

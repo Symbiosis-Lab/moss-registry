@@ -12,7 +12,7 @@ const html = (text: string) =>
     .replace(/https?:\/\/(\S+)/g, (url, rest) => `<a href="${url}" rel="nofollow noopener" target="_blank"><span class="invisible">https://</span><span class="ellipsis">${rest.slice(0, 20)}</span></a>`);
 
 /** An in-memory server: one account, the client API calls the plugin makes. */
-function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number; othersReplies?: number } = {}) {
+function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; status?: number; contextCut?: boolean } = {}) {
   const statuses = new Map<string, any>();
   const calls: string[] = [];
   let next = 1;
@@ -42,13 +42,20 @@ function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; s
       return reply(200, {});
     }
     if (u.pathname === "/api/v1/accounts/verify_credentials") return reply(200, { id: "7" });
-    if (u.pathname === "/api/v1/accounts/7/statuses") return reply(200, [...statuses.values()].reverse());
+    if (u.pathname === "/api/v1/accounts/7/statuses") {
+      // Newest first; with min_id, the oldest `limit` statuses after it.
+      let mine = [...statuses.values()];
+      if (u.searchParams.get("exclude_replies") === "true") mine = mine.filter((s) => !s.in_reply_to_id);
+      const after = u.searchParams.get("min_id");
+      if (after) mine = mine.filter((s) => Number(s.id) > Number(after));
+      const limit = Number(u.searchParams.get("limit") ?? 20);
+      return reply(200, (after ? mine.slice(0, limit) : mine.slice(-limit)).reverse());
+    }
     if (method === "GET" && u.pathname.endsWith("/context")) {
       const root = u.pathname.split("/")[4];
       const below = (id: string): any[] => [...statuses.values()].filter((s) => s.in_reply_to_id === id).flatMap((s) => [s, ...below(s.id)]);
-      // Other people's replies come first in the server's order, and it lists at most 4,096.
-      const others = Array.from({ length: opts.othersReplies ?? 0 }, (_, i) => ({ id: `o${i}`, content: "<p>Nice.</p>", in_reply_to_id: root, account: { id: "99" } }));
-      return reply(200, { ancestors: [], descendants: [...others, ...below(root)].slice(0, 4096) });
+      // A server cuts the list before it drops muted and blocked accounts, so it can come back short of the copy's own replies.
+      return reply(200, { ancestors: [], descendants: opts.contextCut ? [] : below(root) });
     }
     return reply(404, { error: "not found" });
   });
@@ -149,10 +156,22 @@ describe("find_copy", () => {
     expect((await find_copy(job({ op: "find", form: "thread", parts: thread.slice(0, 2) }))).success).toBe(false);
   });
 
-  it("cannot tell when the server lists as many replies as it ever lists, since the copy's own may be past them", async () => {
-    fakeServer({ othersReplies: 4096 });
-    await publish_copy(job({ form: "thread", parts: thread }));
+  it("reads a thread from the author's own statuses, which a server's cut list of replies cannot hide", async () => {
+    fakeServer({ contextCut: true });
+    const posted = await publish_copy(job({ form: "thread", parts: thread }));
+    expect(await find_copy(job({ op: "find", form: "thread", parts: thread }))).toEqual(posted);
     expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
+  });
+
+  it("reads past one page of the author's statuses, and cannot tell when there are too many since the copy", async () => {
+    const server = fakeServer();
+    const posted = await publish_copy(job({ form: "thread", parts: thread }));
+    const later = (n: number) => publish_copy(job({ form: "thread", parts: Array.from({ length: n }, (_, i) => ({ text: `Later ${i}.`, links: [] })) }));
+    await later(50);
+    expect(await find_copy(job({ op: "find", form: "thread", parts: thread }))).toEqual(posted);
+    await later(400);
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
+    expect(server.statuses.size).toBe(453);
   });
 
   it("says what each way out of an uncertain copy costs", async () => {
