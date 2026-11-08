@@ -111,6 +111,23 @@ describe("find_copy and delete_copy", () => {
     expect((await find_copy(job({ op: "find" }))).copy?.id).toBe(posted.copy?.id);
   });
 
+  it("lands a retry on the first send's records though the post's date changed in between", async () => {
+    const pds = fakePds();
+    const parts = [{ text: "One.", links: [] }, { text: "Two.", links: [] }];
+    const first = await publish_copy(job({ form: "thread", parts }));
+    const again = await publish_copy(job({ form: "thread", parts, post: { ...job().post, date: "2027-01-02T09:00:00Z" } }));
+    expect(pds.records.size).toBe(2);
+    expect(again.copy).toEqual(first.copy);
+  });
+
+  it("finds every part of a thread an interrupted send made, so a later delete can remove them all", async () => {
+    fakePds();
+    const parts = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text: "Three.", links: [] }];
+    const posted = await publish_copy(job({ form: "thread", parts }));
+    const found = await find_copy(job({ op: "find", form: "thread", parts, post: { ...job().post, date: "2027-01-02T09:00:00Z" } }));
+    expect(found.copy).toEqual(posted.copy);
+  });
+
   it("removes every part of a thread", async () => {
     const pds = fakePds();
     const posted = await publish_copy(job({ form: "thread", parts: [{ text: "One.", links: [] }, { text: "Two.", links: [] }] }));
@@ -130,11 +147,11 @@ describe("find_copy and delete_copy", () => {
 
 describe("record keys and facets", () => {
   it("a record key is a 13-character TID, the same for a part on every send and different per part", () => {
-    const a = recordKey("0123456789abcdef", "2026-11-06T14:32:00Z", 0);
+    const a = recordKey("0123456789abcdef0123456789abcdef", 0);
     expect(a).toMatch(/^[2-7a-z]{13}$/);
-    expect(recordKey("0123456789abcdef", "2026-11-06T14:32:00Z", 0)).toBe(a);
-    expect(recordKey("0123456789abcdef", "2026-11-06T14:32:00Z", 1)).not.toBe(a);
-    expect(recordKey("fedcba9876543210", "2026-11-06T14:32:00Z", 0)).not.toBe(a);
+    expect(recordKey("0123456789abcdef0123456789abcdef", 0)).toBe(a);
+    expect(recordKey("0123456789abcdef0123456789abcdef", 1)).not.toBe(a);
+    expect(recordKey("fedcba9876543210fedcba9876543210", 0)).not.toBe(a);
   });
 
   it("facet offsets count UTF-8 bytes, so a link after Chinese text is marked where it is", () => {

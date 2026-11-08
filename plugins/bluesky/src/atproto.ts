@@ -90,17 +90,16 @@ const TID_CHARS = "234567abcdefghijklmnopqrstuvwxyz";
 
 /**
  * A record key in the TID format posts use, the same for every send of one
- * part of one copy: derived from the post's date and moss's idempotency key.
- * A retry therefore lands on the record the first send made, and the network
- * cannot hold two copies.
+ * part of one copy: derived from moss's idempotency key alone, which names
+ * the post and channel and nothing an author can edit, so a retry lands on
+ * the record the first send made. Its clock falls within 2024.
  */
-export function recordKey(idempotencyKey: string, date: string | undefined, part: number): string {
-  const parsed = date ? Date.parse(date) : NaN;
-  const millis = Number.isFinite(parsed) ? parsed : Date.UTC(2020, 0, 1);
-  const spread = parseInt(idempotencyKey.slice(0, 8), 16) % 1_000_000;
-  const micros = BigInt(millis) * 1000n + BigInt(spread);
-  const clock = BigInt((parseInt(idempotencyKey.slice(8, 12), 16) + part) % 1024);
-  let value = ((micros & ((1n << 53n) - 1n)) << 10n) | clock;
+export function recordKey(idempotencyKey: string, part: number): string {
+  const YEAR_MS = 366 * 86_400_000;
+  const millis = Date.UTC(2024, 0, 1) + (parseInt(idempotencyKey.slice(0, 12), 16) % YEAR_MS);
+  const micros = BigInt(millis) * 1000n + BigInt(parseInt(idempotencyKey.slice(12, 17), 16) % 1000);
+  const clock = BigInt((parseInt(idempotencyKey.slice(17, 20), 16) + part) % 1024);
+  let value = (micros << 10n) | clock;
   let out = "";
   for (let i = 0; i < 13; i++) {
     out = TID_CHARS[Number(value & 31n)] + out;

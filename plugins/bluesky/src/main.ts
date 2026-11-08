@@ -97,7 +97,7 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
       if (job.form === "teaser" && job.teaser) {
         record.embed = { $type: "app.bsky.embed.external", external: { uri: job.teaser.url, title: job.teaser.title, description: job.teaser.description } };
       }
-      refs.push(await putPost(s, recordKey(job.idempotency_key, job.post.date ?? undefined, i), record));
+      refs.push(await putPost(s, recordKey(job.idempotency_key, i), record));
     }
   } catch (e) {
     // A thread that stopped part way is retried whole: the parts already sent
@@ -114,9 +114,17 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
 export async function find_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const s = await session(job);
-    const first = await getPost(s, recordKey(job.idempotency_key, job.post.date ?? undefined, 0));
-    if (!first) return { success: true, copy: null };
-    return { success: true, copy: { id: first.uri, url: postUrl(s, first) } };
+    // Every part on the network, the planned count or not, so a later delete reaches them all.
+    const refs: StrongRef[] = [];
+    while (refs.length < 100) {
+      const ref = await getPost(s, recordKey(job.idempotency_key, refs.length));
+      if (!ref) break;
+      refs.push(ref);
+    }
+    // A thread cut short is sent again whole: its parts keep their keys.
+    if (refs.length === 0 || refs.length < (job.parts ?? []).length) return { success: true, copy: null };
+    const [first, ...rest] = refs;
+    return { success: true, copy: { id: first.uri, url: postUrl(s, first), parts: rest.map((r) => ({ id: r.uri, url: postUrl(s, r) })) } };
   } catch (e) {
     return refused(e);
   }
