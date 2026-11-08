@@ -136,38 +136,49 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   return { success: true, copy: { id: first, url: address(first), parts: rest.map((id) => ({ id, url: address(id) })) } };
 }
 
-/** X escapes `& < >` in a post's text and replaces every address with its own short link, so texts are compared with both undone. */
-const masked = (s: string) =>
-  s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/https?:\/\/\S+/g, "<link>").replace(/\s+/g, " ").trim();
-
 interface Post {
   id: string;
   text: string;
   referenced_tweets?: { type: string; id: string }[];
+  entities?: { urls?: { url: string; expanded_url?: string }[] };
 }
+
+/** A post's text as it was sent: X escapes `& < >` and shows each link as a short one of its own, whose address it lists. */
+function sentText(p: Post): string {
+  let text = p.text;
+  for (const u of p.entities?.urls ?? []) if (u.expanded_url) text = text.split(u.url).join(u.expanded_url);
+  return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+const same = (a: string, b: string) => a.replace(/\s+/g, " ").trim() === b.replace(/\s+/g, " ").trim();
+
+/**
+ * The answer when the copy cannot be recognised among the latest posts: it
+ * may be older than they are, or its text edited since the send, and moss
+ * posts again on "none", so it is told nothing is certain instead.
+ */
+const unsure = (why: string): CopyResult => ({
+  success: false,
+  message: `${why}; if the copy is on X, add its address to syndicated:, otherwise run moss deploy --retry-copies=xcom`,
+});
 
 /**
  * The copy among the account's latest posts: each part's text, each a reply
- * to the part before. A thread found cut short is taken down, as a send
- * refused part way is, so the next send posts it whole. Each look-up is two
- * billed reads.
+ * to the part before. Each look-up is two billed reads.
  */
 export async function find_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const a = await account(job);
     const me = (await call(a, "GET", "/2/users/me")).data;
-    const latest: Post[] = (await call(a, "GET", `/2/users/${me.id}/tweets?max_results=20&tweet.fields=referenced_tweets`)).data ?? [];
+    const latest: Post[] = (await call(a, "GET", `/2/users/${me.id}/tweets?max_results=20&tweet.fields=referenced_tweets,entities`)).data ?? [];
     const repliesTo = (p: Post) => p.referenced_tweets?.find((r) => r.type === "replied_to")?.id;
     const parts = job.parts ?? [];
     const chain: string[] = [];
     for (const part of parts) {
-      const found = latest.find((p) => masked(p.text) === masked(part.text) && repliesTo(p) === chain[chain.length - 1]);
-      if (!found) break;
-      chain.push(found.id);
-    }
-    if (chain.length < parts.length) {
-      for (const id of [...chain].reverse()) await call(a, "DELETE", `/2/tweets/${id}`);
-      return { success: true, copy: null };
+      const matches = latest.filter((p) => same(sentText(p), part.text) && repliesTo(p) === chain[chain.length - 1]);
+      if (matches.length > 1) return unsure(`${matches.length} posts match part ${chain.length + 1} of the copy`);
+      if (!matches.length) return unsure(chain.length ? `only ${chain.length} of the thread's ${parts.length} parts are among the latest posts` : "none of the latest posts is the copy");
+      chain.push(matches[0].id);
     }
     const [first, ...rest] = chain;
     return { success: true, copy: { id: first, url: address(first), parts: rest.map((id) => ({ id, url: address(id) })) } };

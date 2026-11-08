@@ -24,6 +24,7 @@ function expectedSignature(method: string, url: string, header: string, consumer
 function fakeX(opts: { failAt?: number; status?: number; type?: string } = {}) {
   const posts = new Map<string, { id: string; text: string; reply?: string }>();
   const calls: string[] = [];
+  const shortLinks = new Map<string, string>();
   let next = 1000;
   const reply = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === undefined ? "" : JSON.stringify(body)) });
   vi.stubGlobal(
@@ -49,10 +50,24 @@ function fakeX(opts: { failAt?: number; status?: number; type?: string } = {}) {
       }
       if (u.pathname === "/2/users/me") return reply(200, { data: { id: "42", name: "Alex", username: "alex" } });
       if (u.pathname === "/2/users/42/tweets") {
-        // As X answers: `& < >` escaped, links shortened, replies marked only when asked for.
-        const shown = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/https?:\/\/\S+/g, "https://t.co/abc123");
-        const refs = u.searchParams.get("tweet.fields") === "referenced_tweets";
-        return reply(200, { data: [...posts.values()].reverse().map((p) => ({ id: p.id, text: shown(p.text), ...(refs && p.reply ? { referenced_tweets: [{ type: "replied_to", id: p.reply }] } : {}) })) });
+        // As X answers: `& < >` escaped, each link replaced by its own short one, replies and links' addresses only when asked for.
+        const fields = (u.searchParams.get("tweet.fields") ?? "").split(",");
+        return reply(200, {
+          data: [...posts.values()].reverse().map((p) => {
+            const urls: { url: string; expanded_url: string }[] = [];
+            const text = p.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/https?:\/\/\S+/g, (link) => {
+              const short = `https://t.co/${shortLinks.get(link) ?? shortLinks.set(link, `s${shortLinks.size}`).get(link)}`;
+              urls.push({ url: short, expanded_url: link });
+              return short;
+            });
+            return {
+              id: p.id,
+              text,
+              ...(fields.includes("referenced_tweets") && p.reply ? { referenced_tweets: [{ type: "replied_to", id: p.reply }] } : {}),
+              ...(fields.includes("entities") && urls.length ? { entities: { urls } } : {}),
+            };
+          }),
+        });
       }
       return reply(404, { title: "Not Found Error" });
     }),
@@ -152,14 +167,22 @@ describe("publish_copy", () => {
 });
 
 describe("find_copy", () => {
-  it("finds the copy by its text though X has escaped it and replaced its link, and nothing when there is none", async () => {
+  it("finds the copy by its text though X has escaped it and replaced its link", async () => {
     const x = fakeX();
-    const fish = job({ parts: [{ text: "Fish & chips <by the sea> https://example.org/river", links: [] }] });
-    expect((await find_copy(fish)).copy).toBeNull();
+    const fish = job({ op: "find", parts: [{ text: "Fish & chips <by the sea> https://example.org/river", links: [] }] });
     await publish_copy(fish);
-    expect((await find_copy(fish)).copy).toEqual({ id: "1000", url: "https://x.com/i/status/1000", parts: [] });
+    expect(await find_copy(fish)).toEqual({ success: true, copy: { id: "1000", url: "https://x.com/i/status/1000", parts: [] } });
     // The look-up's query is signed too, or X refuses it.
-    expect(x.calls).toContain("GET /2/users/42/tweets?max_results=20&tweet.fields=referenced_tweets");
+    expect(x.calls).toContain("GET /2/users/42/tweets?max_results=20&tweet.fields=referenced_tweets,entities");
+  });
+
+  it("tells posts apart by their links' addresses, though X shows every link as its own short one", async () => {
+    fakeX();
+    const photo = (link: string) => job({ op: "find", parts: [{ text: `Photo of the day ${link}`, links: [link] }] });
+    await publish_copy(photo("https://example.org/a"));
+    expect((await find_copy(photo("https://example.org/b"))).success).toBe(false);
+    await publish_copy(photo("https://example.org/b"));
+    expect((await find_copy(photo("https://example.org/b"))).copy?.id).toBe("1001");
   });
 
   it("finds a whole thread, each part a reply to the one before", async () => {
@@ -172,17 +195,25 @@ describe("find_copy", () => {
     });
   });
 
+  // moss posts again on "none"; the copy may be older than the posts read, or its text edited since.
+  it("cannot tell when none of the latest posts is the copy", async () => {
+    fakeX();
+    const r = await find_copy(job({ op: "find" }));
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/retry-copies/);
+  });
+
   it("does not take posts with the parts' words for the thread unless each replies to the part before", async () => {
     fakeX();
     for (const part of thread) await publish_copy(job({ parts: [part] }));
-    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toBeNull();
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
   });
 
-  it("takes a thread found cut short down, so the next send posts it whole", async () => {
+  it("cannot tell when a thread is only partly there, and leaves its posts alone", async () => {
     const x = fakeX();
     await publish_copy(job({ form: "thread", parts: thread.slice(0, 2) }));
-    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toBeNull();
-    expect(x.posts.size).toBe(0);
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
+    expect(x.posts.size).toBe(2);
   });
 });
 

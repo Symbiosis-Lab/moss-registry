@@ -25,7 +25,7 @@ These are OAuth 1.0a credentials. X also offers OAuth 2.0 user tokens, but those
 
 A post that fits in 280 characters is posted whole, counted as X counts: every link as 23, and Chinese, Japanese, Korean and emoji characters as two. A post written in parts, with a line holding only `---` between blank lines, is posted as a thread of replies. Anything longer, and every titled article, is posted as its title, opening and a link to the original, which X shows as a card. Articles on X itself are not posted yet.
 
-A copy cannot be edited once posted: X allows edits only in the first 30 minutes and makes each edit a new post, so moss says so when a post changes after its copy went out. A send that is interrupted is looked up among your latest posts before anything is posted again (two billed reads). A thread found cut short is taken down so it can be sent whole, and a copy found nowhere is sent again.
+A copy cannot be edited once posted: X allows edits only in the first 30 minutes and makes each edit a new post, so moss says so when a post changes after its copy went out. A send that is interrupted is looked up among your latest posts before anything is posted again (two billed reads). If no post matches, or a thread is only partly there, moss asks you rather than risk a second copy: the copy may be older than the posts read, or its text edited since.
 
 ## Network access
 
