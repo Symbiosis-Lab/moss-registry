@@ -34,12 +34,18 @@ function fakeServer(opts: { token?: string; maxText?: number; failAt?: number; s
     if (method === "PUT") {
       const s = statuses.get(id);
       if (!s) return reply(404, { error: "Record not found" });
+      // GoToSocial refuses an edit that changes nothing.
+      if (s.content === `<p>${html(body.status)}</p>`) return reply(422, { error: "Unprocessable Entity: status was not changed" });
       s.content = `<p>${html(body.status)}</p>`;
       return reply(200, s);
     }
     if (method === "DELETE") {
       if (!statuses.delete(id)) return reply(404, { error: "Record not found" });
       return reply(200, {});
+    }
+    if (method === "GET" && /^\/api\/v1\/statuses\/[^/]+$/.test(u.pathname)) {
+      const s = statuses.get(id);
+      return s ? reply(200, s) : reply(404, { error: "Record not found" });
     }
     if (u.pathname === "/api/v1/accounts/verify_credentials") return reply(200, { id: "7" });
     if (u.pathname === "/api/v1/accounts/7/statuses") {
@@ -208,7 +214,17 @@ describe("update_copy", () => {
     const r = await update_copy(job({ op: "update", parts: edited, previous: { id: posted.id!, url: posted.url!, parts: posted.parts! } }));
     expect(r.copy?.id).toBe("1");
     expect(server.statuses.get("1").content).toBe("<p>One, edited.</p>");
-    expect(server.calls.filter((c) => c.startsWith("PUT"))).toHaveLength(3);
+    expect(server.calls.filter((c) => c.startsWith("PUT"))).toEqual(["PUT /api/v1/statuses/1"]);
+  });
+
+  it("edits only the statuses whose words changed, as a server refuses an edit that changes nothing", async () => {
+    const server = fakeServer();
+    const posted = await publish_copy(job({ form: "thread", parts: thread }));
+    const edited = [thread[0], { text: "Two, edited.", links: [] }, thread[2]];
+    const r = await update_copy(job({ op: "update", form: "thread", parts: edited, previous: { id: posted.copy!.id!, url: posted.copy!.url!, parts: posted.copy!.parts! } }));
+    expect(r.success).toBe(true);
+    expect(server.statuses.get("2").content).toBe("<p>Two, edited.</p>");
+    expect(server.calls.filter((c) => c.startsWith("PUT"))).toEqual(["PUT /api/v1/statuses/2"]);
   });
 
   it("refuses a thread whose number of parts changed", async () => {

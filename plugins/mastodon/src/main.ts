@@ -211,7 +211,7 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
   }
 }
 
-/** Edit each status of the copy in place. A thread can change its words, not its number of parts. */
+/** Edit each status of the copy whose words changed, in place. A thread can change its words, not its number of parts. */
 export async function update_copy(job: CopyJob): Promise<CopyResult> {
   const previous = job.previous;
   const parts = job.parts ?? [];
@@ -224,6 +224,9 @@ export async function update_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const a = await account(job);
     for (let i = 0; i < ids.length; i++) {
+      // GoToSocial refuses an edit that changes nothing, and Mastodon would record it as one.
+      const current: Status = await call(a, "GET", `/api/v1/statuses/${ids[i]}`);
+      if (same(plainText(current.content), parts[i].text)) continue;
       const body: Record<string, unknown> = { status: parts[i].text };
       if (job.post.lang) body.language = job.post.lang;
       await call(a, "PUT", `/api/v1/statuses/${ids[i]}`, body);

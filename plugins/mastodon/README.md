@@ -24,5 +24,5 @@ When a post changes, each status of its copy is edited in place. A thread can ch
 
 ## Network access
 
-- Your server, at the address in the `server` setting: `POST`, `PUT` and `DELETE` on `/api/v1/statuses`, and, to look a copy up, `/api/v1/accounts/verify_credentials` and your own account's statuses.
+- Your server, at the address in the `server` setting: `GET`, `POST`, `PUT` and `DELETE` on `/api/v1/statuses`, and, to look a copy up, `/api/v1/accounts/verify_credentials` and your own account's statuses.
 - Nothing else. The plugin reads no page and calls no other service.
