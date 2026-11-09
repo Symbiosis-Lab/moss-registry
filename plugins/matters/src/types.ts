@@ -1,18 +1,16 @@
 /**
  * Plugin-specific type definitions for the Matters Syndicator Plugin
  *
- * Common types (ProcessContext, SyndicateContext, HookResult, etc.) are
+ * Common types (ProcessContext, HookResult, etc.) are
  * imported from moss-plugin-sdk.
  */
 
 // Re-export SDK types for convenience
 export type {
   ProcessContext,
-  SyndicateContext,
   HookResult,
   DeploymentInfo,
   ProjectInfo,
-  ArticleInfo,
   PluginMessage,
 } from "@symbiosis-lab/moss-api";
 

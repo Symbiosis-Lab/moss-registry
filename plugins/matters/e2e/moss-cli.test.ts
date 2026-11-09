@@ -6,7 +6,7 @@
  *
  * The Matters plugin has capabilities:
  * - process: Syncs articles from Matters.town during build
- * - syndicate: Publishes articles to Matters.town after deploy
+ * - publish_copy: posts copies of the site's posts to Matters after a publish
  *
  * Requirements:
  * - moss binary with --wait-plugins support (v0.3.1+)
@@ -216,7 +216,7 @@ describe("Matters Plugin E2E Tests", () => {
 
       expect(manifest.name).toBe("matters");
       expect(manifest.capabilities).toContain("process");
-      expect(manifest.capabilities).toContain("syndicate");
+      expect(manifest.contributes.channel.syndication.forms).toEqual(["short", "teaser", "long"]);
       expect(manifest.domain).toBe("matters.town");
       expect(manifest.entry).toBe("main.bundle.js");
     });

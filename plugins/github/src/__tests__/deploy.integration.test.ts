@@ -88,7 +88,7 @@ vi.mock("../github-api", () => ({
 
 // Import after mocking
 import { on_deploy } from "../main";
-import { reportProgress, showToast } from "../utils";
+import { reportProgress, resolveGitPath, showToast } from "../utils";
 import { verifyRepoExists, getOriginOwnerRepo, deployViaGitPush } from "../github-deploy";
 import { resolveTokenOutcome } from "../auth";
 import { buildPagesUrl, parseGitHubUrl } from "../git";
@@ -239,6 +239,20 @@ describe("on_deploy integration", () => {
       expect(vi.mocked(deployViaGitPush)).toHaveBeenCalledWith(
         expect.objectContaining({ owner: "newuser", repo: "newsite" })
       );
+    });
+  });
+
+  describe("Windows", () => {
+    it("stops before touching git, with a plain message, when moss resolved a Windows git", async () => {
+      vi.mocked(resolveGitPath).mockResolvedValueOnce("C:\\Program Files\\Git\\cmd\\git.exe");
+
+      const result = await on_deploy(createMockContext());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe("Publishing to GitHub Pages from Windows arrives in the next moss update.");
+      expect(vi.mocked(resolveTokenOutcome)).not.toHaveBeenCalled();
+      expect(vi.mocked(getOriginOwnerRepo)).not.toHaveBeenCalled();
+      expect(vi.mocked(deployViaGitPush)).not.toHaveBeenCalled();
     });
   });
 

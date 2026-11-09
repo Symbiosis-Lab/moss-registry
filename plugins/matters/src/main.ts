@@ -1,15 +1,15 @@
 /**
- * Matters.town Syndicator Plugin
- *
- * Syndicates articles to Matters.town after deployment.
+ * Matters.town plugin: imports a Matters account's articles into the folder,
+ * and posts copies of the site's posts to Matters through moss's syndication
+ * contract (moments for short posts, drafts for articles).
  * Requires authentication via webview (domain: matters.town)
  */
 
 import type {
   ProcessContext,
-  SyndicateContext,
   HookResult,
-  ArticleInfo,
+  MattersDraftWithArticle,
+  PutDraftInput,
 } from "./types";
 import {
   reportError,
@@ -17,8 +17,7 @@ import {
   sleep,
   formatArticleSyncSummary,
 } from "./utils";
-import { startTask } from "@symbiosis-lab/moss-api";
-import type { TaskHandle } from "@symbiosis-lab/moss-api";
+import { startTask, type CopyJob, type CopyOutcome } from "@symbiosis-lab/moss-api";
 import {
   fetchAllArticlesSince,
   fetchAllDraftsSince,
@@ -26,11 +25,15 @@ import {
   fetchUserProfile,
   fetchArticleComments,
   fetchAllArticleCommentCounts,
+  fetchAllArticles,
+  fetchAllDrafts,
   createDraft,
   fetchDraft,
+  putMoment,
   uploadAssetMultipart,
   apiConfig,
   MattersAuthError,
+  MattersRefusal,
 } from "./api";
 import {
   clearTokenCache,
@@ -48,26 +51,19 @@ import { getConfig, saveConfig } from "./config";
 import { overallProgress, type ProgressReporter } from "./progress";
 import { loadSocialData, saveSocialData, mergeSocialData, reconcileLegacySocialData } from "./social";
 import {
-  readFile,
-  writeFile,
   readSiteFile,
   showToast,
-  dismissToast,
-  readPluginFile,
-  writePluginFile,
-  pluginFileExists,
   getPluginEnvVar,
   emitEvent,
   onEvent,
 } from "@symbiosis-lab/moss-api";
-import { parseFrontmatter, regenerateFrontmatter } from "./converter";
 import {
   initializeDomain,
   getDomain,
   loginUrl,
   draftUrl,
   articleUrl,
-  isMattersUrl,
+  momentUrl,
 } from "./domain";
 import { looksLikePublishedArticleUrl } from "./url-detect";
 
@@ -116,78 +112,6 @@ export function resolveSinceTimestamp(
   lastSyncedAt: string | undefined,
 ): string | undefined {
   return existingCommentsLength > 0 && storedCount !== undefined ? lastSyncedAt : undefined;
-}
-
-// ============================================================================
-// Draft Tracking
-// ============================================================================
-
-/**
- * Draft entry stored in drafts.json
- */
-export interface DraftEntry {
-  draftId: string;
-  createdAt: string;
-}
-
-/**
- * Map of source_path -> draft entry
- */
-export type DraftMap = Record<string, DraftEntry>;
-
-const DRAFTS_FILE = "drafts.json";
-
-/**
- * Read the draft tracking map from plugin storage.
- * Returns empty object if file not found or invalid.
- */
-export async function getDraftMap(): Promise<DraftMap> {
-  try {
-    const exists = await pluginFileExists(DRAFTS_FILE);
-    if (!exists) return {};
-    const content = await readPluginFile(DRAFTS_FILE);
-    return JSON.parse(content) as DraftMap;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Write the draft tracking map to plugin storage.
- */
-export async function saveDraftMap(map: DraftMap): Promise<void> {
-  const content = JSON.stringify(map, null, 2);
-  await writePluginFile(DRAFTS_FILE, content);
-}
-
-/**
- * Look up a tracked draft ID for a source path.
- * Returns undefined if no draft is tracked.
- */
-export async function getDraftId(sourcePath: string): Promise<string | undefined> {
-  const map = await getDraftMap();
-  return map[sourcePath]?.draftId;
-}
-
-/**
- * Persist a draft ID for a source path.
- */
-export async function saveDraftId(sourcePath: string, draftId: string): Promise<void> {
-  const map = await getDraftMap();
-  map[sourcePath] = {
-    draftId,
-    createdAt: new Date().toISOString(),
-  };
-  await saveDraftMap(map);
-}
-
-/**
- * Remove a tracked draft for a source path (e.g., after publish).
- */
-export async function removeDraftId(sourcePath: string): Promise<void> {
-  const map = await getDraftMap();
-  delete map[sourcePath];
-  await saveDraftMap(map);
 }
 
 // ============================================================================
@@ -603,7 +527,7 @@ export async function process(context: ProcessContext): Promise<HookResult> {
   // Checked before any of clearTokenCache/initializeDomain/startTask so the
   // deletion is real: no task means no receipt to word carefully. The
   // standalone `login()` export (Connect to Matters in Settings) and the
-  // `syndicate()` hook are unaffected — neither reads this setting.
+  // copy hooks are unaffected — none reads this setting.
   const syncOnBuild = context.config?.sync_on_build ?? true;
   if (!syncOnBuild) {
     console.log("ℹ️  Sync on build is disabled, skipping...");
@@ -1103,582 +1027,232 @@ export async function process(context: ProcessContext): Promise<HookResult> {
   }
 }
 
+// ============================================================================
+// Copies: moss's syndication contract
+// ============================================================================
+
+type Cause = NonNullable<CopyOutcome["refused"]>["cause"];
+
+function refusal(cause: Cause, message: string): HookResult {
+  return { success: false, message, copy: { refused: { cause, message } } };
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
- * syndicate hook - Syndicate articles to Matters.town
- *
- * This capability publishes content to external platforms after deployment.
- * Articles are syndicated one at a time (sequentially) to allow user review.
+ * A request Matters answered with a refusal created nothing, so moss may send
+ * again; any other failure leaves unknown whether it did, and is thrown so moss
+ * never makes the copy twice.
  */
-export async function syndicate(context: SyndicateContext): Promise<HookResult> {
-  setCurrentHookName("syndicate");
-  clearTokenCache();
-  await initializeDomain();
+function refusedOrThrow(error: unknown): HookResult {
+  if (error instanceof MattersAuthError) return refusal("auth", "the Matters session expired; sign in again");
+  if (error instanceof MattersRefusal) return refusal(error.status === 429 ? "rate" : "content", error.message);
+  throw error;
+}
 
-  // Filter to only articles that don't already have a Matters syndication
-  // URL. Computed before the task exists (isMattersUrl needs the domain
-  // initializeDomain() just loaded, so it can't move earlier than this):
-  // when every article is already syndicated, this publish has nothing new
-  // to tell Matters about — that's not an event of this run, so no task, no
-  // panel row (same rubric as the auto-import-off fix in process()).
-  const articlesToSyndicate = context.articles.filter((article) => {
-    const syndicated = (article.frontmatter.syndicated as string[] | undefined) || [];
-    return !syndicated.some((url: string) => isMattersUrl(url));
-  });
+const SIGN_IN = "connect Matters first: sign in from the plugin's settings";
 
-  if (articlesToSyndicate.length === 0) {
-    console.log("ℹ️  No new articles to syndicate (all already syndicated to Matters)");
-    return { success: true, message: "No new articles to syndicate" };
-  }
-
-  console.log("📡 Matters: Starting syndication...");
-
-  // Drive a moss Job for the syndication run (Step 3 Phase 5 Task 5.3).
-  // The verb/noun MEANING is declared in the manifest's `contributes.jobs`
-  // ("Syndicated" · "posts"); moss normalizes the verb (R13) and renders the
-  // receipt "Syndicated · N posts". A partial failure is PROPOSED as an
-  // advisory via `task.advise(...)`; moss holds the severity gavel.
-  // Syndication has exactly one production caller — the user's Publish
-  // click — so moss stamps `context.trigger` "manual_one" (ADR-015), the
-  // ActionPanel+Inline surface a one-off user-triggered run gets; "background"
-  // only as a fallback for an older moss build that predates the field.
-  const task = await startTask("Syndicate", {
-    hook: "syndicate",
-    trigger: context.trigger ?? "background",
-    hasProgress: true,
-    cancellable: false,
-    // Reference the manifest's `contributes.jobs.syndicate` descriptor
-    // ("Syndicated" · "posts"). moss normalizes the verb (R13) and, on the
-    // terminal `succeeded(_, count)`, renders "Syndicated · N posts" from its
-    // OWN verb + amount — we no longer hand it a pre-formatted string.
-    job: "syndicate",
-  });
-
-  // The panel is held from the loading open below until the draft navigates it
-  // in place (or until nothing will open a draft). The finally releases it once,
-  // so no early return or error leaves a loader behind.
-  let panelHeld = false;
+/** Post one copy: a short post as a moment, an article as a draft the author publishes in Matters' editor. */
+export async function publish_copy(job: CopyJob): Promise<HookResult> {
+  setCurrentHookName("publish_copy");
   try {
-    if (!context.deployment) {
-      await task.failed("No deployment information available");
-      return {
-        success: false,
-        message: "No deployment information available",
-      };
-    }
-
-    const { url: siteUrl, deployed_at } = context.deployment;
-
-    await openBrowser();
-    panelHeld = true;
-
-    console.log(`📡 Syndicating ${articlesToSyndicate.length} article(s) to Matters.town`);
-    console.log(`🌐 Deployed site: ${siteUrl}`);
-    console.log(`📅 Deployed at: ${deployed_at}`);
-
-    // Check the session. Syndication is user-initiated by construction
-    // (every trigger site is inside the user-clicked publish flow) and
-    // write-scoped: no public fallback exists, so any non-valid session
-    // goes straight to login.
-    const sessionState = await getSessionState();
-    if (sessionState !== "valid") {
-      console.log(`🔐 Session state: ${sessionState}, prompting login...`);
-      // Law 2: login-required is a blocking auth state — must persist.
-      // Law 4: dismiss the toast if login succeeds so a resolved warning
-      //         doesn't linger alongside the terminal ack.
-      await showToast({ message: "Matters login required", variant: "warning", persistent: true, id: "matters-login-required" });
-      // Suspend the Rust 60s inactivity watchdog. Follow with a quiet progress
-      // label (spec: no Awaiting amber pulse for in-panel login).
-      await task.awaiting("Connect to Matters", "", "cancel");
-      await task.progress(undefined, "Connect to Matters");
-      const loginSuccess = await promptLogin({ keepPanelLoading: true });
-      if (loginSuccess) {
-        await dismissToast("matters-login-required");
-      } else {
-        panelHeld = false; // promptLogin closed the panel on its failure path
-      }
-      if (!loginSuccess) {
-        // Propose an actionable account advisory: the user must sign in to
-        // finish. moss holds the gavel — a NeedsAction stays a quiet dot, an
-        // actionable Blocking pops the panel; here we let moss decide.
-        await task.advise({
-          scope: "Account",
-          severity: "NeedsAction",
-          item: null,
-          what: "Sign in to Matters to syndicate your posts",
-          action: { InApp: { op: "SignIn", args: null, label: "Sign in" } },
-        });
-        await task.failed("Login required for syndication");
-        return {
-          success: false,
-          message: "Login required for syndication",
-        };
-      }
-    }
-
-    // Get userName from config or profile
-    const pluginConfig = await getConfig();
-    let userName = pluginConfig.userName;
-    if (!userName) {
-      const profile = await fetchUserProfile();
-      userName = profile.userName;
-    }
-
-    const config = context.config || {};
-    const addCanonicalLink = config.add_canonical_link ?? true;
-    const lang = context.project_info.lang ?? "en";
-
-    // Syndicate articles sequentially (one at a time for user review)
-    let published = 0;
-    let draftsCreated = 0;
-    const errors: string[] = [];
-
-    const totalToSyndicate = articlesToSyndicate.length;
-    let processed = 0;
-    for (const article of articlesToSyndicate) {
-      try {
-        // The previous article's draft closes the panel when it ends, so each
-        // article's work starts with the loading panel open again.
-        if (!panelHeld) {
-          await openBrowser();
-          panelHeld = true;
-        }
-        await task.progress(processed / totalToSyndicate, `Syndicating ${article.title}`);
-        // Verify article is actually live at its deployed URL before syndicating.
-        // Prevents publishing broken links (e.g., new article not yet deployed,
-        // or GitHub Pages build failed).
-        const live = await isArticleLive(siteUrl, article.url_path);
-        if (!live) {
-          console.log(`    ⏭ Skipping ${article.title} — not yet live at ${siteUrl}/${article.url_path}`);
-          processed++;
-          continue;
-        }
-
-        const result = await syndicateArticle(article, siteUrl, userName, {
-          addCanonicalLink: addCanonicalLink as boolean,
-          lang,
-        }, task);
-        // A returned article has opened its draft, which now owns the panel.
-        panelHeld = false;
-
-        if (result.publishedUrl) {
-          published++;
-        } else {
-          draftsCreated++;
-        }
-      } catch (error) {
-        if (error instanceof MattersAuthError) throw error; // session is dead: abort the run
-        console.error(`    ✗ Failed to syndicate ${article.title}:`, error);
-        errors.push(`${article.title}: ${error}`);
-      }
-      processed++;
-    }
-
-    const parts: string[] = [];
-    if (published > 0) parts.push(`${published} published`);
-    if (draftsCreated > 0) parts.push(`${draftsCreated} drafts created`);
-    if (errors.length > 0) parts.push(`${errors.length} failed`);
-
-    const summary = parts.join(", ");
-
-    // A partial failure is PROPOSED as a per-run advisory (R13); moss clamps
-    // it. ShippedDegraded ⇒ a quiet hairline dot (the run still succeeded).
-    if (errors.length > 0) {
-      await task.advise({
-        scope: "Remote",
-        severity: "ShippedDegraded",
-        item: null,
-        what: `${errors.length} post(s) could not be syndicated: ${errors[0]}`,
-        action: "None",
-      });
-    }
-
-    // Terminal: report the COUNT, not a pre-formatted string. moss owns the
-    // receipt — it pairs the manifest's normalized verb ("Syndicated") with
-    // this count + the declared noun ("posts") to render "Syndicated · N posts"
-    // from its OWN value objects (Step 3 Phase 5, §8 + R13).
-    // #808: a created-but-unpublished draft is NOT a syndication. Only an
-    // API-confirmed publish (draft.article non-null) counts toward the success
-    // receipt/toast. A draft saved for later is surfaced as a NeedsAction advisory.
-    const syndicatedCount = published;
-
-    if (errors.length > 0) {
-      console.warn(`⚠️  Syndication complete: ${summary}`);
-    } else {
-      console.log(`✅ Syndication complete: ${summary || "nothing new (not yet live, or draft-only)"}`);
-    }
-
-    // task.succeeded() is the only terminal call that flushes advise()'d
-    // advisories (a draft-timeout above files a NeedsAction one even when
-    // syndicatedCount is 0) — cancelled() does not, so it can never stand in
-    // here regardless of the count. The panel deciding whether a 0-count,
-    // no-advisory success still paints a row is progress-panel.ts's job, not
-    // this hook's (see its "success makes no sound" handling).
-    await task.succeeded(undefined, syndicatedCount);
-
-    // One terminal L3 shelf ack — the durable positive result (Law 3).
-    // task.succeeded() already rendered "Syndicated · N posts" in L1;
-    // this showToast({ variant: 'success' }) is the shelf record with the
-    // "View profile" action link.
-    // NOTE: showAck() is a frontend-only function (toast-manager.ts) and is
-    // NOT exported from @symbiosis-lab/moss-api. Use showToast({ variant: 'success' }).
-    if (syndicatedCount > 0) {
-      const profileUrl = `https://${getDomain()}/@${userName}`;
-      await showToast({
-        message: `Syndicated ${syndicatedCount} article${syndicatedCount === 1 ? "" : "s"} to Matters`,
-        variant: "success",
-        persistent: true,
-        actions: [{ label: "View profile", url: profileUrl }],
-      });
-    }
-
-    return {
-      success: true,
-      message: `Syndication: ${summary || "nothing new"}`,
-    };
+    clearTokenCache();
+    await initializeDomain();
   } catch (error) {
-    if (error instanceof MattersAuthError) {
-      // Same contract as the process hook's catch: the server revoked the
-      // token mid-run; fail the task with honest copy (recoverable=true —
-      // a re-login fixes it) and nudge the session-expired surface.
-      const message = "session expired, log in again to publish.";
-      await notifySessionExpired(context.trigger);
-      await task.failed(message, true);
-      console.error("❌ Matters: syndication aborted, session rejected by server");
-      return { success: false, message };
-    }
-    const cause = error instanceof Error ? error.message : String(error);
-    console.error("❌ Matters: Syndication failed:", cause);
-    await task.failed(`Syndication failed: ${cause}`);
-    return {
-      success: false,
-      message: `Syndication failed: ${cause}`,
-    };
-  } finally {
-    if (panelHeld) {
-      panelHeld = false;
-      try {
-        await closeBrowser();
-      } catch {
-        // Browser might already be closed
-      }
-    }
+    return refusal("network", errorText(error));
   }
+  if ((job.form === "short" || job.form === "teaser") && job.parts?.[0]) return postMoment(job.parts[0]);
+  if (job.form === "long" && job.article?.html.trim()) return draftArticle(job, job.article);
+  return refusal("content", "Matters takes a moment or an article with a body");
 }
 
 /**
- * Check if an article is live at its deployed URL.
- *
- * Sends a HEAD request to the derived URL. Returns true if the server
- * responds with a 2xx status, false otherwise (404, network error, etc.).
- *
- * Used before syndication to avoid publishing links to articles that
- * haven't been deployed yet (e.g., new articles during concurrent syndication).
+ * Whether a copy is on Matters: a handed-off draft by its id, published or
+ * still waiting; else, after an interrupted send, an article or draft of the
+ * same title that links to the post.
  */
-export async function isArticleLive(siteUrl: string, articleUrlPath: string): Promise<boolean> {
-  const base = siteUrl.replace(/\/$/, "");
-  const path = articleUrlPath.replace(/^\//, "");
-  const fullUrl = `${base}/${path}`;
+export async function find_copy(job: CopyJob): Promise<HookResult> {
+  setCurrentHookName("find_copy");
   try {
-    const response = await fetch(fullUrl, { method: "HEAD" });
-    return response.ok;
-  } catch {
-    return false;
+    clearTokenCache();
+    await initializeDomain();
+    const draftId = job.previous?.id;
+    if (draftId) {
+      const draft = await fetchDraft(draftId);
+      // A draft the author deleted is no copy: moss sends it again.
+      if (!draft) return { success: true, copy: null };
+      return { success: true, copy: draft.article ? copyOf(draft.article, await viewerName()) : waiting(draft.id) };
+    }
+    if (job.form !== "long" || !job.article) return { success: false, message: "Matters cannot look a moment up" };
+    const { articles, userName } = await fetchAllArticles();
+    const article = articles.find((a) => a.title === job.article!.title && a.content.includes(job.post.url));
+    if (article) return { success: true, copy: copyOf(article, userName) };
+    const draft = await unpublishedDraftOf(job.post.url, job.article.title);
+    return { success: true, copy: draft ? waiting(draft) : null };
+  } catch (error) {
+    return { success: false, message: errorText(error) };
   }
 }
 
-// ============================================================================
-// Syndication Helpers
-// ============================================================================
+async function postMoment(part: { text: string; links: string[] }): Promise<HookResult> {
+  try {
+    if ((await getSessionState()) !== "valid") return refusal("auth", SIGN_IN);
+    const moment = await putMoment(momentHtml(part.text, part.links));
+    return { success: true, copy: { id: moment.id, url: momentUrl(moment.shortHash) } };
+  } catch (error) {
+    return refusedOrThrow(error);
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** A moment's HTML: paragraphs, line breaks, and each address as a link. */
+export function momentHtml(text: string, links: string[]): string {
+  let html = "";
+  let from = 0;
+  for (const link of links) {
+    const at = text.indexOf(link, from);
+    if (at < 0) continue;
+    html += escapeHtml(text.slice(from, at)) + `<a href="${escapeHtml(link)}">${escapeHtml(link)}</a>`;
+    from = at + link.length;
+  }
+  html += escapeHtml(text.slice(from));
+  return html
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function waiting(draftId: string): CopyOutcome {
+  return { handoff: { text: "", open_url: draftUrl(draftId), id: draftId } };
+}
 
 /**
- * Syndicate a single article to Matters.town
- *
- * Workflow:
- * 1. Upload cover image if present in frontmatter
- * 2. Create draft via API
- * 3. Open draft in browser for user to review
- * 4. Poll for publish state change
- * 5. On publish: close browser, update local frontmatter
- * 6. On timeout: close browser, leave draft for later
- *
- * Exported for unit testing.
+ * Put the article into a Matters draft and, where the panel can show it (the
+ * app; a terminal cannot), open it for the author and wait while they publish
+ * it. Closed without publishing, or with no panel, the draft is handed to the
+ * author, and moss's later `find_copy` adopts it once published.
  */
-export async function syndicateArticle(
-  article: ArticleInfo,
-  siteUrl: string,
-  userName: string,
-  options: { addCanonicalLink: boolean; lang: string },
-  task: TaskHandle,
-): Promise<{ draftId: string; publishedUrl?: string }> {
-  console.info(`  → Syndicating: ${article.title}`);
-
-  const canonicalUrl = `${siteUrl.replace(/\/$/, "")}/${article.url_path.replace(/^\//, "")}`;
-
-  // Step 1: Get content
-  const { content: articleContent, isHtml } = getArticleContent(article);
-  let content = articleContent;
-
-  // Step 2: Normalize HTML (headings + image wrapping) — only for HTML content.
-  // Strip moss's auto-injected article-title <h1> first (matters has its own
-  // title field, so leaving the h1 in the body produces a visible duplicate
-  // in the matters draft).
-  if (isHtml) {
-    content = stripArticleTitleH1(content, article.title);
-    content = normalizeHtmlForMatters(content);
+async function draftArticle(job: CopyJob, article: NonNullable<CopyJob["article"]>): Promise<HookResult> {
+  const shown = await openBrowser().then(
+    () => true,
+    () => false,
+  );
+  try {
+    let draft: MattersDraftWithArticle;
+    let userName: string;
+    try {
+      if ((await getSessionState()) !== "valid" && !(shown && (await promptLogin({ keepPanelLoading: true })))) {
+        return refusal("auth", SIGN_IN);
+      }
+      userName = await viewerName();
+      draft = await putArticleDraft(job, article);
+    } catch (error) {
+      return refusedOrThrow(error);
+    }
+    // The draft exists from here on, so nothing below may answer "refused": a
+    // resend would make a second one. Whatever fails, it waits for the author.
+    const handoff: HookResult = { success: true, copy: waiting(draft.id) };
+    if (!shown) return handoff;
+    try {
+      // The draft room authenticates by cookie, so it gets THIS folder's account.
+      await prepareWebviewAuth();
+      const browser = await openBrowser(draftUrl(draft.id));
+      const task = await startTask("Publish on Matters", { hook: "syndicate", trigger: "manual_one", hasProgress: false, cancellable: false });
+      // Awaiting suspends moss's inactivity watchdog for as long as the author writes.
+      await task.awaiting("publish the draft", "Matters editor", "cancel");
+      // A publish in the same moment as the close can lose the race, so ask once more.
+      const published = (await waitForPublishOrClose(draft.id, browser)) ?? (await fetchDraft(draft.id))?.article ?? null;
+      await task.succeeded();
+      if (published) return { success: true, copy: copyOf(published, userName) };
+    } catch (error) {
+      console.warn(`    ⚠️ Matters editor: ${errorText(error)}; the draft waits for the author`);
+    }
+    return handoff;
+  } finally {
+    if (shown) await closeBrowser().catch(() => {});
   }
+}
 
-  // Step 3: Add canonical link with lang
-  if (options.addCanonicalLink) {
-    content = addCanonicalLinkToContent(content, canonicalUrl, isHtml, options.lang);
+async function viewerName(): Promise<string> {
+  return (await getConfig()).userName ?? (await fetchUserProfile()).userName;
+}
+
+function copyOf(article: { shortHash: string; slug: string }, userName: string): { id: string; url: string } {
+  return { id: article.shortHash, url: articleUrl(userName, article.slug, article.shortHash) };
+}
+
+/**
+ * An unpublished draft of this post: the same title, and a link to the post,
+ * which every draft this plugin makes carries. A resend reuses it rather than
+ * adding another, and leaves a draft of the author's own alone.
+ */
+async function unpublishedDraftOf(postUrl: string, title: string): Promise<string | undefined> {
+  for (const draft of (await fetchAllDrafts()).filter((d) => d.title === title && d.content?.includes(postUrl))) {
+    const state = await fetchDraft(draft.id);
+    if (state && !state.article && state.publishState === "unpublished") return draft.id;
   }
+  return undefined;
+}
 
-  // Step 4: Absolutize relative <a href> values against the article URL.
-  // Without this, matters.town serves `<a href="../../foo.html">` from its own
-  // domain and the link 404s. Same article-relative resolution rule as asset
-  // srcs. Asset BYTE uploads happen post-draft (Step 8) — Matters'
-  // singleFileUpload requires `entityId` for embeds, just as it does for cover.
-  if (isHtml) {
-    content = absolutizeRelativeHrefs(content, canonicalUrl);
-    // Restructure moss audio embeds into matters' `<figure class="audio">` shape
-    // and absolutize the `<source>` src to the deployed URL. That absolutized URL
-    // is the FALLBACK — Step 8 then uploads the audio bytes and swaps in the
-    // durable matters CDN URL on success. Without this wrap matters strips moss's
-    // bare `<audio>` entirely. See wrapAudioForMatters.
-    content = wrapAudioForMatters(content, canonicalUrl);
+/**
+ * The article as a Matters draft: its body rewritten for Matters' sanitizer,
+ * links and media made absolute, then cover and media uploaded as bytes, since
+ * Matters cannot reliably fetch them from the site. An upload that fails
+ * leaves the site's address in place.
+ */
+async function putArticleDraft(job: CopyJob, article: NonNullable<CopyJob["article"]>): Promise<MattersDraftWithArticle> {
+  const canonicalUrl = job.post.url;
+  let content = normalizeHtmlForMatters(stripArticleTitleH1(article.html, article.title));
+  if (job.config.add_canonical_link ?? true) {
+    content = addCanonicalLinkToContent(content, canonicalUrl, job.post.lang ?? undefined);
   }
+  content = wrapAudioForMatters(absolutizeRelativeHrefs(content, canonicalUrl), canonicalUrl);
 
-  // Step 5: Check for existing tracked draft
-  const existingDraftId = article.source_path ? await getDraftId(article.source_path) : undefined;
-  if (existingDraftId) {
-    console.log(`    📋 Found existing draft ID: ${existingDraftId}`);
-  }
-
-  // Step 6: Create/update draft via API (with optional summary from description)
-  const summary = article.frontmatter.description as string | undefined;
-  const draftInput = {
+  const input: PutDraftInput = {
     title: article.title,
     content,
-    tags: article.tags,
-    ...(existingDraftId ? { id: existingDraftId } : {}),
-    ...(summary ? { summary } : {}),
+    tags: job.post.tags ?? [],
+    ...(article.description ? { summary: article.description } : {}),
   };
-
-  let draft;
+  const existing = job.previous?.id ?? (await unpublishedDraftOf(canonicalUrl, article.title));
+  let draft: MattersDraftWithArticle;
   try {
-    draft = await createDraft(draftInput);
+    draft = await createDraft(existing ? { ...input, id: existing } : input);
   } catch (error) {
-    if (existingDraftId) {
-      // Stale draft ID — fall back to creating a new draft without id
-      console.warn(`    ⚠️ Existing draft ${existingDraftId} failed, creating new draft: ${error}`);
-      const { id: _removed, ...inputWithoutId } = draftInput;
-      draft = await createDraft(inputWithoutId);
-    } else {
-      throw error;
-    }
+    if (!existing) throw error;
+    console.warn(`    ⚠️ Draft ${existing} could not be reused, creating a new one: ${error}`);
+    draft = await createDraft(input);
   }
 
-  console.log(`    📝 Draft ${existingDraftId ? "updated" : "created"} with ID: ${draft.id}`);
-
-  // Step 7: Upload cover if present in frontmatter (requires draft ID as entityId).
-  // Cover paths are conventionally site-relative (e.g. `/og-image.png` or
-  // `assets/covers/foo.jpg`). We read the BYTES from the local build output and
-  // upload them directly — matters' server cannot reliably fetch covers by URL
-  // from a deployed site (see uploadAssetMultipart).
-  const coverPath = article.frontmatter.cover as string | undefined;
+  const coverPath = article.cover ? siteRelativePathFromSrc(article.cover, canonicalUrl) : null;
   if (coverPath) {
     try {
-      const coverSitePath = decodeURIComponent(coverPath.replace(/^\//, ""));
-      const base64 = await readSiteFile(coverSitePath);
-      const filename = coverSitePath.split("/").pop() || "cover";
-      const coverAsset = await uploadAssetMultipart(
-        base64,
-        filename,
-        imageMimeForPath(coverSitePath),
-        "cover",
-        draft.id,
-      );
-      console.log(`    🖼️ Cover uploaded (bytes): ${coverAsset.id}`);
-      // Update draft with cover
-      await createDraft({ id: draft.id, title: draft.title, cover: coverAsset.id });
-      console.log(`    🖼️ Draft updated with cover`);
+      const filename = coverPath.split("/").pop() || "cover";
+      const cover = await uploadAssetMultipart(await readSiteFile(coverPath), filename, imageMimeForPath(coverPath), "cover", draft.id);
+      await createDraft({ id: draft.id, title: draft.title, cover: cover.id });
     } catch (error) {
       console.warn(`    ⚠️ Cover upload failed, continuing without cover: ${error}`);
     }
   }
-
-  // Step 8: Upload embedded body images and re-put the draft with CDN URLs.
-  // Same `entityId` requirement as cover, so this also has to wait until the
-  // draft exists. The first putDraft above sent the relative-src content; if
-  // any uploads succeed, this overwrites the body with the CDN-rewritten one.
-  //
-  // Wrapped in try/catch to match the cover flow's "continue on failure"
-  // semantics. Without this, a single re-put error (e.g. matters API 5xx)
-  // would skip the toast/openBrowser path and leave the user looking at a
-  // generic syndication failure instead of the still-usable draft.
-  if (isHtml) {
-    try {
-      let rewritten = await uploadAndReplaceLocalImages(content, canonicalUrl, draft.id);
-      // Upload audio bytes too (embedaudio). The figure.audio src is currently
-      // the absolutized deployed URL (from wrapAudioForMatters); on success this
-      // swaps it for the durable matters CDN URL, on failure it stays as the
-      // streamed site URL.
-      rewritten = await uploadAndReplaceLocalAudio(rewritten, canonicalUrl, draft.id);
-      if (rewritten !== content) {
-        await createDraft({ id: draft.id, title: draft.title, content: rewritten });
-        console.log(`    🖼️ Draft updated with uploaded asset URLs`);
-      }
-    } catch (error) {
-      console.warn(`    ⚠️ Asset upload step failed, draft body keeps original srcs: ${error}`);
-    }
-  }
-
-  // Step 9: Open draft in browser for user review; then signal L1 "waiting for you"
-  // Law 3: waitForPublishOrClose is textbook Awaiting semantics.
-  // task.awaiting() fires AFTER openBrowser() so the amber dot appears when
-  // the editor is already visible (semantically accurate: "waiting for you IN
-  // Matters editor" — the editor is open when the wait starts).
-  // task.awaiting() also suspends the Rust 60s inactivity watchdog, so a slow
-  // user is never killed by inactivity while the browser is open.
-  const draftPageUrl = draftUrl(draft.id);
-  console.info(`    🌐 Opening draft for review: ${draftPageUrl}`);
-  // Project THIS folder's token into the matters cookie so the draft-room
-  // webview authenticates as the bound account (the cookie is the webview's
-  // only credential — see credential.prepareWebviewAuth), not whoever logged
-  // in last in the process-shared WebKit store.
-  await prepareWebviewAuth();
-  const browserHandle = await openBrowser(draftPageUrl);
-  await task.awaiting("publish the draft", "Matters editor", "cancel");
-
-  // Step 10: Poll for publish state change — resolves only on publish or browser close.
-  // No wall-clock ceiling: the 60s Rust inactivity watchdog is suspended by the
-  // task.awaiting() signal above, so the hook waits as long as the user needs.
-  const publishedArticle = await waitForPublishOrClose(draft.id, browserHandle);
-
-  if (publishedArticle) {
-    // Step 11: Article was published - update local frontmatter
-    const publishedUrl = articleUrl(userName, publishedArticle.slug, publishedArticle.shortHash);
-    console.log(`    ✅ Published: ${publishedUrl}`);
-
-    // Update the local markdown file's frontmatter
-    if (article.source_path) {
-      await updateFrontmatterSyndicated(article.source_path, publishedUrl);
-      console.log(`    📝 Updated frontmatter with syndicated URL`);
-    }
-
-    // Remove draft from tracking (published successfully)
-    if (article.source_path) {
-      try {
-        await removeDraftId(article.source_path);
-      } catch (err) {
-        console.warn(`    ⚠️ Failed to remove draft tracking: ${err}`);
-      }
-    }
-
-    return { draftId: draft.id, publishedUrl };
-  }
-
-  // Step 12: Closed/timeout without publishing — signal the ship conductor.
-  // Emit 'matters-room-skipped' so the conductor in the main shell can advance
-  // the ring segment for matters as 'skipped' (not 'failed'). The tauri_bridge
-  // special-cases this event to broadcast to all windows (not just the browser
-  // panel), matching how 'email-room-skipped' reaches the conductor. Best-effort:
-  // failure to emit must not abort the cleanup below.
   try {
-    await emitEvent("matters-room-skipped");
-  } catch (err) {
-    console.warn(`    ⚠️ Failed to emit matters-room-skipped: ${err}`);
+    const rewritten = await uploadAndReplaceLocalAudio(await uploadAndReplaceLocalImages(content, canonicalUrl, draft.id), canonicalUrl, draft.id);
+    if (rewritten !== content) await createDraft({ id: draft.id, title: draft.title, content: rewritten });
+  } catch (error) {
+    console.warn(`    ⚠️ Asset upload failed, the draft keeps the site's addresses: ${error}`);
   }
-
-  // R9: Post-settle reconciliation — close/skip won the race but the article
-  // may have been published in the same window (e.g. user published → closed
-  // fast enough for close to win). Avoid leaving a misleading "Draft saved"
-  // advisory when the article is actually live. Best-effort: a network failure
-  // here must not abort the cleanup.
-  let latePublish: { shortHash: string; slug: string } | null = null;
-  try {
-    const reconcileDraft = await fetchDraft(draft.id);
-    if (reconcileDraft?.article) {
-      latePublish = {
-        shortHash: reconcileDraft.article.shortHash,
-        slug: reconcileDraft.article.slug,
-      };
-      console.log(`    🔄 R9 reconciliation: article was published despite close/timeout`);
-    }
-  } catch (err) {
-    console.warn(`    ⚠️ R9 reconciliation check failed: ${err}`);
-  }
-
-  if (latePublish) {
-    // Article is actually live — update frontmatter and return as published.
-    const publishedUrl = articleUrl(userName, latePublish.slug, latePublish.shortHash);
-    if (article.source_path) {
-      await updateFrontmatterSyndicated(article.source_path, publishedUrl).catch((err) => {
-        console.warn(`    ⚠️ R9: Failed to update frontmatter: ${err}`);
-      });
-      await removeDraftId(article.source_path).catch(() => {});
-    }
-    await task.advise({
-      scope: "Remote",
-      severity: "ShippedDegraded",
-      item: article.title,
-      what: "Article published on Matters — frontmatter will sync",
-      action: { Link: { href: publishedUrl, label: "View article" } },
-    });
-    return { draftId: draft.id, publishedUrl };
-  }
-
-  // Save draft ID for reuse next time
-  if (article.source_path) {
-    try {
-      await saveDraftId(article.source_path, draft.id);
-      console.log(`    💾 Draft ID saved for reuse`);
-    } catch (err) {
-      console.warn(`    ⚠️ Failed to save draft tracking: ${err}`);
-    }
-  }
-  console.log(`    ⏱️ Publish timeout/close — draft saved for later`);
-  // Draft timed out or user closed without publish; leave an actionable advisory
-  // in the pill popover (Law 2: actionable state must not auto-fade in 5s).
-  // advise() accumulates on the handle and flushes when task.succeeded() is
-  // called after the loop — this is correct SDK behavior, not a leak.
-  await task.advise({
-    scope: "Remote",
-    severity: "NeedsAction",
-    item: article.title,
-    what: "Draft saved — publish it on Matters when ready",
-    action: { Link: { href: draftUrl(draft.id), label: "Open draft" } },
-  });
-  return { draftId: draft.id };
+  return draft;
 }
 
 /**
- * Wait for draft to be published or the browser to be closed.
- *
- * A single `new Promise` executor with a shared `settle()` guard so exactly ONE
- * resolution wins. Three racing branches all call `settle`:
- *
- *   (a) Poll loop — sleep(5s) then fetchDraft; if draft.article → settle published.
- *       Uses the `sleep` utility so tests can mock it to a no-op.
- *   (b) browserHandle.closed → settle(null) [user closed the editor].
- *   (c) onEvent('browser-url-changed') — if URL looks like a published article,
- *       immediately call fetchDraft; if draft.article → settle published.
- *       The URL is a TRIGGER; the API is the source of truth.
- *
- * There is NO wall-clock ceiling. The wait terminates only when:
- *   - the article is confirmed published (a or c), or
- *   - the user closes the browser (b).
- * Crash recovery is handled by the 60s Rust inactivity watchdog, which is
- * suspended while the hook signals Awaiting (via task.awaiting() in the
- * caller) — so a slow user is never killed by inactivity.
- *
- * Cleanup (url-listener) is guaranteed on EVERY resolution path.
- * The poll loop exits naturally once `settled` is true. A leaked
- * `onEvent` listener double-fires on the next article — unlisten is mandatory.
- *
- * Returns { shortHash, slug } on confirmed publish; null on browser close.
- *
- * NOTE: Matters is currently the last channel. When multi-channel ordering
- * changes, "done detection finishes the ship" must be revisited.
+ * Wait for the draft to be published or the panel to be closed: a 5 s poll,
+ * the panel's close, and a navigation to an article page (a trigger only; the
+ * API is the truth) race, and exactly one settles. There is no time limit: the
+ * caller's awaiting signal keeps moss's watchdog off while the author writes.
  *
  * @internal exported for unit tests only
  */
@@ -1686,9 +1260,7 @@ export async function waitForPublishOrClose(
   draftId: string,
   browserHandle?: BrowserHandle
 ): Promise<{ shortHash: string; slug: string } | null> {
-  console.log(`    ⏳ Waiting for publish (no wall-clock ceiling — resolves on publish or browser close)...`);
-
-  const pollIntervalMs = 5000; // 5 seconds
+  const pollIntervalMs = 5000;
 
   return new Promise<{ shortHash: string; slug: string } | null>((resolve) => {
     let settled = false;
@@ -1697,17 +1269,11 @@ export async function waitForPublishOrClose(
     function settle(value: { shortHash: string; slug: string } | null): void {
       if (settled) return;
       settled = true;
-
-      // Cleanup: clear the URL listener so it does not fire again on a
-      // subsequent article. The poll loop exits via the `settled` guard.
+      // A listener left behind would fire again for the next article.
       if (unlistenUrl) unlistenUrl();
 
       if (value) {
-        console.log(`    🎉 Publish detected!`);
-        // R19 — Held confirmation beat: signal the shell bar first, hold
-        // ~800ms so the "Published to Matters" bar is visible, THEN close
-        // the browser. Prevents the "moss stole my tab" feeling. The 800ms
-        // uses the same `sleep` helper as the poll loop so tests can mock it.
+        // Hold the "Published to Matters" bar in view briefly before the panel closes.
         (async () => {
           try {
             await emitEvent("matters-room-published");
@@ -1723,7 +1289,6 @@ export async function waitForPublishOrClose(
       }
     }
 
-    // Branch (a): poll loop — uses sleep() so tests can mock it to a no-op.
     (async () => {
       while (!settled) {
         await sleep(pollIntervalMs);
@@ -1739,21 +1304,12 @@ export async function waitForPublishOrClose(
       }
     })();
 
-    // Branch (b): browser close — user explicitly dismissed the editor.
     if (browserHandle) {
-      browserHandle.closed.then(() => {
-        console.log(`    🚪 Browser closed by user`);
-        settle(null);
-      });
+      browserHandle.closed.then(() => settle(null));
     }
 
-    // Branch (c): URL-triggered immediate verify (latency optimisation; API is truth)
     onEvent<{ url: string }>("browser-url-changed", async (payload) => {
-      // guard the leaked-listener race: if we've already settled (e.g. unlisten not yet stored), do nothing
-      if (settled) return;
-      const url = payload.url;
-      console.log("[matters] browser-url-changed", url);
-      if (!looksLikePublishedArticleUrl(url)) return;
+      if (settled || !looksLikePublishedArticleUrl(payload.url)) return;
       try {
         const draft = await fetchDraft(draftId);
         if (draft?.article) {
@@ -1765,82 +1321,12 @@ export async function waitForPublishOrClose(
     }).then((fn) => {
       unlistenUrl = fn;
     }).catch((err) => {
-      // If onEvent fails (e.g. no Tauri runtime in test env), log and continue.
-      // The API poll provides the correctness backstop regardless.
+      // No event bridge (a test, say): the poll still settles it.
       console.warn(`    ⚠️ Could not register browser-url-changed listener: ${err}`);
     });
-
-    // NOTE: There is intentionally no branch (d) wall-clock timeout.
-    // The Rust inactivity watchdog (60s, awaiting-aware) is the sole crash guard.
-    // A slow user writing their Matters draft is never killed by a deadline.
   });
 }
 
-/**
- * Update the syndicated field in article frontmatter
- */
-export async function updateFrontmatterSyndicated(
-  filePath: string,
-  publishedUrl: string
-): Promise<void> {
-  try {
-    const content = await readFile(filePath);
-    const parsed = parseFrontmatter(content);
-
-    if (!parsed) {
-      console.warn(`    ⚠️ Could not parse frontmatter for ${filePath}`);
-      return;
-    }
-
-    const syndicated = (parsed.frontmatter.syndicated as string[]) || [];
-    if (syndicated.includes(publishedUrl)) {
-      // Already recorded. Skip the rewrite: regenerateFrontmatter re-serializes
-      // the user's hand-written frontmatter, and any write re-triggers moss's
-      // file watcher rebuild — both unacceptable for a no-op.
-      return;
-    }
-    syndicated.push(publishedUrl);
-    parsed.frontmatter.syndicated = syndicated;
-
-    // Regenerate file with updated frontmatter. parseFrontmatter's body capture
-    // keeps the blank separator line, so trim it or every rewrite grows one.
-    const newContent =
-      regenerateFrontmatter(parsed.frontmatter) + "\n\n" + parsed.body.replace(/^\n+/, "");
-    await writeFile(filePath, newContent);
-  } catch (error) {
-    console.warn(`    ⚠️ Failed to update frontmatter: ${error}`);
-  }
-}
-
-/**
- * Get the best content from an article for syndication.
- * Prefers rendered HTML (for platforms like Matters that expect HTML),
- * falls back to markdown content.
- */
-export function getArticleContent(article: ArticleInfo): { content: string; isHtml: boolean } {
-  if (article.html_content) {
-    return { content: article.html_content, isHtml: true };
-  }
-  return { content: article.content, isHtml: false };
-}
-
-/**
- * Normalize HTML content for Matters.town compatibility.
- *
- * Matters only accepts h2 and h3 headings. This function:
- * - Downgrades h1 → h2
- * - Keeps h2 and h3 unchanged
- * - Collapses h4, h5, h6 → h3 (to prevent removal by Matters)
- *
- * Image wrapping is also matters-specific. Matters' server-side HTML
- * sanitizer strips any `<img>` not inside `<figure class="image">` with
- * a `<figcaption>` child, and also strips `<figure>` with any other
- * class (`moss-image`, plain `<figure>`, etc.). Smoke test against
- * `server.matters.icu` confirmed this contract empirically (see
- * `.credentials/accounts.md` for the test wallet). moss's `<figure class="moss-image">`
- * output does not round-trip through matters, so the wrap is restored here as a
- * matters-specific pre-upload transform. See `wrapImagesForMatters`.
- */
 /**
  * Strip moss's auto-injected article-title `<h1 class="moss-article-title">`
  * when its plain text equals the article's title. matters.town has its own
@@ -1980,13 +1466,9 @@ export function normalizeHtmlForMatters(html: string): string {
  * A paragraph open tag, with or without attributes.
  *
  * Every "is this element ALONE in its paragraph?" hoist below must use this,
- * never a literal `<p>`. The HTML these transforms receive is NOT the shipped
- * page HTML — it is `article-map.json`'s `html_content`, which
- * `load_articles_for_syndication` reads and `getArticleContent` hands to the
- * transform chain. `data-source-line` is stripped only by `ship_phase`'s
- * staging→site FILE copy, which never touches `article-map.json`. So in
- * production every top-level paragraph arrives as `<p data-source-line="N">`,
- * and a literal `<p>` pattern silently matches nothing.
+ * never a literal `<p>`: `job.article.html` is the build's `html_content`,
+ * not the shipped page, so every top-level paragraph arrives as
+ * `<p data-source-line="N">` and a literal `<p>` pattern matches nothing.
  */
 const PARAGRAPH_OPEN = "<p(?:\\s[^>]*)?>";
 
@@ -2366,25 +1848,10 @@ export function wrapAudioForMatters(html: string, baseUrl: string): string {
   return result;
 }
 
-/**
- * Add canonical link to article content
- *
- * @param lang - Language code; when starting with "zh", uses Chinese text
- */
-export function addCanonicalLinkToContent(
-  content: string,
-  canonicalUrl: string,
-  isHtml: boolean = false,
-  lang?: string
-): string {
-  const isZh = lang?.startsWith("zh") ?? false;
-  const linkText = isZh ? "原文链接" : "Original link";
-
-  if (isHtml) {
-    return content + `<hr><p><a href="${canonicalUrl}">${linkText}</a></p>`;
-  }
-  const canonicalNotice = `\n\n---\n\n[${linkText}](${canonicalUrl})\n`;
-  return content + canonicalNotice;
+/** Append a link back to the original, in Chinese when `lang` starts with "zh". */
+export function addCanonicalLinkToContent(html: string, canonicalUrl: string, lang?: string): string {
+  const linkText = lang?.startsWith("zh") ? "原文链接" : "Original link";
+  return html + `<hr><p><a href="${canonicalUrl}">${linkText}</a></p>`;
 }
 
 /** Map an image file extension to the MIME type sent on upload. */

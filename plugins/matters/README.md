@@ -16,8 +16,7 @@ A moss publishing plugin for matters.town. See [moss.pub](https://mosspub.com) a
 - **`assets.matters.news`** — downloads the images belonging to posts you
   import, so they land in your project as local files.
 
-Nothing else is contacted. The plugin sends the articles you choose to
-syndicate; it does not send analytics.
+Nothing else is contacted. The plugin sends only the posts whose `syndicate:` names Matters, a short post as a moment and an article as a draft you publish in Matters' editor; it does not send analytics.
 
 ## Stability
 

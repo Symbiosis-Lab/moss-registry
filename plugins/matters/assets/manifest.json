@@ -1,10 +1,10 @@
 {
   "name": "matters",
-  "version": "1.5.7",
+  "version": "1.6.0",
   "display_name": "Matters",
-  "description": "Syndicate your articles to Matters.town (POSSE)",
+  "description": "Post copies of your posts to Matters.town: short posts as moments, articles as drafts you publish there",
   "author": "moss team",
-  "min_moss_version": "0.11.7",
+  "min_moss_version": "0.15.19",
   "preview": true,
   "entry": "main.bundle.js",
   "capabilities": [
@@ -35,7 +35,16 @@
   "contributes": {
     "channel": {
       "imports": true,
-      "login": true
+      "login": true,
+      "syndication": {
+        "forms": [
+          "short",
+          "teaser",
+          "long"
+        ],
+        "max_chars": 240,
+        "counting": "utf16"
+      }
     },
     "jobs": {
       "syndicate": {

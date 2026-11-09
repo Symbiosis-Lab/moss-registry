@@ -1,13 +1,14 @@
 /**
- * The Matters panel stays up from the start of syndicate until the draft
- * navigates it: loading first, then the login page, back to loading on
+ * The Matters panel stays up from the start of an article's copy until its
+ * draft navigates it: loading first, then the login page, back to loading on
  * success, then the draft. Asserted through the openBrowser / closeBrowser
  * call order, which is all the plugin does to the panel.
  */
 // @vitest-environment node
+import type { CopyJob } from "@symbiosis-lab/moss-api";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { openBrowser, closeBrowser } from "@symbiosis-lab/moss-api";
-import type { ArticleInfo, ProcessContext, SyndicateContext } from "../types";
+import type { ProcessContext } from "../types";
 
 vi.mock("@symbiosis-lab/moss-api", () => ({
   getPluginCookie: vi.fn(),
@@ -63,6 +64,8 @@ vi.mock("../credential", () => ({
 vi.mock("../api", () => ({
   createDraft: vi.fn(),
   fetchDraft: vi.fn(),
+  fetchAllDrafts: vi.fn().mockResolvedValue([]),
+  MattersRefusal: class MattersRefusal extends Error {},
   uploadCoverByUrl: vi.fn().mockResolvedValue("asset-1"),
   uploadEmbedByUrl: vi.fn().mockResolvedValue("https://cdn/img.jpg"),
   fetchUserProfile: vi.fn().mockResolvedValue({ userName: "guo", displayName: "Guo" }),
@@ -122,29 +125,20 @@ vi.mock("../auth-route", () => ({
   isUserPresent: vi.fn().mockResolvedValue(true),
 }));
 
-import { login, syndicate } from "../main";
+import { login, publish_copy } from "../main";
+import type { CopyJob } from "@symbiosis-lab/moss-api";
 import { createDraft, fetchDraft } from "../api";
 import { captureLogin, getSessionState } from "../credential";
 
-function makeUnsyncedArticle(): ArticleInfo {
-  return {
-    source_path: "posts/test.md",
-    title: "Test Article",
-    content: "# Test\n\nBody.",
-    frontmatter: {},
-    url_path: "posts/test/",
-    tags: [],
-  };
-}
-
-function makeSyndicateContext(articles: ArticleInfo[]): SyndicateContext {
-  return {
-    deployment: { url: "https://example.com", deployed_at: "2026-06-14T00:00:00Z" },
-    articles,
-    config: {},
-    project_info: { folder_name: "test", homepage_file: null, lang: "en" },
-  } as unknown as SyndicateContext;
-}
+const ARTICLE: CopyJob = {
+  op: "publish",
+  channel: "matters",
+  idempotency_key: "k",
+  post: { url: "https://example.com/posts/test/", source_path: "posts/test.md", title: "Test Article" },
+  form: "long",
+  article: { title: "Test Article", html: "<p>Body.</p>" },
+  config: {},
+};
 
 const LOGIN_URL = "https://matters.town/login";
 const DRAFT_URL = "https://matters.town/drafts/d1";
@@ -154,9 +148,7 @@ function openedUrls(): (string | null)[] {
   return vi.mocked(openBrowser).mock.calls.map(([url]) => url ?? null);
 }
 
-describe("Matters panel stays up from syndicate start to the draft", () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-
+describe("the Matters panel stays up from an article's copy to its draft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(createDraft).mockResolvedValue({
@@ -177,20 +169,14 @@ describe("Matters panel stays up from syndicate start to the draft", () => {
     } as never);
     vi.mocked(getSessionState).mockResolvedValue("valid" as never);
     vi.mocked(captureLogin).mockResolvedValue("tok" as never);
-    mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-    vi.stubGlobal("fetch", mockFetch);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it("logged in: the loading panel opens before the first network call, then the draft navigates it", async () => {
-    await syndicate(makeSyndicateContext([makeUnsyncedArticle()]));
+    await publish_copy(ARTICLE);
 
     expect(openedUrls()).toEqual([null, DRAFT_URL]);
     const loadingOrder = vi.mocked(openBrowser).mock.invocationCallOrder[0];
-    expect(loadingOrder).toBeLessThan(mockFetch.mock.invocationCallOrder[0]);
+    expect(loadingOrder).toBeLessThan(vi.mocked(createDraft).mock.invocationCallOrder[0]);
     const draftOrder = vi.mocked(openBrowser).mock.invocationCallOrder[1];
     const closesBeforeDraft = vi
       .mocked(closeBrowser)
@@ -203,7 +189,7 @@ describe("Matters panel stays up from syndicate start to the draft", () => {
     // The first token poll finds nothing; the second finds the token that login wrote.
     vi.mocked(captureLogin).mockResolvedValueOnce(null as never);
 
-    await syndicate(makeSyndicateContext([makeUnsyncedArticle()]));
+    await publish_copy(ARTICLE);
 
     expect(openedUrls()).toEqual([null, LOGIN_URL, null, DRAFT_URL]);
     const draftOrder = vi.mocked(openBrowser).mock.invocationCallOrder[3];
@@ -213,26 +199,10 @@ describe("Matters panel stays up from syndicate start to the draft", () => {
     expect(closesBeforeDraft).toEqual([]);
   });
 
-  it("a second article reopens the loading panel before its first network call, after the first draft closed it", async () => {
-    const second: ArticleInfo = {
-      ...makeUnsyncedArticle(),
-      title: "Second Article",
-      source_path: "posts/second.md",
-      url_path: "posts/second/",
-    };
-
-    await syndicate(makeSyndicateContext([makeUnsyncedArticle(), second]));
-
-    expect(openedUrls()).toEqual([null, DRAFT_URL, null, DRAFT_URL]);
-    const secondLoadingOrder = vi.mocked(openBrowser).mock.invocationCallOrder[2];
-    const secondFetchOrder = mockFetch.mock.invocationCallOrder[1];
-    expect(secondLoadingOrder).toBeLessThan(secondFetchOrder);
-  });
-
   it("an error after the loading panel opened closes the panel exactly once and opens no draft", async () => {
     vi.mocked(createDraft).mockRejectedValueOnce(new Error("boom"));
 
-    await syndicate(makeSyndicateContext([makeUnsyncedArticle()]));
+    await expect(publish_copy(ARTICLE)).rejects.toThrow("boom");
 
     expect(openedUrls()).toEqual([null]);
     expect(vi.mocked(closeBrowser)).toHaveBeenCalledTimes(1);
@@ -241,7 +211,7 @@ describe("Matters panel stays up from syndicate start to the draft", () => {
     );
   });
 
-  it("a non-syndicate login caller (the login hook) still closes the panel after login", async () => {
+  it("another login caller (the login hook) still closes the panel after login", async () => {
     vi.mocked(captureLogin).mockResolvedValueOnce(null as never);
 
     const result = await login({ trigger: "manual" } as unknown as ProcessContext);

@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _Pending publish — cumulative since `1.1.2` (last released on main); full detail under [1.4.0] and [1.2.0]._
 
+- Changed (`1.6.0`): Matters is now a channel like any other: a post goes to Matters when its folder names it in `syndicate:`, and moss records the copy's address in the post's `syndicated:`. A short post becomes a Matters moment. An article becomes a draft that opens in Matters' editor for you to publish; if you close it unpublished, or publish from the command line, the draft waits on Matters and moss picks up its address once you publish it there. Needs moss 0.15.19 or later.
+
 - Changed: the Matters panel opens at once with a loader and stays open from sign-in until your draft is ready.
 
 - Changed: with several articles to import, the loader returns for each one.
