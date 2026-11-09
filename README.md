@@ -95,32 +95,21 @@ The in-app catalog that consumes this index ships in an upcoming moss release.
 Until then, a published plugin can be installed by unpacking its release zip into
 a project's `.moss/plugins/<id>/`.
 
-## Active plugins
+## First-party plugins
 
-| Plugin | Package | Purpose |
+Symbiosis Lab writes these, and writes them here, the same way anyone contributes a plugin: a change is a pull request against this repository, reviewed and built by the same CI. moss bundles exact releases of the first three, each pinned by the sha256 of its release zip, so bundling only decides what a fresh moss starts with; the registry is how a bundled plugin is updated between moss releases.
+
+| Plugin | Purpose | Bundled with moss |
 |---|---|---|
-| github | `@symbiosis-lab/moss-plugin-github` | Publish moss sites to GitHub Pages |
-| matters | `@symbiosis-lab/moss-plugin-matters` | Publish posts to matters.town |
+| [github](plugins/github) | Publish a site to GitHub Pages | yes |
+| [matters](plugins/matters) | Post copies of a site's posts to matters.town | yes |
+| [onionpress](plugins/onionpress) | Publish a site as a Tor onion service through OnionPress | yes |
+| [map-layers](plugins/map-layers) | Fetch the map scans a historical map layer needs into the site | no |
+| [ipfs](plugins/ipfs) | Publish a site to IPFS | no |
+| [pdf-ocr](plugins/pdf-ocr) | Read the text of scanned PDFs | no |
+| [bluesky](plugins/bluesky), [mastodon](plugins/mastodon), [linkedin](plugins/linkedin), [xcom](plugins/xcom) | Post copies of a site's posts to each network | no |
 
-Both are **first-party** — they ship bundled inside moss — and neither is a
-special case here. Their source sits in `plugins/` like everyone else's, this
-repository's CI builds it, and the release it publishes is the one moss
-installs. Bundling only decides what a fresh moss starts with; the registry is
-how a bundled plugin gets updated between moss releases.
-
-They are the most installed plugins here and they run with the same host access
-any plugin gets, so holding them to a weaker standard than a contributor's would
-be exactly backwards. Read them, build them:
-
-```bash
-cd plugins/github && npm ci && npm run build
-```
-
-Their directories carry a `.generated` marker, because their source of truth is
-the moss repository — moss copies them here on each release, with
-`@symbiosis-lab/moss-api` pinned to a published version and a lockfile
-committed so this repository can build them standalone. CI refuses a pull
-request that edits a marked directory; send the change to moss instead.
+They run with the same host access any plugin gets, so they are held to the same standard as a contributor's. They are also the examples to copy: [CONTRIBUTING.md](CONTRIBUTING.md#start-from-an-example) names the two to start from.
 
 ## Repository layout
 
@@ -130,7 +119,6 @@ plugins/<id>/        a published plugin
   assets/            manifest.json + icon, copied verbatim into the bundle
   package.json       standalone; pins @symbiosis-lab/moss-api, own lockfile
   dist/              build output — gitignored; CI builds it from src/
-  .generated         only on generated dirs — source of truth is moss
                      a native plugin has no src/, package.json or dist/; it has
   native/            the program's source, Cargo.toml and a build-<platform>.sh per
                      platform, and an assets/manifest.json whose artifacts carry no
@@ -140,18 +128,15 @@ themes/<id>/         a published theme (planned): style.css, assets, manifest,
 starters/<id>/       a starter site: manifest.json, posters/, site/ (what a user's
                      new site starts as), plus .cut, fixups.sh and README.md
                      for maintainers — see starters/README.md
+harness/             end-to-end checks of plugins through real moss, against local
+                     copies of the services they talk to
 scripts/             tooling for starters (cut, check, posters, pack, fetch-moss) and
                      pack-native-plugin, which builds and packages a native plugin
 registry/
   revoked.json       versions moss must refuse to load (the kill switch)
 ```
 
-Everything here is published, or is the metadata describing what is published.
-Unfinished experiments, retired plugins and internal test harnesses used to live
-here too, inherited from the days when this repository was a generated mirror of
-moss's `plugins/` directory. They are back in moss now: this repository is
-public and its contents are an offer to users, so anything nobody should install
-does not belong in it.
+Everything here is published, or is the metadata describing what is published, or tests what is published (`harness/`). This repository is public and its contents are an offer to users, so unfinished experiments and retired plugins do not belong in it.
 
 `plugins/` holds exactly what the registry publishes, which is what lets CI and
 the publisher both select work by the same rule — a directory under `plugins/`

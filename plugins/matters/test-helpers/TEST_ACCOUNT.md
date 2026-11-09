@@ -36,10 +36,10 @@ cast wallet new
 
 ### 2. Store the Private Key
 
-Add the private key to your GitHub repository secrets:
+In this repository the live suite runs from `.github/workflows/live.yml`, which reads the key from the `live-tests` environment, never from pull requests:
 
-1. Go to your repository Settings → Secrets and variables → Actions
-2. Create a new secret: `MATTERS_TEST_WALLET_PRIVATE_KEY`
+1. Go to the repository's Settings → Environments → `live-tests` (deployment branches: `main` only)
+2. Add the environment secret `MATTERS_TEST_WALLET_PRIVATE_KEY`
 3. Paste the private key (with or without `0x` prefix)
 
 For local development, add to your `.env` file (never commit this!):

@@ -8,8 +8,13 @@ const h = vi.hoisted(() => ({
 vi.mock("@symbiosis-lab/moss-api", () => ({
   getPluginEnvVar: vi.fn(async () => h.env),
   getPluginCookie: vi.fn(async () => h.cookies),
+  // As moss's host does: an empty write is refused, clearing is its own call.
   setPluginCookie: vi.fn(async (cookies: typeof h.cookies) => {
+    if (cookies.length === 0) throw new Error("refusing an empty cookie set; use clearPluginCookies");
     h.cookies = cookies;
+  }),
+  clearPluginCookies: vi.fn(async () => {
+    h.cookies = [];
   }),
 }));
 

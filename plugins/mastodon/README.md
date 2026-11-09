@@ -26,3 +26,15 @@ When a post changes, each status of its copy is edited in place. A thread can ch
 
 - Your server, at the address in the `server` setting: `GET`, `POST`, `PUT` and `DELETE` on `/api/v1/statuses`, and, to look a copy up, `/api/v1/accounts/verify_credentials` and your own account's statuses.
 - Nothing else. The plugin reads no page and calls no other service.
+
+## Building and testing
+
+```bash
+npm ci
+npm run build   # dist/main.bundle.js plus the manifest and icon
+npm test        # unit tests against a stand-in server; no network, no moss
+```
+
+The end-to-end run against a real Mastodon-compatible server is the registry's [syndication harness](../../harness/syndication).
+
+This is the plugin to start from when you write a syndication plugin: it is small, has every copy hook, and is checked against a real server.

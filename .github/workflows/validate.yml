@@ -143,7 +143,9 @@ jobs:
 
       - name: Build from source
         working-directory: ${{ matrix.plugin }}
-        run: npm run build
+        run: |
+          npm run build
+          npm run typecheck --if-present
 
       - name: Test (unit scope only)
         working-directory: ${{ matrix.plugin }}
@@ -152,8 +154,7 @@ jobs:
           # include features/e2e/integration projects that hit a live service,
           # need a real browser, or need the moss binary — none of which this
           # powerless gate has (matters' features/e2e call the live Matters API).
-          # test:unit is the deterministic subset, matching the monorepo's own
-          # plugin CI scope.
+          # test:unit is the deterministic subset.
           if node -e "process.exit(require('./package.json').scripts?.['test:unit'] ? 0 : 1)"; then
             npm run test:unit
           elif node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
@@ -162,6 +163,21 @@ jobs:
           else
             echo "No test script; skipping."
           fi
+
+      # A plugin with a `test:e2e` script runs it through the moss pinned in
+      # plugins/moss.json, downloaded and sha256-checked: offline, no secrets.
+      # It is what catches moss moving something a plugin relies on.
+      - name: End to end through moss
+        if: hashFiles(format('{0}/e2e/**', matrix.plugin)) != ''
+        run: |
+          set -euo pipefail
+          moss="$(MOSS_PIN=plugins/moss.json scripts/fetch-moss.sh "$RUNNER_TEMP/moss")"
+          cd "${{ matrix.plugin }}"
+          if ! node -e "process.exit(require('./package.json').scripts?.['test:e2e'] ? 0 : 1)"; then
+            echo "::error::${{ matrix.plugin }} has an e2e/ directory but no test:e2e script to run it"
+            exit 1
+          fi
+          MOSS_BINARY="$moss" INCLUDE_E2E=1 npm run test:e2e
 
       # dist/ is gitignored, so what ships is always built here from the source
       # under review — there is no committed build that could drift from it.
@@ -328,62 +344,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/check-starter-versions.sh "$BASE_SHA" "$HEAD_SHA"
 
-  # Some plugin directories are generated — first-party source copied here from
-  # moss so it can be read and built like anyone else's. They are real source
-  # and CI builds them for real; what they are not is editable here, because the
-  # next sync overwrites whatever anyone types into them.
-  #
-  # Driven by a `.generated` marker inside the directory rather than a list in
-  # this file, so a future first-party plugin is covered the moment it is synced
-  # and nobody has to remember this job exists.
-  generated:
-    name: generated directories
-    needs: detect
-    if: needs.detect.outputs.any == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Refuse hand edits to generated plugins
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        run: |
-          set -euo pipefail
-
-          # head.sha, not HEAD — see detect.
-          touched=$(git diff --name-only "${BASE_SHA}"..."${HEAD_SHA}" \
-            | awk -F/ '$1 == "plugins" && NF >= 2 { print $1 "/" $2 }' | sort -u \
-            | while IFS= read -r dir; do
-                # `if`, not `[ ... ] &&`: the latter leaves the loop — and so
-                # the command substitution — exiting non-zero whenever the last
-                # directory is not generated, which set -e turns into an abort.
-                if [ -f "$dir/.generated" ]; then
-                  printf '%s\n' "$dir"
-                fi
-              done)
-
-          if [ -z "$touched" ]; then
-            echo "no generated directories touched"
-            exit 0
-          fi
-
-          # The sync itself is the one thing allowed to change them, and it
-          # pushes a branch to this repository — a fork cannot impersonate it.
-          if [ "$HEAD_REPO" = "${{ github.repository }}" ] && [ "$HEAD_REF" = "sync/first-party" ]; then
-            printf 'sync updating generated directories:\n%s\n' "$touched"
-            exit 0
-          fi
-
-          echo "::error::This pull request edits generated plugin directories:"
-          printf '  %s\n' $touched
-          echo "::error::Their source of truth is the moss repository — the next sync overwrites edits made here. Send the change to moss instead; see the .generated file in each directory."
-          exit 1
-
   scripts:
     name: registry scripts
     runs-on: ubuntu-latest
@@ -409,7 +369,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, native-build, native, revocations, scripts, generated, starters]
+    needs: [detect, validate, native-build, native, revocations, scripts, starters]
     if: always()
     runs-on: ubuntu-latest
     steps:

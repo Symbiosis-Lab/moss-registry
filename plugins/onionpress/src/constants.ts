@@ -33,9 +33,7 @@ export const REACHABILITY_POLL_TIMEOUT_MS = 20_000;
 export const REACHABILITY_POLL_INTERVAL_MS = 2_000;
 
 /**
- * The sealed generation to publish. `.moss/build/current` is a symlink into
- * `.moss/build/generations/<id>/`; `tar -C` follows it, so the archive holds
- * the generation dir CONTENTS at tar root (`index.html`, `assets/…`).
- * Relative to the project root — `executeBinary` runs with cwd = project root.
+ * The sealed generation's `current` symlink, newest layout first (moss ≥0.15.1).
+ * `tar -C` follows it; relative to the project root, `executeBinary`'s cwd.
  */
-export const CURRENT_BUILD_PATH = ".moss/build/current";
+export const CURRENT_BUILD_PATHS: readonly string[] = [".moss/build.nosync/current", ".moss/build/current"];
