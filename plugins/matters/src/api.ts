@@ -502,6 +502,17 @@ export class MattersAuthError extends Error {
   }
 }
 
+/**
+ * Matters answered and refused the request, so nothing was created. Any other
+ * failure (no answer, a server error) leaves unknown whether it was.
+ */
+export class MattersRefusal extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = "MattersRefusal";
+  }
+}
+
 interface GraphqlErrorShape {
   message?: string;
   extensions?: { code?: string };
@@ -549,14 +560,18 @@ async function handleGraphqlResponse<T>(
     }
   }
   if (!response.ok) {
-    throw new Error(`GraphQL request failed (${response.status}): ${bodySnippet(text)}`);
+    const failed = `GraphQL request failed (${response.status}): ${bodySnippet(text)}`;
+    throw response.status < 500 ? new MattersRefusal(failed, response.status) : new Error(failed);
   }
   const result = parsed as { errors?: GraphqlErrorShape[]; data: T } | null;
   if (!result) {
     throw new Error(`GraphQL request failed (${response.status}): non-JSON response: ${bodySnippet(text)}`);
   }
   if (result.errors && result.errors.length > 0) {
-    throw new Error(result.errors[0]?.message || "GraphQL error");
+    const message = result.errors[0]?.message || "GraphQL error";
+    // With data beside the errors, part of the request took effect.
+    const partial = result.data && Object.values(result.data as object).some((v) => v != null);
+    throw partial ? new Error(message) : new MattersRefusal(message, response.status);
   }
   return result.data;
 }
@@ -1321,6 +1336,21 @@ export async function uploadAssetMultipart(
     true,
   );
   return data.singleFileUpload;
+}
+
+export const PUT_MOMENT_MUTATION = `
+mutation PutMoment($input: PutMomentInput!) {
+  putMoment(input: $input) {
+    id
+    shortHash
+  }
+}
+`;
+
+/** Post a moment (Matters' short post) from its HTML. A moment cannot be edited. */
+export async function putMoment(content: string): Promise<{ id: string; shortHash: string }> {
+  const data = await graphqlQuery<{ putMoment: { id: string; shortHash: string } }>(PUT_MOMENT_MUTATION, { input: { content } });
+  return data.putMoment;
 }
 
 /**

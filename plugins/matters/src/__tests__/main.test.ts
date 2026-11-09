@@ -1,28 +1,24 @@
 /**
- * Tests for main.ts
- *
- * Covers:
- * - syndicateArticle uploads cover (bytes) when article.frontmatter.cover exists
- * - syndicateArticle skips cover upload when no cover in frontmatter
- * - syndicateArticle continues gracefully when cover upload fails
- * - siteRelativePathFromSrc path resolution and cross-origin/data-uri rejection
- * - imageMimeForPath / audioMimeForPath MIME mapping
- * - normalizeHtmlForMatters heading transformation and image pass-through
- * - addCanonicalLinkToContent with lang parameter
- * - syndicateArticle passing summary and lang
- * - Draft tracking: getDraftMap, saveDraftMap, getDraftId, saveDraftId, removeDraftId
- * - syndicateArticle reusing existing draft
- * - syndicateArticle falling back on API error with stale draft ID
- * - syndicateArticle removing draft on publish
- * - syndicateArticle saving draft on timeout/no-publish
- * - uploadAndReplaceLocalImages byte-upload flow
- * - uploadAndReplaceLocalAudio byte-upload flow
+ * Tests for main.ts: the article draft a long copy becomes (body rewrite,
+ * cover and media uploads, summary, canonical link, draft reuse, the editor
+ * wait), and the HTML helpers it uses.
  */
 
+import type { CopyJob } from "@symbiosis-lab/moss-api";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ArticleInfo } from "../types";
+/** A post as the tests describe it; `longJob` turns it into the copy moss hands over. */
+interface ArticleInfo {
+  source_path: string;
+  title: string;
+  content: string;
+  html_content?: string;
+  frontmatter: Record<string, unknown>;
+  url_path: string;
+  date?: string;
+  tags: string[];
+}
 
 // ============================================================================
 // Mocks
@@ -80,6 +76,15 @@ vi.mock("../credential", () => ({
 vi.mock("../api", () => ({
   createDraft: vi.fn(),
   fetchDraft: vi.fn(),
+  fetchAllDrafts: vi.fn().mockResolvedValue([]),
+  fetchAllArticles: vi.fn().mockResolvedValue({ articles: [], userName: "testuser" }),
+  putMoment: vi.fn(),
+  MattersAuthError: class MattersAuthError extends Error {},
+  MattersRefusal: class MattersRefusal extends Error {
+    constructor(message: string, readonly status?: number) {
+      super(message);
+    }
+  },
   uploadAssetMultipart: vi.fn(),
   apiConfig: { queryMode: "viewer", testUserName: "Matty", endpoint: "https://server.matters.town/graphql" },
   SINGLE_FILE_UPLOAD_MUTATION: `
@@ -99,6 +104,7 @@ vi.mock("../domain", () => ({
   initializeDomain: vi.fn().mockResolvedValue(undefined),
   loginUrl: vi.fn().mockReturnValue("https://matters.town/login"),
   draftUrl: vi.fn().mockImplementation((id: string) => `https://matters.town/drafts/${id}`),
+  momentUrl: vi.fn().mockImplementation((hash: string) => `https://matters.town/m/${hash}`),
   articleUrl: vi.fn().mockImplementation((_user: string, slug: string, hash: string) => `https://matters.town/@testuser/${slug}-${hash}`),
   isMattersUrl: vi.fn().mockImplementation((url: string) => url.includes("matters.town")),
   // scanLocalArticles (in ../sync) resolves extractShortHash from ../domain; this
@@ -131,7 +137,9 @@ vi.mock("../converter", () => ({
 
 // Now import the modules under test
 import {
-  syndicateArticle,
+  publish_copy,
+  find_copy,
+  momentHtml,
   waitForPublishOrClose,
   normalizeHtmlForMatters,
   wrapImagesForMatters,
@@ -146,32 +154,39 @@ import {
   siteRelativePathFromSrc,
   imageMimeForPath,
   audioMimeForPath,
-  getDraftMap,
-  saveDraftMap,
-  getDraftId,
-  saveDraftId,
-  removeDraftId,
-  type DraftMap,
 } from "../main";
-import { uploadAssetMultipart, createDraft, fetchDraft, SINGLE_FILE_UPLOAD_MUTATION } from "../api";
+import { uploadAssetMultipart, createDraft, fetchDraft, fetchAllDrafts, fetchAllArticles, putMoment, SINGLE_FILE_UPLOAD_MUTATION } from "../api";
 import { readSiteFile } from "@symbiosis-lab/moss-api";
-import { readPluginFile, writePluginFile, pluginFileExists } from "@symbiosis-lab/moss-api";
 
 // ============================================================================
 // Global setup
 // ============================================================================
 
-// `isArticleLive` (called from the syndicate flow) probes the deployed URL with
-// fetch. Stub fetch globally so tests don't hit the network.
-beforeEach(() => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({ ok: true, status: 200 } as unknown as Response),
-  );
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
+// Some tests restore every mock, which wipes the factories' defaults, and a
+// `...Once` a test did not consume would leak into the next: set them afresh.
+beforeEach(async () => {
+  const credential = await import("../credential");
+  vi.mocked(credential.getSessionState).mockResolvedValue("valid");
+  const sdk = await import("@symbiosis-lab/moss-api");
+  vi.mocked(sdk.startTask).mockResolvedValue({
+    id: "0",
+    progress: vi.fn().mockResolvedValue(undefined),
+    awaiting: vi.fn().mockResolvedValue(undefined),
+    advise: vi.fn().mockResolvedValue(undefined),
+    succeeded: vi.fn().mockResolvedValue(undefined),
+    failed: vi.fn().mockResolvedValue(undefined),
+    cancelled: vi.fn().mockResolvedValue(undefined),
+  } as any);
+  vi.mocked(sdk.openBrowser).mockResolvedValue({ closed: new Promise(() => {}) } as any);
+  vi.mocked(sdk.closeBrowser).mockResolvedValue(undefined);
+  vi.mocked(sdk.onEvent).mockResolvedValue(() => {});
+  vi.mocked(sdk.emitEvent).mockResolvedValue(undefined);
+  const config = await import("../config");
+  vi.mocked(config.getConfig).mockResolvedValue({ userName: "testuser" } as any);
+  vi.mocked(createDraft).mockReset();
+  vi.mocked(fetchDraft).mockReset();
+  vi.mocked(fetchAllDrafts).mockResolvedValue([]);
+  vi.mocked(fetchAllArticles).mockResolvedValue({ articles: [], userName: "testuser" } as any);
 });
 
 // ============================================================================
@@ -189,6 +204,26 @@ function makeArticle(overrides: Partial<ArticleInfo> = {}): ArticleInfo {
     date: "2024-01-01",
     tags: ["tag1", "tag2"],
     ...overrides,
+  };
+}
+
+/** The whole-article copy moss would hand over for `article` on the site at `siteUrl`. */
+function longJob(article: ArticleInfo, siteUrl: string, options: { addCanonicalLink: boolean; lang: string }): CopyJob {
+  const site = siteUrl.replace(/\/$/, "");
+  const cover = article.frontmatter.cover as string | undefined;
+  return {
+    op: "publish",
+    channel: "matters",
+    idempotency_key: "k",
+    post: { url: `${site}/${article.url_path.replace(/^\//, "")}`, source_path: article.source_path, title: article.title, lang: options.lang, tags: article.tags },
+    form: "long",
+    article: {
+      title: article.title,
+      html: article.html_content ?? "",
+      description: (article.frontmatter.description as string | undefined) ?? null,
+      cover: cover ? (cover.includes("://") ? cover : `${site}/${cover.replace(/^\//, "")}`) : null,
+    },
+    config: { add_canonical_link: options.addCanonicalLink },
   };
 }
 
@@ -218,37 +253,11 @@ function makePublishedDraftResponse(id = "draft-123") {
 }
 
 // ============================================================================
-// Shared task handle mock for syndicateArticle (Task M-2: threads task into
-// syndicateArticle so per-article awaiting + advisory signals can reach L1)
-// ============================================================================
-//
-// Deviation note (Blocker 2 — plan line 13):
-// The plan listed main.test.ts as a modification target for:
-//   (a) "assert showToast NOT called per-article"
-//   (b) "timeout-advisory assertion"
-// These invariants are fully covered by syndication-toast-law.test.ts
-// (Law 1 + Law 2 describe blocks) which test exactly this on multi-article
-// fixtures. Duplicating the assertion here would add noise without additional
-// coverage — the invariant is tested in the dedicated law suite, not here.
-// This is a deliberate deviation from the plan table's modification target.
-
-const mockTask = {
-  id: "0",
-  progress: vi.fn().mockResolvedValue(undefined),
-  awaiting: vi.fn().mockResolvedValue(undefined),
-  advise: vi.fn().mockResolvedValue(undefined),
-  succeeded: vi.fn().mockResolvedValue(undefined),
-  failed: vi.fn().mockResolvedValue(undefined),
-  cancelled: vi.fn().mockResolvedValue(undefined),
-};
-
-// ============================================================================
-// Tests: syndicateArticle cover upload
+// Tests: an article copy cover upload
 // ============================================================================
 
-describe("syndicateArticle - cover upload", () => {
+describe("an article copy - cover upload", () => {
   const siteUrl = "https://example.com";
-  const userName = "testuser";
   const options = { addCanonicalLink: false, lang: "en" };
 
   beforeEach(async () => {
@@ -282,7 +291,7 @@ describe("syndicateArticle - cover upload", () => {
       frontmatter: { cover: "assets/covers/book.jpg" },
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // readSiteFile called with the site-relative path (leading slash stripped)
     expect(readSiteFile).toHaveBeenCalledWith("assets/covers/book.jpg");
@@ -314,7 +323,7 @@ describe("syndicateArticle - cover upload", () => {
       frontmatter: { cover: "/assets/covers/hero.png" },
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // Leading slash stripped for readSiteFile
     expect(readSiteFile).toHaveBeenCalledWith("assets/covers/hero.png");
@@ -330,7 +339,7 @@ describe("syndicateArticle - cover upload", () => {
   it("skips cover upload and does not update draft when no cover in frontmatter", async () => {
     const article = makeArticle({ frontmatter: {} });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // No cover upload at all
     expect(uploadAssetMultipart).not.toHaveBeenCalledWith(
@@ -349,7 +358,7 @@ describe("syndicateArticle - cover upload", () => {
     });
 
     // Should not throw
-    await expect(syndicateArticle(article, siteUrl, userName, options, mockTask)).resolves.toBeDefined();
+    await expect(publish_copy(longJob(article, siteUrl, options))).resolves.toBeDefined();
 
     // createDraft called only once (no cover update since upload failed)
     expect(createDraft).toHaveBeenCalledTimes(1);
@@ -367,7 +376,7 @@ describe("syndicateArticle - cover upload", () => {
     });
 
     // Should not throw
-    await expect(syndicateArticle(article, siteUrl, userName, options, mockTask)).resolves.toBeDefined();
+    await expect(publish_copy(longJob(article, siteUrl, options))).resolves.toBeDefined();
 
     // createDraft called only once (no cover update since upload failed)
     expect(createDraft).toHaveBeenCalledTimes(1);
@@ -376,15 +385,14 @@ describe("syndicateArticle - cover upload", () => {
     );
   });
 
-  it("returns publishedUrl when draft is published", async () => {
+  it("is the published article's address when the draft is published", async () => {
     const article = makeArticle({ frontmatter: {} });
     vi.mocked(createDraft).mockResolvedValue(makeDraftResponse("draft-xyz"));
     vi.mocked(fetchDraft).mockResolvedValue(makePublishedDraftResponse("draft-xyz"));
 
-    const result = await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    const result = await publish_copy(longJob(article, siteUrl, options));
 
-    expect(result.draftId).toBe("draft-xyz");
-    expect(result.publishedUrl).toBeDefined();
+    expect(result.copy?.url).toBe("https://matters.town/@testuser/test-article-abc123");
   });
 });
 
@@ -949,8 +957,8 @@ describe("normalizeHtmlForMatters - math", () => {
    * PRODUCTION INPUT SHAPE.
    *
    * The transforms do NOT receive the shipped page HTML. They receive
-   * `article-map.json`'s `html_content` (`load_articles_for_syndication` →
-   * `getArticleContent`), where every top-level paragraph still carries
+   * `article-map.json`'s `html_content` (moss's copy shaping →
+   * `job.article.html`), where every top-level paragraph still carries
    * `data-source-line` — `ship_phase` strips that attribute only during the
    * staging→site FILE copy, which never rewrites `article-map.json`.
    *
@@ -1154,7 +1162,7 @@ describe("normalizeHtmlForMatters - math", () => {
  *
  * It MUST come from `article-map.json`, NOT from the shipped page HTML under
  * `.moss/build/current/`. `article-map.json` is what the plugin actually
- * receives (`load_articles_for_syndication` → `getArticleContent`); the shipped
+ * receives (moss's copy shaping → `job.article.html`); the shipped
  * page has already had `data-source-line` stripped by `ship_phase`'s
  * staging→site file copy. Capturing from the shipped page would green-light a shape
  * production never produces. Regenerate with:
@@ -1178,7 +1186,7 @@ describe("syndication golden payload - rich-test-article", () => {
     const emitted = readFileSync(join(fixtureDir, "moss-emitted-body.html"), "utf8");
     let content = stripArticleTitleH1(emitted, title);
     content = normalizeHtmlForMatters(content);
-    content = addCanonicalLinkToContent(content, canonicalUrl, true, "en");
+    content = addCanonicalLinkToContent(content, canonicalUrl, "en");
     content = absolutizeRelativeHrefs(content, canonicalUrl);
     content = wrapAudioForMatters(content, canonicalUrl);
     return content;
@@ -1327,68 +1335,49 @@ describe("normalizeHtmlForMatters - image wrap (via pipeline)", () => {
 describe("addCanonicalLinkToContent - lang parameter", () => {
   const url = "https://example.com/posts/test/";
 
-  it("uses Chinese text for zh lang (HTML)", () => {
-    const result = addCanonicalLinkToContent("<p>Content</p>", url, true, "zh");
+  it("uses Chinese text for zh lang", () => {
+    const result = addCanonicalLinkToContent("<p>Content</p>", url, "zh");
     expect(result).toContain("原文链接");
     expect(result).toContain(`href="${url}"`);
     expect(result).toContain("<hr>");
     expect(result).not.toContain("Originally published");
   });
 
-  it("uses Chinese text for zh_hans lang (HTML)", () => {
-    const result = addCanonicalLinkToContent("<p>Content</p>", url, true, "zh_hans");
+  it("uses Chinese text for zh_hans lang", () => {
+    const result = addCanonicalLinkToContent("<p>Content</p>", url, "zh_hans");
     expect(result).toContain("原文链接");
   });
 
-  it("uses Chinese text for zh_hant lang (HTML)", () => {
-    const result = addCanonicalLinkToContent("<p>Content</p>", url, true, "zh_hant");
+  it("uses Chinese text for zh_hant lang", () => {
+    const result = addCanonicalLinkToContent("<p>Content</p>", url, "zh_hant");
     expect(result).toContain("原文链接");
   });
 
-  it("uses English text for en lang (HTML)", () => {
-    const result = addCanonicalLinkToContent("<p>Content</p>", url, true, "en");
+  it("uses English text for en lang", () => {
+    const result = addCanonicalLinkToContent("<p>Content</p>", url, "en");
     expect(result).toContain("Original link");
     expect(result).toContain(`href="${url}"`);
     expect(result).not.toContain("原文链接");
   });
 
-  it("uses English text when lang is undefined (HTML)", () => {
-    const result = addCanonicalLinkToContent("<p>Content</p>", url, true);
+  it("uses English text when lang is undefined", () => {
+    const result = addCanonicalLinkToContent("<p>Content</p>", url);
     expect(result).toContain("Original link");
-  });
-
-  it("uses Chinese text for zh lang (Markdown)", () => {
-    const result = addCanonicalLinkToContent("Content", url, false, "zh");
-    expect(result).toContain("[原文链接]");
-    expect(result).toContain(`(${url})`);
-    expect(result).toContain("---");
-  });
-
-  it("uses English text for en lang (Markdown)", () => {
-    const result = addCanonicalLinkToContent("Content", url, false, "en");
-    expect(result).toContain("[Original link]");
-    expect(result).toContain(`(${url})`);
-  });
-
-  it("uses English text when lang is undefined (Markdown)", () => {
-    const result = addCanonicalLinkToContent("Content", url, false);
-    expect(result).toContain("[Original link]");
   });
 
   it("preserves original content before the canonical link", () => {
     const original = "<p>My article content</p>";
-    const result = addCanonicalLinkToContent(original, url, true, "en");
+    const result = addCanonicalLinkToContent(original, url, "en");
     expect(result.startsWith(original)).toBe(true);
   });
 });
 
 // ============================================================================
-// Tests: syndicateArticle — summary and lang
+// Tests: an article copy — summary and lang
 // ============================================================================
 
-describe("syndicateArticle - summary and lang", () => {
+describe("an article copy - summary and lang", () => {
   const siteUrl = "https://example.com";
-  const userName = "testuser";
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -1408,10 +1397,10 @@ describe("syndicateArticle - summary and lang", () => {
       frontmatter: { description: "A short summary of the article" },
     });
 
-    await syndicateArticle(article, siteUrl, userName, {
+    await publish_copy(longJob(article, siteUrl, {
       addCanonicalLink: false,
       lang: "en",
-    }, mockTask);
+    }));
 
     expect(createDraft).toHaveBeenCalledWith(
       expect.objectContaining({ summary: "A short summary of the article" })
@@ -1421,10 +1410,10 @@ describe("syndicateArticle - summary and lang", () => {
   it("does not pass summary when frontmatter.description is absent", async () => {
     const article = makeArticle({ frontmatter: {} });
 
-    await syndicateArticle(article, siteUrl, userName, {
+    await publish_copy(longJob(article, siteUrl, {
       addCanonicalLink: false,
       lang: "en",
-    }, mockTask);
+    }));
 
     expect(createDraft).toHaveBeenCalledWith(
       expect.not.objectContaining({ summary: expect.anything() })
@@ -1437,10 +1426,10 @@ describe("syndicateArticle - summary and lang", () => {
       frontmatter: {},
     });
 
-    await syndicateArticle(article, siteUrl, userName, {
+    await publish_copy(longJob(article, siteUrl, {
       addCanonicalLink: true,
       lang: "zh_hans",
-    }, mockTask);
+    }));
 
     // The content passed to createDraft should contain Chinese canonical text
     const callArgs = vi.mocked(createDraft).mock.calls[0][0];
@@ -1453,10 +1442,10 @@ describe("syndicateArticle - summary and lang", () => {
       frontmatter: {},
     });
 
-    await syndicateArticle(article, siteUrl, userName, {
+    await publish_copy(longJob(article, siteUrl, {
       addCanonicalLink: false,
       lang: "en",
-    }, mockTask);
+    }));
 
     const callArgs = vi.mocked(createDraft).mock.calls[0][0];
     expect(callArgs.content).toContain("<h2>Title</h2>");
@@ -1478,32 +1467,15 @@ describe("syndicateArticle - summary and lang", () => {
       frontmatter: {},
     });
 
-    await syndicateArticle(article, siteUrl, userName, {
+    await publish_copy(longJob(article, siteUrl, {
       addCanonicalLink: false,
       lang: "en",
-    }, mockTask);
+    }));
 
     const callArgs = vi.mocked(createDraft).mock.calls[0][0];
     expect(callArgs.content).toContain('<figure class="image">');
     expect(callArgs.content).toContain("<figcaption>");
     expect(callArgs.content).toContain('src="photo.jpg"');
-  });
-
-  it("does not normalize HTML when content is markdown (not HTML)", async () => {
-    const article = makeArticle({
-      html_content: undefined,
-      content: "# Title\n\nContent with h4-like text: <h4>not real</h4>",
-      frontmatter: {},
-    });
-
-    await syndicateArticle(article, siteUrl, userName, {
-      addCanonicalLink: false,
-      lang: "en",
-    }, mockTask);
-
-    const callArgs = vi.mocked(createDraft).mock.calls[0][0];
-    // Markdown content should not be normalized
-    expect(callArgs.content).toBe("# Title\n\nContent with h4-like text: <h4>not real</h4>");
   });
 });
 
@@ -1913,12 +1885,11 @@ describe("uploadAndReplaceLocalAudio", () => {
 });
 
 // ============================================================================
-// Tests: syndicateArticle - local image upload integration
+// Tests: an article copy - local image upload integration
 // ============================================================================
 
-describe("syndicateArticle - audio upload (integration)", () => {
+describe("an article copy - audio upload (integration)", () => {
   const siteUrl = "https://example.com";
-  const userName = "testuser";
   const options = { addCanonicalLink: false, lang: "en" };
 
   beforeEach(async () => {
@@ -1945,7 +1916,7 @@ describe("syndicateArticle - audio upload (integration)", () => {
       url_path: "posts/test/",
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // Audio bytes read from the deployed site path resolved against the article URL.
     expect(readSiteFile).toHaveBeenCalledWith("posts/test/song.mp3");
@@ -1981,7 +1952,7 @@ describe("syndicateArticle - audio upload (integration)", () => {
       url_path: "posts/test/",
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // The figure.audio survives with the absolutized deployed URL (matters streams it).
     const calls = vi.mocked(createDraft).mock.calls.map((c) => String(c[0]?.content ?? ""));
@@ -1991,9 +1962,8 @@ describe("syndicateArticle - audio upload (integration)", () => {
   });
 });
 
-describe("syndicateArticle - local image upload", () => {
+describe("an article copy - local image upload", () => {
   const siteUrl = "https://example.com";
-  const userName = "testuser";
   const options = { addCanonicalLink: false, lang: "en" };
 
   beforeEach(async () => {
@@ -2025,7 +1995,7 @@ describe("syndicateArticle - local image upload", () => {
       url_path: "posts/test/",
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // readSiteFile called with the decoded site path resolved against the article URL
     expect(readSiteFile).toHaveBeenCalledWith("posts/test/images/photo.jpg");
@@ -2069,7 +2039,7 @@ describe("syndicateArticle - local image upload", () => {
       url_path: "writings/foo-bar/",
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     expect(readSiteFile).toHaveBeenCalledWith("assets/scale-compare-recording.gif");
     expect(uploadAssetMultipart).toHaveBeenCalledWith(
@@ -2088,7 +2058,7 @@ describe("syndicateArticle - local image upload", () => {
       frontmatter: {},
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     expect(readSiteFile).not.toHaveBeenCalled();
     expect(uploadAssetMultipart).not.toHaveBeenCalled();
@@ -2100,7 +2070,7 @@ describe("syndicateArticle - local image upload", () => {
       frontmatter: {},
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     expect(readSiteFile).not.toHaveBeenCalled();
     expect(uploadAssetMultipart).not.toHaveBeenCalled();
@@ -2119,7 +2089,7 @@ describe("syndicateArticle - local image upload", () => {
       url_path: "posts/test/",
     });
 
-    await expect(syndicateArticle(article, siteUrl, userName, options, mockTask)).resolves.toBeDefined();
+    await expect(publish_copy(longJob(article, siteUrl, options))).resolves.toBeDefined();
 
     vi.restoreAllMocks();
   });
@@ -2140,10 +2110,10 @@ describe("syndicateArticle - local image upload", () => {
       frontmatter: {},
     });
 
-    await expect(syndicateArticle(article, siteUrl, userName, options, mockTask)).resolves.toBeDefined();
+    await expect(publish_copy(longJob(article, siteUrl, options))).resolves.toBeDefined();
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Asset upload step failed"),
+      expect.stringContaining("Asset upload failed"),
     );
 
     vi.restoreAllMocks();
@@ -2159,7 +2129,7 @@ describe("syndicateArticle - local image upload", () => {
       url_path: "writings/foo-bar/",
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     const draftContent = vi.mocked(createDraft).mock.calls[0][0].content!;
     expect(draftContent).toContain('href="https://example.com/scale-compare.html"');
@@ -2178,7 +2148,7 @@ describe("syndicateArticle - local image upload", () => {
       url_path: "posts/test/",
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     const draftContent = vi.mocked(createDraft).mock.calls[0][0].content!;
     expect(draftContent).not.toContain('moss-article-title');
@@ -2190,416 +2160,259 @@ describe("syndicateArticle - local image upload", () => {
 });
 
 // ============================================================================
-// Tests: Draft tracking functions
+// Tests: an article copy — the draft, the editor, and the hand-off
 // ============================================================================
 
-describe("Draft tracking - getDraftMap", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+const POST = "https://example.com/posts/test/";
+const unpublished = (id: string) => ({ id, title: "Test Article", content: "", createdAt: "2024-01-01T00:00:00Z", publishState: "unpublished" as const });
+
+/** The editor closes on the first poll, without a publish. */
+async function closeEditorWithoutPublishing(): Promise<void> {
+  const sdk = await import("@symbiosis-lab/moss-api");
+  let close!: (reason: unknown) => void;
+  const closed = new Promise<unknown>((resolve) => { close = resolve; });
+  vi.mocked(sdk.openBrowser).mockResolvedValue({ closed } as any);
+  const { sleep } = await import("../utils");
+  vi.mocked(sleep).mockImplementation(async () => {
+    close({ type: "user" });
+    await Promise.resolve();
+    await Promise.resolve();
   });
+}
 
-  it("returns empty object when file does not exist", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-
-    const map = await getDraftMap();
-    expect(map).toEqual({});
-  });
-
-  it("returns parsed map when file exists", async () => {
-    const stored: DraftMap = {
-      "articles/review.md": { draftId: "abc123", createdAt: "2026-03-16T10:00:00Z" },
-    };
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(JSON.stringify(stored));
-
-    const map = await getDraftMap();
-    expect(map).toEqual(stored);
-  });
-
-  it("returns empty object on parse error", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue("not valid json {{{");
-
-    const map = await getDraftMap();
-    expect(map).toEqual({});
-  });
-
-  it("returns empty object when readPluginFile throws", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockRejectedValue(new Error("read error"));
-
-    const map = await getDraftMap();
-    expect(map).toEqual({});
-  });
-});
-
-describe("Draft tracking - saveDraftMap", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("writes JSON to plugin storage", async () => {
-    const map: DraftMap = {
-      "posts/test.md": { draftId: "draft-1", createdAt: "2026-03-16T10:00:00Z" },
-    };
-
-    await saveDraftMap(map);
-
-    expect(writePluginFile).toHaveBeenCalledWith(
-      "drafts.json",
-      JSON.stringify(map, null, 2)
-    );
-  });
-
-  it("writes empty object for empty map", async () => {
-    await saveDraftMap({});
-
-    expect(writePluginFile).toHaveBeenCalledWith(
-      "drafts.json",
-      JSON.stringify({}, null, 2)
-    );
-  });
-});
-
-describe("Draft tracking - getDraftId", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("returns draftId when entry exists for sourcePath", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/test.md": { draftId: "draft-abc", createdAt: "2026-03-16T10:00:00Z" },
-      })
-    );
-
-    const id = await getDraftId("posts/test.md");
-    expect(id).toBe("draft-abc");
-  });
-
-  it("returns undefined when no entry for sourcePath", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/other.md": { draftId: "draft-abc", createdAt: "2026-03-16T10:00:00Z" },
-      })
-    );
-
-    const id = await getDraftId("posts/test.md");
-    expect(id).toBeUndefined();
-  });
-
-  it("returns undefined when drafts file is empty", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-
-    const id = await getDraftId("posts/test.md");
-    expect(id).toBeUndefined();
-  });
-});
-
-describe("Draft tracking - saveDraftId", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("adds entry to empty map", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-
-    await saveDraftId("posts/test.md", "draft-new");
-
-    expect(writePluginFile).toHaveBeenCalledTimes(1);
-    const written = JSON.parse(vi.mocked(writePluginFile).mock.calls[0][1]);
-    expect(written["posts/test.md"].draftId).toBe("draft-new");
-    expect(written["posts/test.md"].createdAt).toBeDefined();
-  });
-
-  it("adds entry to existing map without overwriting others", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/existing.md": { draftId: "draft-old", createdAt: "2026-01-01T00:00:00Z" },
-      })
-    );
-
-    await saveDraftId("posts/new.md", "draft-new");
-
-    const written = JSON.parse(vi.mocked(writePluginFile).mock.calls[0][1]);
-    expect(written["posts/existing.md"].draftId).toBe("draft-old");
-    expect(written["posts/new.md"].draftId).toBe("draft-new");
-  });
-
-  it("overwrites existing entry for the same source path", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/test.md": { draftId: "draft-old", createdAt: "2026-01-01T00:00:00Z" },
-      })
-    );
-
-    await saveDraftId("posts/test.md", "draft-updated");
-
-    const written = JSON.parse(vi.mocked(writePluginFile).mock.calls[0][1]);
-    expect(written["posts/test.md"].draftId).toBe("draft-updated");
-  });
-});
-
-describe("Draft tracking - removeDraftId", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("removes entry from map", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/test.md": { draftId: "draft-abc", createdAt: "2026-01-01T00:00:00Z" },
-        "posts/other.md": { draftId: "draft-def", createdAt: "2026-01-02T00:00:00Z" },
-      })
-    );
-
-    await removeDraftId("posts/test.md");
-
-    const written = JSON.parse(vi.mocked(writePluginFile).mock.calls[0][1]);
-    expect(written["posts/test.md"]).toBeUndefined();
-    expect(written["posts/other.md"].draftId).toBe("draft-def");
-  });
-
-  it("no-ops when entry does not exist (still writes the map)", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(JSON.stringify({}));
-
-    await removeDraftId("posts/nonexistent.md");
-
-    expect(writePluginFile).toHaveBeenCalledTimes(1);
-    const written = JSON.parse(vi.mocked(writePluginFile).mock.calls[0][1]);
-    expect(Object.keys(written)).toHaveLength(0);
-  });
-});
-
-// ============================================================================
-// Tests: syndicateArticle — draft reuse integration
-// ============================================================================
-
-describe("syndicateArticle - draft tracking integration", () => {
+describe("an article copy - the draft, the editor, and the hand-off", () => {
   const siteUrl = "https://example.com";
-  const userName = "testuser";
   const options = { addCanonicalLink: false, lang: "en" };
 
   beforeEach(async () => {
     vi.clearAllMocks();
-
-    // Reset sleep to default no-op (timeout tests override it with clock-advancing mock)
     const { sleep } = await import("../utils");
     vi.mocked(sleep).mockResolvedValue(undefined);
-
-    // Re-establish SDK mocks (vi.restoreAllMocks() in earlier tests may have wiped them)
     const sdk = await import("@symbiosis-lab/moss-api");
-    vi.mocked(sdk.showToast).mockResolvedValue(undefined);
     vi.mocked(sdk.openBrowser).mockResolvedValue({ closed: new Promise(() => {}) } as any);
     vi.mocked(sdk.closeBrowser).mockResolvedValue(undefined);
     vi.mocked(sdk.onEvent).mockResolvedValue(() => {});
     vi.mocked(sdk.emitEvent).mockResolvedValue(undefined);
-
-    // Re-establish domain mocks
     const domain = await import("../domain");
     vi.mocked(domain.draftUrl).mockImplementation((id: string) => `https://matters.town/drafts/${id}`);
     vi.mocked(domain.articleUrl).mockImplementation((_user: string, slug: string, hash: string) => `https://matters.town/@testuser/${slug}-${hash}`);
-
-    // Default: no existing drafts tracked
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-
-    // Default: createDraft succeeds
-    vi.mocked(createDraft).mockResolvedValue(makeDraftResponse());
-
-    // Default: fetchDraft immediately returns published draft
-    vi.mocked(fetchDraft).mockResolvedValue(makePublishedDraftResponse());
-
+    const credential = await import("../credential");
+    vi.mocked(credential.getSessionState).mockResolvedValue("valid");
+    vi.mocked(fetchAllDrafts).mockResolvedValue([]);
+    vi.mocked(fetchAllArticles).mockResolvedValue({ articles: [], userName: "testuser" });
+    vi.mocked(createDraft).mockResolvedValue(makeDraftResponse("draft-123"));
+    vi.mocked(fetchDraft).mockResolvedValue(makePublishedDraftResponse("draft-123"));
     vi.mocked(readSiteFile).mockResolvedValue("ZmFrZQ==");
     vi.mocked(uploadAssetMultipart).mockResolvedValue({ id: "asset-id-1", path: "https://assets.matters.news/embed/uploaded.jpg" });
   });
 
-  it("passes existing draft ID to createDraft when one is tracked", async () => {
-    // Set up existing draft tracking
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/test.md": { draftId: "existing-draft-99", createdAt: "2026-03-16T10:00:00Z" },
-      })
-    );
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
-
-    expect(createDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "existing-draft-99" })
-    );
-  });
-
-  it("does not pass id to createDraft when no draft is tracked", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
-
-    expect(createDraft).toHaveBeenCalledWith(
-      expect.not.objectContaining({ id: expect.anything() })
-    );
-  });
-
-  it("falls back to new draft when existing draft ID causes API error", async () => {
-    // Set up existing stale draft tracking
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/test.md": { draftId: "stale-draft-id", createdAt: "2026-01-01T00:00:00Z" },
-      })
-    );
-
-    // First call (with id) fails, second call (without id) succeeds
-    vi.mocked(createDraft)
-      .mockRejectedValueOnce(new Error("Draft not found"))
-      .mockResolvedValueOnce(makeDraftResponse("new-draft-456"));
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    const result = await syndicateArticle(article, siteUrl, userName, options, mockTask);
-
-    // Should have been called twice: once with id, once without
-    expect(createDraft).toHaveBeenCalledTimes(2);
-    expect(createDraft).toHaveBeenNthCalledWith(1,
-      expect.objectContaining({ id: "stale-draft-id" })
-    );
-    expect(createDraft).toHaveBeenNthCalledWith(2,
-      expect.not.objectContaining({ id: expect.anything() })
-    );
-    expect(result.draftId).toBe("new-draft-456");
-  });
-
-  it("throws when createDraft fails and no existing draft to fall back from", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-    vi.mocked(createDraft).mockRejectedValue(new Error("API error"));
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    await expect(
-      syndicateArticle(article, siteUrl, userName, options, mockTask)
-    ).rejects.toThrow("API error");
-  });
-
-  it("removes draft tracking on successful publish", async () => {
-    // Set up existing draft
-    vi.mocked(pluginFileExists).mockResolvedValue(true);
-    vi.mocked(readPluginFile).mockResolvedValue(
-      JSON.stringify({
-        "posts/test.md": { draftId: "draft-123", createdAt: "2026-03-16T10:00:00Z" },
-        "posts/other.md": { draftId: "draft-other", createdAt: "2026-03-16T10:00:00Z" },
-      })
-    );
-
-    // Draft is published
-    vi.mocked(createDraft).mockResolvedValue(makeDraftResponse("draft-123"));
-    vi.mocked(fetchDraft).mockResolvedValue(makePublishedDraftResponse("draft-123"));
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    const result = await syndicateArticle(article, siteUrl, userName, options, mockTask);
-
-    expect(result.publishedUrl).toBeDefined();
-
-    // writePluginFile should have been called to remove the draft entry
-    // The last call to writePluginFile should be from removeDraftId
-    const lastWriteCall = vi.mocked(writePluginFile).mock.calls;
-    const lastWritten = JSON.parse(lastWriteCall[lastWriteCall.length - 1][1]);
-    expect(lastWritten["posts/test.md"]).toBeUndefined();
-    // Other entries should be preserved
-    expect(lastWritten["posts/other.md"]).toBeDefined();
-  });
-
-  it("saves draft ID when browser is closed without publishing", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-
-    // Draft created but NOT published
-    vi.mocked(createDraft).mockResolvedValue(makeDraftResponse("draft-timeout"));
-
-    // fetchDraft always returns unpublished — poll loop would run forever
-    // without the browser-close termination path.
-    vi.mocked(fetchDraft).mockResolvedValue({
-      id: "draft-timeout",
-      title: "Test",
-      content: "<p>Test</p>",
-      createdAt: "2024-01-01T00:00:00Z",
-      publishState: "unpublished" as const,
-    });
-
-    // Simulate browser closing after the first poll sleep: resolve the
-    // `closed` promise on the first sleep() call so the race terminates.
+  it("is the published article once the author publishes the draft in the editor", async () => {
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+    expect(result).toEqual({ success: true, copy: { id: "abc123", url: "https://matters.town/@testuser/test-article-abc123" } });
     const sdk = await import("@symbiosis-lab/moss-api");
-    let resolveClose!: (reason: any) => void;
-    const closedPromise = new Promise<any>((resolve) => { resolveClose = resolve; });
-    vi.mocked(sdk.openBrowser).mockResolvedValue({ closed: closedPromise });
-
-    const { sleep } = await import("../utils");
-    vi.mocked(sleep).mockImplementation(async () => {
-      // On first sleep (5s poll) resolve the browser close so branch (b) fires.
-      resolveClose({ type: "user" });
-      // Yield for the closed promise to settle.
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    const result = await syndicateArticle(article, siteUrl, userName, options, mockTask);
-
-    expect(result.publishedUrl).toBeUndefined();
-
-    // Draft ID should have been saved for reuse
-    const writeCalls = vi.mocked(writePluginFile).mock.calls;
-    expect(writeCalls.length).toBeGreaterThan(0);
-    // Find the call that writes drafts.json
-    const draftWriteCall = writeCalls.find(call => call[0] === "drafts.json");
-    expect(draftWriteCall).toBeDefined();
-    const written = JSON.parse(draftWriteCall![1]);
-    expect(written["posts/test.md"].draftId).toBe("draft-timeout");
+    expect(sdk.openBrowser).toHaveBeenCalledWith("https://matters.town/drafts/draft-123");
   });
 
-  it("does not track draft when article has no source_path (browser closed)", async () => {
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-    vi.mocked(createDraft).mockResolvedValue(makeDraftResponse("draft-no-path"));
-
-    // Terminate via browser close instead of a wall-clock timeout.
+  it("keeps moss's watchdog off while the author writes", async () => {
     const sdk = await import("@symbiosis-lab/moss-api");
-    let resolveClose!: (reason: any) => void;
-    const closedPromise = new Promise<any>((resolve) => { resolveClose = resolve; });
-    vi.mocked(sdk.openBrowser).mockResolvedValue({ closed: closedPromise });
+    await publish_copy(longJob(makeArticle(), siteUrl, options));
+    const task = await vi.mocked(sdk.startTask).mock.results[0].value;
+    expect(task.awaiting).toHaveBeenCalled();
+  });
 
-    const { sleep } = await import("../utils");
-    vi.mocked(sleep).mockImplementation(async () => {
-      resolveClose({ type: "user" });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+  it("hands the draft to the author when the editor closes without a publish", async () => {
+    await closeEditorWithoutPublishing();
+    vi.mocked(fetchDraft).mockResolvedValue(unpublished("draft-123"));
 
-    vi.mocked(fetchDraft).mockResolvedValue({
-      id: "draft-no-path",
-      title: "Test",
-      content: "<p>Test</p>",
-      createdAt: "2024-01-01T00:00:00Z",
-      publishState: "unpublished" as const,
-    });
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
 
-    const article = makeArticle({ source_path: "", frontmatter: {} });
+    expect(result).toEqual({ success: true, copy: { handoff: { text: "", open_url: "https://matters.town/drafts/draft-123", id: "draft-123" } } });
+  });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+  it("counts a publish that lost the race with the close as published", async () => {
+    await closeEditorWithoutPublishing();
 
-    // writePluginFile should NOT have been called with drafts.json
-    const draftWriteCalls = vi.mocked(writePluginFile).mock.calls.filter(
-      call => call[0] === "drafts.json"
-    );
-    expect(draftWriteCalls).toHaveLength(0);
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(result.copy?.url).toBe("https://matters.town/@testuser/test-article-abc123");
+  });
+
+  it("hands the draft over at once where no panel can show it, as in a terminal", async () => {
+    const sdk = await import("@symbiosis-lab/moss-api");
+    vi.mocked(sdk.openBrowser).mockRejectedValue(new Error("no app"));
+
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(result.copy?.handoff).toEqual({ text: "", open_url: "https://matters.town/drafts/draft-123", id: "draft-123" });
+    expect(sdk.startTask).not.toHaveBeenCalled();
+  });
+
+  it("is refused for the credential, posting nothing, when there is no session and no panel to sign in", async () => {
+    const sdk = await import("@symbiosis-lab/moss-api");
+    vi.mocked(sdk.openBrowser).mockRejectedValue(new Error("no app"));
+    const credential = await import("../credential");
+    vi.mocked(credential.getSessionState).mockResolvedValue("none");
+
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(result.success).toBe(false);
+    expect(result.copy?.refused?.cause).toBe("auth");
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+
+  it("refuses an article with no body", async () => {
+    const result = await publish_copy(longJob(makeArticle({ html_content: "" }), siteUrl, options));
+    expect(result.copy?.refused?.cause).toBe("content");
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+
+  it("puts the article into the draft moss names, and into a new one when that one is gone", async () => {
+    vi.mocked(createDraft).mockRejectedValueOnce(new Error("Draft not found")).mockResolvedValue(makeDraftResponse("draft-456"));
+    vi.mocked(fetchDraft).mockResolvedValue(makePublishedDraftResponse("draft-456"));
+    const job = { ...longJob(makeArticle(), siteUrl, options), previous: { id: "stale-draft", url: "" } };
+
+    await publish_copy(job);
+
+    expect(createDraft).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: "stale-draft" }));
+    expect(createDraft).toHaveBeenNthCalledWith(2, expect.not.objectContaining({ id: expect.anything() }));
+  });
+
+  it("reuses an unpublished draft of this post rather than adding another", async () => {
+    vi.mocked(fetchAllDrafts).mockResolvedValue([{ ...unpublished("draft-old"), content: `<a href="${POST}">Original link</a>` }] as any);
+    vi.mocked(fetchDraft).mockImplementation(async (id: string) => (id === "draft-old" ? unpublished("draft-old") : makePublishedDraftResponse(id)) as any);
+
+    await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(createDraft).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: "draft-old" }));
+  });
+
+  it("leaves the author's own draft of the same title alone", async () => {
+    vi.mocked(fetchAllDrafts).mockResolvedValue([{ ...unpublished("draft-own"), content: "<p>Notes</p>" }] as any);
+    vi.mocked(fetchDraft).mockImplementation(async (id: string) => (id === "draft-own" ? unpublished("draft-own") : makePublishedDraftResponse(id)) as any);
+
+    await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(createDraft).toHaveBeenNthCalledWith(1, expect.not.objectContaining({ id: expect.anything() }));
+  });
+
+  it("starts a new draft when the only draft of this post is already published", async () => {
+    vi.mocked(fetchAllDrafts).mockResolvedValue([{ ...unpublished("draft-done"), content: `<a href="${POST}">Original link</a>` }] as any);
+
+    await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(createDraft).toHaveBeenNthCalledWith(1, expect.not.objectContaining({ id: expect.anything() }));
+  });
+
+  it("leaves a copy unknown, not refused, when the draft could not be made for an unknown reason", async () => {
+    vi.mocked(createDraft).mockRejectedValue(new Error("socket hang up"));
+    await expect(publish_copy(longJob(makeArticle(), siteUrl, options))).rejects.toThrow("socket hang up");
+  });
+
+  it("reports a request Matters refused as refused, so moss tries again", async () => {
+    const { MattersRefusal } = await import("../api");
+    vi.mocked(createDraft).mockRejectedValue(new MattersRefusal("title too long"));
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+    expect(result.copy?.refused).toEqual({ cause: "content", message: "title too long" });
+  });
+
+  it("reports too many requests as a rate refusal", async () => {
+    const { MattersRefusal } = await import("../api");
+    vi.mocked(createDraft).mockRejectedValue(new MattersRefusal("slow down", 429));
+    expect((await publish_copy(longJob(makeArticle(), siteUrl, options))).copy?.refused?.cause).toBe("rate");
+  });
+
+  it("never answers refused once the draft exists, so a resend cannot make a second one", async () => {
+    const { MattersRefusal } = await import("../api");
+    const sdk = await import("@symbiosis-lab/moss-api");
+    vi.mocked(sdk.startTask).mockRejectedValue(new MattersRefusal("no"));
+
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+
+    expect(result).toEqual({ success: true, copy: { handoff: { text: "", open_url: "https://matters.town/drafts/draft-123", id: "draft-123" } } });
+  });
+
+  it("is a network refusal, sending nothing, when Matters cannot be reached before the send", async () => {
+    const domain = await import("../domain");
+    vi.mocked(domain.initializeDomain).mockRejectedValueOnce(new Error("offline"));
+    const result = await publish_copy(longJob(makeArticle(), siteUrl, options));
+    expect(result.copy?.refused).toEqual({ cause: "network", message: "offline" });
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("a short copy is a moment", () => {
+  const job = (text: string, links: string[] = []): CopyJob => ({
+    op: "publish", channel: "matters", idempotency_key: "k",
+    post: { url: "https://example.com/notes/1/", source_path: "notes/1.md", title: "" },
+    form: "short", parts: [{ text, links }], config: {},
+  });
+
+  beforeEach(async () => {
+    vi.mocked(putMoment).mockReset();
+    const domain = await import("../domain");
+    vi.mocked(domain.momentUrl).mockImplementation((hash: string) => `https://matters.town/m/${hash}`);
+  });
+
+  it("posts the text as a moment and answers with the moment's page", async () => {
+    vi.mocked(putMoment).mockResolvedValue({ id: "m-1", shortHash: "q7" });
+    const result = await publish_copy(job("Autumn walk https://example.com/a", ["https://example.com/a"]));
+    expect(putMoment).toHaveBeenCalledWith('<p>Autumn walk <a href="https://example.com/a">https://example.com/a</a></p>');
+    expect(result).toEqual({ success: true, copy: { id: "m-1", url: "https://matters.town/m/q7" } });
+  });
+
+  it("is refused for the credential, posting nothing, without a session", async () => {
+    const credential = await import("../credential");
+    vi.mocked(credential.getSessionState).mockResolvedValue("expired");
+    const result = await publish_copy(job("Hi"));
+    expect(result.copy?.refused?.cause).toBe("auth");
+    expect(putMoment).not.toHaveBeenCalled();
+  });
+
+  it("keeps paragraphs and line breaks, and escapes the text", () => {
+    expect(momentHtml("a < b\nc\n\nd & e", [])).toBe("<p>a &lt; b<br>c</p><p>d &amp; e</p>");
+  });
+});
+
+describe("find_copy", () => {
+  const job = (previous?: { id: string; url: string }): CopyJob => ({ ...longJob(makeArticle(), "https://example.com", { addCanonicalLink: false, lang: "en" }), op: "find", previous });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const domain = await import("../domain");
+    vi.mocked(domain.articleUrl).mockImplementation((_user: string, slug: string, hash: string) => `https://matters.town/@testuser/${slug}-${hash}`);
+  });
+
+  it("finds a handed-off draft waiting, then published, then gone", async () => {
+    vi.mocked(fetchDraft)
+      .mockResolvedValueOnce(unpublished("draft-1") as any)
+      .mockResolvedValueOnce(makePublishedDraftResponse("draft-1"))
+      .mockResolvedValueOnce(null);
+    const handed = job({ id: "draft-1", url: "" });
+    expect(await find_copy(handed)).toEqual({ success: true, copy: { handoff: { text: "", open_url: "https://matters.town/drafts/draft-1", id: "draft-1" } } });
+    expect(await find_copy(handed)).toEqual({ success: true, copy: { id: "abc123", url: "https://matters.town/@testuser/test-article-abc123" } });
+    expect(await find_copy(handed)).toEqual({ success: true, copy: null });
+  });
+
+  it("looks a draft up by its id even after the post became short enough for a moment", async () => {
+    vi.mocked(fetchDraft).mockResolvedValue(makePublishedDraftResponse("draft-1"));
+    const shortened = { ...job({ id: "draft-1", url: "" }), form: "short" as const, parts: [{ text: "Hi", links: [] }], article: null };
+    expect((await find_copy(shortened)).copy).toEqual({ id: "abc123", url: "https://matters.town/@testuser/test-article-abc123" });
+  });
+
+  it("finds an interrupted send's article by its title and its link to the post, not another of the same title", async () => {
+    vi.mocked(fetchAllArticles).mockResolvedValue({
+      articles: [
+        { title: "Test Article", slug: "older", shortHash: "aa1", content: "<p>An older piece</p>" },
+        { title: "Test Article", slug: "test-article", shortHash: "zz9", content: `<p>Body</p><a href="${POST}">Original link</a>` },
+      ],
+      userName: "testuser",
+    } as any);
+    expect((await find_copy(job())).copy).toEqual({ id: "zz9", url: "https://matters.town/@testuser/test-article-zz9" });
+  });
+
+  it("cannot look a moment up", async () => {
+    const result = await find_copy({ ...job(), form: "short", parts: [{ text: "Hi", links: [] }], article: null });
+    expect(result.success).toBe(false);
   });
 });
 
@@ -2607,9 +2420,8 @@ describe("syndicateArticle - draft tracking integration", () => {
 // Tests: Cover path decoding for non-ASCII paths
 // ============================================================================
 
-describe("syndicateArticle - cover path decoding", () => {
+describe("an article copy - cover path decoding", () => {
   const siteUrl = "https://example.com";
-  const userName = "testuser";
   const options = { addCanonicalLink: false, lang: "en" };
 
   beforeEach(async () => {
@@ -2633,7 +2445,7 @@ describe("syndicateArticle - cover path decoding", () => {
       frontmatter: { cover: "%E5%9B%BE%E7%89%87/cover-image.png" },
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     // readSiteFile should receive the DECODED path (filesystem uses decoded chars)
     const readCall = vi.mocked(readSiteFile).mock.calls[0][0];
@@ -2648,7 +2460,7 @@ describe("syndicateArticle - cover path decoding", () => {
       frontmatter: { cover: "assets/covers/book.jpg" },
     });
 
-    await syndicateArticle(article, siteUrl, userName, options, mockTask);
+    await publish_copy(longJob(article, siteUrl, options));
 
     expect(readSiteFile).toHaveBeenCalledWith("assets/covers/book.jpg");
     expect(uploadAssetMultipart).toHaveBeenCalledWith(
@@ -2694,99 +2506,6 @@ describe("uploadAndReplaceLocalImages - non-ASCII path decoding", () => {
 
     const readCall = vi.mocked(readSiteFile).mock.calls[0][0];
     expect(readCall).toContain("图片/photo.png");
-  });
-});
-
-// ============================================================================
-// Tests: waitForPublishOrClose detects browser close
-// ============================================================================
-
-describe("syndicateArticle - browser close detection", () => {
-  const siteUrl = "https://example.com";
-  const userName = "testuser";
-  const options = { addCanonicalLink: false, lang: "en" };
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-
-    const { sleep } = await import("../utils");
-    vi.mocked(sleep).mockResolvedValue(undefined);
-
-    const sdk = await import("@symbiosis-lab/moss-api");
-    vi.mocked(sdk.showToast).mockResolvedValue(undefined);
-    vi.mocked(sdk.closeBrowser).mockResolvedValue(undefined);
-    vi.mocked(sdk.onEvent).mockResolvedValue(() => {});
-    vi.mocked(sdk.emitEvent).mockResolvedValue(undefined);
-
-    const domain = await import("../domain");
-    vi.mocked(domain.draftUrl).mockImplementation((id: string) => `https://matters.town/drafts/${id}`);
-    vi.mocked(domain.articleUrl).mockImplementation((_user: string, slug: string, hash: string) => `https://matters.town/@testuser/${slug}-${hash}`);
-
-    vi.mocked(pluginFileExists).mockResolvedValue(false);
-    vi.mocked(createDraft).mockResolvedValue(makeDraftResponse("draft-close-test"));
-    vi.mocked(readSiteFile).mockResolvedValue("ZmFrZQ==");
-    vi.mocked(uploadAssetMultipart).mockResolvedValue({ id: "asset-id-1", path: "https://assets.matters.news/embed/uploaded.jpg" });
-  });
-
-  it("exits immediately when browser is closed, saves draft for reuse", async () => {
-    const sdk = await import("@symbiosis-lab/moss-api");
-
-    // Simulate browser closing after first sleep call
-    let resolveClose!: (reason: any) => void;
-    const closedPromise = new Promise<any>((resolve) => { resolveClose = resolve; });
-    vi.mocked(sdk.openBrowser).mockResolvedValue({ closed: closedPromise });
-
-    // Draft never gets published (no article field)
-    vi.mocked(fetchDraft).mockResolvedValue({
-      id: "draft-close-test",
-      title: "Test",
-      content: "<p>Test</p>",
-      createdAt: "2024-01-01T00:00:00Z",
-      publishState: "unpublished" as const,
-    });
-
-    // Track how many times fetchDraft is polled.
-    // Clock does NOT advance past timeout — so if waitForPublishOrClose
-    // doesn't detect browser close, it will poll in an infinite loop.
-    // We cap sleep calls to detect this.
-    let sleepCallCount = 0;
-    const MAX_SLEEP_CALLS = 5;
-    const { sleep } = await import("../utils");
-    vi.mocked(sleep).mockImplementation(async () => {
-      sleepCallCount++;
-      if (sleepCallCount === 1) {
-        // Resolve browser close on first poll iteration
-        resolveClose({ type: "user" });
-        // Yield so the promise can settle
-        await Promise.resolve();
-        await Promise.resolve();
-      }
-      if (sleepCallCount > MAX_SLEEP_CALLS) {
-        // Safety valve: prevent infinite loop in current (broken) code.
-        // Force timeout by making Date.now() return a large value.
-        vi.spyOn(Date, "now").mockReturnValue(Date.now() + 999999999);
-      }
-    });
-
-    const article = makeArticle({ source_path: "posts/test.md", frontmatter: {} });
-
-    const result = await syndicateArticle(article, siteUrl, userName, options, mockTask);
-
-    // Should NOT have published (browser was closed)
-    expect(result.publishedUrl).toBeUndefined();
-
-    // Key assertion: browser close should stop polling after 1 sleep call.
-    // If the code doesn't detect browser close, it will poll many times
-    // until our safety valve kicks in at MAX_SLEEP_CALLS.
-    expect(sleepCallCount).toBeLessThanOrEqual(2);
-
-    // Draft ID should be saved for reuse
-    const draftWriteCalls = vi.mocked(writePluginFile).mock.calls.filter(
-      call => call[0] === "drafts.json"
-    );
-    expect(draftWriteCalls.length).toBeGreaterThan(0);
-    const written = JSON.parse(draftWriteCalls[draftWriteCalls.length - 1][1]);
-    expect(written["posts/test.md"].draftId).toBe("draft-close-test");
   });
 });
 

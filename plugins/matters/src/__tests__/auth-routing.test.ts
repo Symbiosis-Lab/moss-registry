@@ -1,6 +1,6 @@
 /**
- * Tests for trigger-aware auth routing in the process hook (and, from T6,
- * the syndicate session gate + mid-sync auth failure handling).
+ * Tests for trigger-aware auth routing in the process hook, and its
+ * mid-sync auth failure handling.
  *
  * Mock prelude copied from binding-guard.test.ts with the deltas the full
  * pipeline needs. Both files now run sync_on_build: true — the setting only
@@ -159,14 +159,10 @@ vi.mock("../social", () => ({
   reconcileLegacySocialData: vi.fn().mockResolvedValue(false),
 }));
 
-import { process as processHook, syndicate, login as loginHook } from "../main";
+import { process as processHook, login as loginHook } from "../main";
 // Resolves to the class in our ../api mock, so instanceof matches what
 // main.ts (which imports from the same mocked module) catches.
 import { MattersAuthError } from "../api";
-// The ../domain mock's isMattersUrl is a bare vi.fn() (undefined by default,
-// i.e. "not yet syndicated") — the no-op syndicate tests below need to flip
-// it per case.
-import { isMattersUrl } from "../domain";
 
 // ============================================================================
 // Fixtures
@@ -419,185 +415,6 @@ describe("mid-sync auth failure (process)", () => {
     const failedMsg = String(mockTaskFailed.mock.calls[0][0]);
     expect(failedMsg).toContain("502");
     expect(failedMsg).not.toContain("Error:"); // the de-nesting is the change under test
-  });
-});
-
-describe("syndicate session gate", () => {
-  // One unsyndicated article so execution reaches the session gate: an
-  // empty list early-returns "No new articles to syndicate" BEFORE the
-  // gate. Both tests still exit before the per-article loop (login fails /
-  // fetchUserProfile rejects), so isArticleLive is never reached.
-  const SYNDICATE_CONTEXT = {
-    deployment: { url: "https://example.com", deployed_at: "2026-06-10T00:00:00Z" },
-    articles: [
-      {
-        title: "A post",
-        content: "body",
-        url_path: "posts/a-post.html",
-        tags: [],
-        frontmatter: {},
-      },
-    ],
-    config: {},
-    project_info: { folder_name: "test", homepage_file: null, lang: "en" },
-    // syndicate_to_platforms' one production caller (Publish click) always
-    // stamps this — mirror that shape rather than leaving it undefined.
-    trigger: "manual_one",
-  } as never;
-
-  it("expired session → prompts login before syndicating", async () => {
-    mockGetSessionState.mockResolvedValue("expired");
-    mockOpenBrowser.mockResolvedValue({ closed: Promise.resolve() });
-    const result = await syndicate(SYNDICATE_CONTEXT);
-    expect(mockOpenBrowser).toHaveBeenCalled();
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("Login required");
-  });
-
-  it("login-cancelled path does NOT emit 'Login cancelled' toast (task.failed() is the terminal signal)", async () => {
-    // When promptLogin returns false (window closed immediately), the old code
-    // emitted a 'Login cancelled' toast — that was deleted. Only the
-    // 'Matters login required' persistent toast (Law 2) must fire; task.failed()
-    // is the terminal failure signal. No 'Login cancelled' chatty toast.
-    mockGetSessionState.mockResolvedValue("expired");
-    mockOpenBrowser.mockResolvedValue({ closed: Promise.resolve() }); // closes immediately → loginSuccess=false
-    await syndicate(SYNDICATE_CONTEXT);
-    const cancelledToast = mockShowToast.mock.calls.find(
-      ([opts]: [{ message: string }]) => opts.message?.includes("Login cancelled") || opts.message?.includes("cancelled"),
-    );
-    expect(cancelledToast).toBeUndefined();
-    // The login-required toast still fires (Law 2: blocking state must persist)
-    const loginRequiredToast = mockShowToast.mock.calls.find(
-      ([opts]: [{ message: string }]) => opts.message?.includes("login required"),
-    );
-    expect(loginRequiredToast).toBeDefined();
-  });
-
-  it("syndicate() does NOT emit 'Starting Matters syndication...' toast (startTask() is the per-run signal)", async () => {
-    // Law 1: one event one home. The startTask() call at the top of syndicate()
-    // already registers the task in L1 — a simultaneous 'Starting...' toast
-    // is a double-signal that was deleted. Verified absent in any syndicate path.
-    mockGetSessionState.mockResolvedValue("expired");
-    mockOpenBrowser.mockResolvedValue({ closed: Promise.resolve() }); // short-circuit to login path
-    await syndicate(SYNDICATE_CONTEXT);
-    const startingToast = mockShowToast.mock.calls.find(
-      ([opts]: [{ message: string }]) => opts.message?.includes("Starting Matters syndication"),
-    );
-    expect(startingToast).toBeUndefined();
-  });
-
-  it("MattersAuthError outside the loop → session-expired publish copy, AND a toast (syndicate is always user-initiated)", async () => {
-    mockGetSessionState.mockResolvedValue("valid");
-    mockGetConfig.mockResolvedValue({ ...BOUND_CONFIG, userName: undefined }); // forces fetchUserProfile
-    mockFetchUserProfile.mockRejectedValueOnce(
-      new MattersAuthError("TOKEN_INVALID", "Matters rejected the session (TOKEN_INVALID)")
-    );
-    const result = await syndicate(SYNDICATE_CONTEXT);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("session expired, log in again to publish.");
-    // Publish counts as user-present (trigger: "manual_one") — unlike a
-    // background rebuild's expired session, this one surfaces.
-    expect(mockShowToast).toHaveBeenCalled();
-    const nudge = mockShowToast.mock.calls.find(
-      ([opts]: [{ message: string }]) => opts.message?.includes("session expired"),
-    );
-    expect(nudge).toBeDefined();
-  });
-
-  // Task 2 watchdog fix: task.awaiting() must be called BEFORE promptLogin()
-  // (which calls openBrowser) so the Rust inactivity watchdog knows the hook
-  // is legitimately waiting for the user, not stalled.
-  it("login-awaiting: task.awaiting() is called BEFORE openBrowser (promptLogin) during syndicate login", async () => {
-    mockGetSessionState.mockResolvedValue("expired");
-    mockOpenBrowser.mockResolvedValue({ closed: Promise.resolve() }); // closes immediately
-    await syndicate(SYNDICATE_CONTEXT);
-
-    // Spec: quiet label, no Awaiting pulse — awaiting is called with an empty
-    // venue string so the UI shows the directive text as a quiet label rather
-    // than "Waiting for you to [x] in [venue]". The core invariant (called
-    // BEFORE openBrowser so the Rust watchdog marks the hook Awaiting) is
-    // unchanged.
-    expect(mockTaskAwaiting).toHaveBeenCalledWith("Connect to Matters", "", "cancel");
-    expect(mockOpenBrowser).toHaveBeenCalled();
-
-    // Order invariant: awaiting must precede the login navigation so the
-    // watchdog marks the hook as Awaiting before the login page opens. The
-    // loading panel (no URL) opens earlier, before the session check.
-    const awaitingOrder = mockTaskAwaiting.mock.invocationCallOrder[0];
-    const loginOpenIndex = mockOpenBrowser.mock.calls.findIndex(([url]) => url !== undefined);
-    const openBrowserOrder = mockOpenBrowser.mock.invocationCallOrder[loginOpenIndex];
-    expect(awaitingOrder).toBeLessThan(openBrowserOrder);
-  });
-});
-
-describe("syndicate: no-op runs", () => {
-  // Same rubric as the auto-import-off fix in process(): a publish that
-  // tells Matters nothing new is not an event of this run. When the plugin
-  // can tell there's nothing to do before creating the task (every article
-  // already syndicated), it doesn't. When it can't tell until after the
-  // task exists and the loop has run, it still reports the honest count via
-  // succeeded() — row suppression for a real, honest zero is
-  // progress-panel.ts's job (progress-panel-job.test.ts), not this hook's.
-  const baseArticle = {
-    title: "A post",
-    content: "body",
-    url_path: "posts/a-post.html",
-    tags: [],
-  };
-
-  it("every article already syndicated → no task, no receipt (nothing to create)", async () => {
-    vi.mocked(isMattersUrl).mockReturnValue(true);
-    const ctx = {
-      deployment: { url: "https://example.com", deployed_at: "2026-06-10T00:00:00Z" },
-      articles: [
-        { ...baseArticle, frontmatter: { syndicated: ["https://matters.town/@guo/a-post-abc123"] } },
-      ],
-      config: {},
-      project_info: { folder_name: "test", homepage_file: null, lang: "en" },
-      trigger: "manual_one",
-    } as never;
-
-    const result = await syndicate(ctx);
-
-    expect(result).toEqual({ success: true, message: "No new articles to syndicate" });
-    expect(mockStartTask).not.toHaveBeenCalled();
-    expect(mockTaskSucceeded).not.toHaveBeenCalled();
-    expect(mockGetSessionState).not.toHaveBeenCalled();
-  });
-
-  it("candidate article not live yet → task is created (can't be avoided) but succeeds honestly with amount 0", async () => {
-    // The task already exists by the time the run's outcome is known (the
-    // per-article loop needs it for progress), so "don't create it" isn't
-    // available here — unlike the case above. isArticleLive HEADs the
-    // deployed URL via the global fetch; stub it not-OK so the article is
-    // skipped, landing on published=0/draftsCreated=0/errors=0. Whether that
-    // paints a panel row is progress-panel.ts's call (a Job with amount 0
-    // and no advisory renders nothing); this hook's job is just to report
-    // the real count via succeeded(), never cancelled() — cancelled() would
-    // silently drop any advisory riding the same terminal call (moss-api:
-    // advise() flushes on succeeded()/failed() only).
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 } as unknown as Response));
-    vi.mocked(isMattersUrl).mockReturnValue(false);
-    mockGetSessionState.mockResolvedValue("valid");
-    const ctx = {
-      deployment: { url: "https://example.com", deployed_at: "2026-06-10T00:00:00Z" },
-      articles: [{ ...baseArticle, frontmatter: {} }],
-      config: {},
-      project_info: { folder_name: "test", homepage_file: null, lang: "en" },
-      trigger: "manual_one",
-    } as never;
-
-    try {
-      const result = await syndicate(ctx);
-
-      expect(result.success).toBe(true);
-      expect(mockStartTask).toHaveBeenCalled();
-      expect(mockTaskSucceeded).toHaveBeenCalledWith(undefined, 0);
-      expect(mockTaskCancelled).not.toHaveBeenCalled();
-      expect(mockShowToast).not.toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 });
 

@@ -89,7 +89,7 @@ moss re-implement Tor-routed probing or wire up control-port event streaming:
      behavior (local-health-only claim), but soften "Reachable on the Tor
      network" to something like "Publishing to Tor…" that doesn't overclaim.
 4. Frontend strings to touch: `onionpress.success.subline` /
-   `onionpress.claim.subline` in `frontend/app/i18n/ui-strings.ts` (all three
+   `onionpress.claim.subline` in `@symbiosis-lab/moss-ui/ui/i18n/ui-strings.ts` (all three
    locales), plus the toast text in `plugins/onionpress/src/main.ts`.
 
 ## What this explicitly defers
