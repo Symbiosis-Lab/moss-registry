@@ -1,0 +1,31 @@
+{
+  "name": "bluesky",
+  "version": "0.1.0",
+  "display_name": "Bluesky",
+  "description": "Post a copy of each new post to your Bluesky account, linked back to your site",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.19",
+  "preview": true,
+  "entry": "main.bundle.js",
+  "global_name": "BlueskyPlugin",
+  "icon": "icon.svg",
+  "domains": ["bsky.app"],
+  "contributes": {
+    "channel": {
+      "display_name": "Bluesky",
+      "setup": {
+        "settings": [
+          { "key": "handle", "type": "string", "required": true, "label": "Handle", "description": "Your Bluesky handle, such as alex.bsky.social or your own domain." },
+          { "key": "app_password", "type": "secret", "label": "App password", "description": "Made in Bluesky under Settings, Privacy and security, App passwords. It can post but not change your account." },
+          { "key": "service", "type": "string", "label": "Server", "description": "The server your account lives on. Leave it as it is unless you run your own.", "default": "https://bsky.social" }
+        ]
+      },
+      "syndication": {
+        "forms": ["short", "thread", "teaser"],
+        "max_chars": 300,
+        "counting": "graphemes",
+        "idempotent": true
+      }
+    }
+  }
+}

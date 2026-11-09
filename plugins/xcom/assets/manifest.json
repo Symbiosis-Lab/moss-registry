@@ -1,0 +1,32 @@
+{
+  "name": "xcom",
+  "version": "0.1.0",
+  "display_name": "X",
+  "description": "Post a copy of each new post to your X account, linked back to your site",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.19",
+  "preview": true,
+  "entry": "main.bundle.js",
+  "global_name": "XcomPlugin",
+  "icon": "icon.svg",
+  "domains": ["x.com", "twitter.com"],
+  "contributes": {
+    "channel": {
+      "display_name": "X",
+      "setup": {
+        "settings": [
+          { "key": "api_key", "type": "secret", "label": "API key", "description": "Your app's API key, under Keys and tokens in the X developer console.", "help_url": "https://developer.x.com/en/portal/dashboard" },
+          { "key": "api_key_secret", "type": "secret", "label": "API key secret", "description": "Shown beside the API key when it is made." },
+          { "key": "access_token", "type": "secret", "label": "Access token", "description": "Made for your own account under Keys and tokens, with Read and write permission." },
+          { "key": "access_token_secret", "type": "secret", "label": "Access token secret", "description": "Shown beside the access token when it is made." },
+          { "key": "api", "type": "string", "hidden": true, "default": "https://api.x.com" }
+        ]
+      },
+      "syndication": {
+        "forms": ["short", "thread", "teaser"],
+        "max_chars": 280,
+        "counting": "weighted"
+      }
+    }
+  }
+}
