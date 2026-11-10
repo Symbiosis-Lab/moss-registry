@@ -1,0 +1,56 @@
+{
+  "name": "booking",
+  "version": "0.1.0",
+  "display_name": "Booking",
+  "description": "Let people choose a time, pay and manage a booking on your site",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.21",
+  "preview": true,
+  "contributes": {
+    "blocks": {
+      "booking": {
+        "element": "moss-booking",
+        "script": "moss-booking.js",
+        "stylesheet": "moss-booking.css",
+        "attributes": [
+          {
+            "key": "page",
+            "type": "string",
+            "label": "Screen",
+            "description": "book, done, manage or desk",
+            "default": "book"
+          },
+          {
+            "key": "desk",
+            "type": "string",
+            "label": "Desk email",
+            "description": "Where people are told to write when something fails"
+          },
+          {
+            "key": "endpoint",
+            "type": "string",
+            "label": "Booking service address",
+            "pattern": "^https://",
+            "pattern_message": "Use an https address."
+          }
+        ]
+      }
+    },
+    "public_data": {
+      "config": "services.booking",
+      "keys": [
+        "endpoint",
+        "timezone",
+        "currency",
+        "start_every",
+        "notice_hours",
+        "horizon_days",
+        "open",
+        "cancel",
+        "pages",
+        "services",
+        "enabled"
+      ]
+    }
+  }
+}
