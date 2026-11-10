@@ -70,7 +70,6 @@ function runStep(body, stubs, env = {}) {
 
 const SIGN = "Sign index.json and revoked.json";
 const signStubs = {
-  sudo: "exit 0",
   minisign: 'while [ $# -gt 0 ]; do [ "$1" = -m ] && touch "$2.minisig"; shift; done',
 };
 
@@ -86,6 +85,14 @@ test("with a signing key both documents are signed", () => {
   const r = runStep(script("sign", SIGN), signStubs, { SIGNING_KEY: "not a real key", SERIAL: "7" });
   assert.equal(r.status, 0, r.stdout);
   assert.deepEqual(r.signed, ["index.json.minisig", "revoked.json.minisig"]);
+});
+
+test("minisign is installed in a step of its own, before the sign step", () => {
+  const lines = job("sign");
+  const install = lines.indexOf("      - name: Install minisign");
+  assert.ok(install !== -1 && install < lines.indexOf(`      - name: ${SIGN}`));
+  assert.doesNotMatch(script("sign", SIGN), /apt-get|sudo/);
+  assert.equal(lines.filter((l) => l.includes("secrets.")).length, 1);
 });
 
 test("the deploy job runs only after a successful sign, and checks signatures before Pages", () => {

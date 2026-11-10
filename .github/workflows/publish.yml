@@ -446,6 +446,12 @@ jobs:
           name: catalog-unsigned
           path: public
 
+      - name: Install minisign
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq minisign >/dev/null
+
       - name: Sign index.json and revoked.json
         env:
           SIGNING_KEY: ${{ secrets.MOSS_REGISTRY_SIGNING_KEY }}
@@ -456,8 +462,6 @@ jobs:
             echo "::error::MOSS_REGISTRY_SIGNING_KEY is empty in the catalog-signing environment; refusing to publish an unsigned catalog"
             exit 1
           fi
-          sudo apt-get update -qq >/dev/null
-          sudo apt-get install -y -qq minisign >/dev/null
           key="$(mktemp)"
           trap 'rm -f "$key"' EXIT
           printf '%s\n' "$SIGNING_KEY" > "$key"
