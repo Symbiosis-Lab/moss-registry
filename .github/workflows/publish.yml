@@ -615,5 +615,12 @@ jobs:
       - name: Check the signatures at both addresses
         run: |
           set -euo pipefail
-          node .github/scripts/catalog-signing.mjs check-url "https://symbiosis-lab.org/moss-registry" --keys registry/keys
-          node .github/scripts/catalog-signing.mjs check-url "https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download" --keys registry/keys
+          # A new .minisig path can be a cached 404 for a few minutes after the deploy.
+          for base in "https://symbiosis-lab.org/moss-registry" "https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download"; do
+            try=1
+            until node .github/scripts/catalog-signing.mjs check-url "$base" --keys registry/keys; do
+              [ "$try" -lt 5 ] || exit 1
+              try=$((try + 1))
+              sleep 30
+            done
+          done

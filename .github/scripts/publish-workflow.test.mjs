@@ -138,3 +138,18 @@ test("pruning cannot fail the job, so verify always runs after a deploy", () => 
   assert.ok(verify.includes("    needs: deploy"));
   assert.ok(verify.includes("    if: always() && needs.deploy.result == 'success'"));
 });
+
+const CHECK_URLS = "Check the signatures at both addresses";
+
+test("a signature check that fails is retried until it passes, at each address", () => {
+  const r = runStep(script("verify", CHECK_URLS), { node: '[ "$(grep -cF "node $*" "$CALLS")" -ge 3 ]', sleep: "exit 0" });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(r.calls.filter((c) => c.startsWith("node ")).length, 6);
+  assert.equal(r.calls.filter((c) => c.startsWith("sleep ")).length, 4);
+});
+
+test("a signature check that never passes fails after five tries", () => {
+  const r = runStep(script("verify", CHECK_URLS), { node: "exit 1", sleep: "exit 0" });
+  assert.equal(r.status, 1);
+  assert.equal(r.calls.filter((c) => c.startsWith("node ")).length, 5);
+});
