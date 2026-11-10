@@ -101,6 +101,13 @@ describe("publish_copy", () => {
     expect(r.success).toBe(false);
     expect(r.copy?.refused).toEqual({ cause: "content", message: "Record/text must not be longer than 300 graphemes" });
   });
+
+  it("names a server it cannot reach as the network's fault, rather than throwing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("request failed: connection refused"); }));
+    const r = await publish_copy(job());
+    expect(r.success).toBe(false);
+    expect(r.copy?.refused).toEqual({ cause: "network", message: "could not reach pds.test: request failed: connection refused" });
+  });
 });
 
 describe("find_copy and delete_copy", () => {
