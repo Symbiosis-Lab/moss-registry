@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- The channel button shows the X logo.
+
 ## 0.1.0
 
 - A preview (`"preview": true`): moss offers and installs it only for users who have turned on Preview features in its Settings.
