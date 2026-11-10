@@ -104,6 +104,14 @@ test("the deploy job runs only after a successful sign, and checks signatures be
   assert.ok(check !== -1 && pages !== -1 && check < pages);
 });
 
+test("a scheduled run cuts no releases, so a plugin that will not build cannot stop the re-signing", () => {
+  for (const name of ["release", "starters", "native-plan"]) {
+    assert.ok(job(name).includes("    if: github.event_name != 'schedule'"), name);
+  }
+  // A skipped job's result is "skipped", which these comparisons let through.
+  assert.match(job("index").find((l) => l.startsWith("    if:")), /needs\.release\.result != 'failure'/);
+});
+
 const PRUNE = "Delete index releases past the newest five";
 const TAGS = ["index-60", "index-59-2", "index-59", "index-58", "index-57", "index-56", "index-55", "pdf-ocr-v1.0.0", "index-v1.0.0"];
 const list = `if [ "$2" = list ]; then printf '%s\\n' ${TAGS.join(" ")}; exit 0; fi`;

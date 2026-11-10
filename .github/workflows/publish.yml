@@ -35,8 +35,9 @@ on:
   repository_dispatch:
     types: [publish-index]
   workflow_dispatch:
-  # Weekly, to move the catalog's expiry date forward and re-sign it. Like any
-  # run it also cuts a release whose tag is missing.
+  # Weekly, to move the catalog's expiry date forward and re-sign it. It cuts
+  # no releases: a plugin that will not build must not stop the re-signing,
+  # or installs would stop everywhere when the date passed.
   schedule:
     - cron: "23 6 * * 1"
 
@@ -53,6 +54,7 @@ permissions:
 jobs:
   release:
     name: cut missing releases
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -141,6 +143,7 @@ jobs:
   # tolerates, so the index still deploys.
   starters:
     name: cut missing starter releases
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -234,6 +237,7 @@ jobs:
   # cannot work. A released version is final, as everywhere else.
   native-plan:
     name: plan native plugin releases
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     outputs:
       plugins: ${{ steps.plan.outputs.plugins }}
