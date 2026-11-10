@@ -343,6 +343,7 @@ jobs:
 
             files=("$out"/*)
             if gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+                 --latest=false \
                  --title "$id $version" \
                  --notes "Built from \`$dir\` at ${GITHUB_SHA}. See the plugin's README.md for what it does."; then
               published=$((published + 1))
