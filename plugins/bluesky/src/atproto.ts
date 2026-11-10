@@ -31,11 +31,19 @@ async function xrpc(service: string, method: string, init: { token?: string; bod
   const headers: Record<string, string> = {};
   if (init.token) headers["authorization"] = `Bearer ${init.token}`;
   if (init.body !== undefined) headers["content-type"] = "application/json";
-  const response = await fetch(`${service.replace(/\/+$/, "")}/xrpc/${method}${query}`, {
-    method: init.body !== undefined ? "POST" : "GET",
-    headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
+  const url = `${service.replace(/\/+$/, "")}/xrpc/${method}${query}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: init.body !== undefined ? "POST" : "GET",
+      headers,
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+  } catch (e) {
+    // No answer at all (offline, refused, timed out): status 0, which a
+    // refusal names as the network's fault.
+    throw new XrpcError(0, "NetworkError", `could not reach ${new URL(url).host}: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {

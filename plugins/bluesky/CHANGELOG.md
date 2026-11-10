@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- When Bluesky cannot be reached at all, the copy is reported as a network problem, which moss shows in plain words with Try again, instead of as a failed plugin.
+
 ## 0.1.1
 
 - The channel button shows the Bluesky logo.
