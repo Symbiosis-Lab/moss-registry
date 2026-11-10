@@ -45,6 +45,11 @@ export function stampExpires(doc, expires) {
 
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
+/** The key id in a decoded key or signature, as minisign prints it: stored little-endian. */
+function keyId(raw) {
+  return Buffer.from(raw.subarray(2, 10)).reverse().toString("hex").toUpperCase();
+}
+
 /** The base64 line of a minisign public key, from the whole .pub file or the line itself. */
 function keyLine(text) {
   const lines = text.trim().split("\n").map((l) => l.trim());
@@ -55,8 +60,7 @@ export function parseKey(text) {
   const raw = Buffer.from(keyLine(text), "base64");
   if (raw.length !== 42 || raw.subarray(0, 2).toString("latin1") !== "Ed") return null;
   const key = createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, raw.subarray(10)]), format: "der", type: "spki" });
-  // The id is stored little-endian; minisign prints it reversed, as here.
-  return { id: Buffer.from(raw.subarray(2, 10)).reverse().toString("hex").toUpperCase(), key };
+  return { id: keyId(raw), key };
 }
 
 /**
@@ -71,7 +75,7 @@ export function signatureProblem(bytes, sigText, keys) {
   const global = Buffer.from(lines[3], "base64");
   if (sig.length !== 74 || global.length !== 64) return "not a minisign signature";
   if (sig.subarray(0, 2).toString("latin1") !== "ED") return "not a prehashed signature";
-  const id = Buffer.from(sig.subarray(2, 10)).reverse().toString("hex").toUpperCase();
+  const id = keyId(sig);
   const pinned = keys.map(parseKey).find((k) => k && k.id === id);
   if (!pinned) return `signed by key ${id}, which is not pinned`;
   const prehash = createHash("blake2b512").update(bytes).digest();
