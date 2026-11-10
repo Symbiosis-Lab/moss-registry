@@ -540,11 +540,22 @@ jobs:
             --title "Registry index ${SERIAL}" \
             --notes "The catalog documents deployed by publish run ${SERIAL}, as a second address to Pages. Only the newest few of these are kept."
 
-          # Keep the newest 5 index releases; never touch any other release.
+      # Tags are immutable (the "release tags are immutable" ruleset), so this
+      # removes the release objects and leaves their tags. Housekeeping only:
+      # continue-on-error keeps a failure here from failing the job, which
+      # would skip `verify`.
+      - name: Delete index releases past the newest five
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Never touch any other release.
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName' \
             | grep -E '^index-[0-9]+(-[0-9]+)?$' | sort -t- -k2,2nr -k3,3nr | tail -n +6 \
             | while read -r old; do
-                gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+                gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes \
+                  || echo "::warning::could not delete release $old"
               done
 
   # GitHub turns off a scheduled workflow after 60 days without activity in

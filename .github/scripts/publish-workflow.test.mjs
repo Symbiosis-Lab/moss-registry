@@ -96,3 +96,30 @@ test("the deploy job runs only after a successful sign, and checks signatures be
   const pages = lines.indexOf("        uses: actions/deploy-pages@v4");
   assert.ok(check !== -1 && pages !== -1 && check < pages);
 });
+
+const PRUNE = "Delete index releases past the newest five";
+const TAGS = ["index-60", "index-59-2", "index-59", "index-58", "index-57", "index-56", "index-55", "pdf-ocr-v1.0.0", "index-v1.0.0"];
+const list = `if [ "$2" = list ]; then printf '%s\\n' ${TAGS.join(" ")}; exit 0; fi`;
+const pruneEnv = { GH_TOKEN: "t", GITHUB_REPOSITORY: "acme/registry" };
+
+test("pruning deletes only old index releases and never asks to delete a tag", () => {
+  const r = runStep(script("deploy", PRUNE), { gh: `${list}\n[[ "$*" != *--cleanup-tag* ]] || { echo "HTTP 422: Cannot delete this tag" >&2; exit 1; }` }, pruneEnv);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(r.calls.filter((c) => c.startsWith("gh release delete")).map((c) => c.split(" ")[3]), ["index-56", "index-55"]);
+  assert.doesNotMatch(r.stdout, /::warning::/);
+});
+
+test("a release that cannot be deleted is warned about, and the rest are still tried", () => {
+  const r = runStep(script("deploy", PRUNE), { gh: `${list}\necho "HTTP 422: Repository rule violations found" >&2; exit 1` }, pruneEnv);
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(r.calls.filter((c) => c.startsWith("gh release delete")).length, 2);
+  assert.match(r.stdout, /::warning::could not delete release index-56/);
+});
+
+test("pruning cannot fail the job, so verify always runs after a deploy", () => {
+  assert.ok(step("deploy", PRUNE).includes("        continue-on-error: true"));
+  assert.doesNotMatch(script("deploy", "Publish the same files as the Latest release"), /release delete/);
+  const verify = job("verify");
+  assert.ok(verify.includes("    needs: deploy"));
+  assert.ok(verify.includes("    if: always() && needs.deploy.result == 'success'"));
+});
