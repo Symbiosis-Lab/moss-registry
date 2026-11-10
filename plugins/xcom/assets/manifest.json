@@ -1,6 +1,6 @@
 {
   "name": "xcom",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "display_name": "X",
   "description": "Post a copy of each new post to your X account, linked back to your site",
   "author": "Symbiosis Lab",
