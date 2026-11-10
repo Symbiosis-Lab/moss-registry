@@ -54,9 +54,13 @@ https://symbiosis-lab.org/moss-registry/index.json
 https://symbiosis-lab.org/moss-registry/revoked.json
 ```
 
-The publish workflow also attaches the same two files to a new release, `index-<serial>`, marked Latest, so they are at `https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/index.json` and `.../revoked.json`. moss asks that address only when the origin above gives no usable document. A new release is cut each time, never an asset replaced, because replacing deletes first and leaves the address answering 404; plugin and starter releases are created with `--latest=false` so none of them can take the badge.
+The publish workflow also attaches the same two files and their signatures to a new release, `index-<serial>` (`index-<serial>-<attempt>` on a re-run), marked Latest, so they are at `https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/index.json` and `.../revoked.json`. moss asks that address only when the origin above gives no usable document. A new release is cut each time, never an asset replaced, because replacing deletes first and leaves the address answering 404; plugin and starter releases are created with `--latest=false` so none of them can take the badge.
 
-Both addresses are a trust anchor, not a deployment detail. The files are unsigned, so whoever serves the bytes is trusted. Both are GitHub hosting of this one repository, so the people who can publish to one can publish to the other, and moss holds either to the same serial and revocation rules, so a stale copy is refused. No other mirror is allowed.
+Each document carries an `expires` date, which the publish run sets 21 days ahead and a weekly scheduled run moves forward; moss offers no installs from a catalog past its date. Each is also signed: the publish run puts `index.json.minisig` and `revoked.json.minisig` beside them at both addresses, made with the key whose public half is in [`keys/`](keys/), and refuses to publish anything unsigned. A moss that pins that key accepts a document only with a valid signature, so an address can carry the catalog but not change it.
+
+For a moss that does not pin a key yet, both addresses remain a trust anchor, not a deployment detail: whoever serves the bytes is trusted. Both are GitHub hosting of this one repository, so the people who can publish to one can publish to the other, and moss holds either to the same serial and revocation rules, so a stale copy is refused. No other mirror is allowed for such a build.
+
+The weekly run re-signs `revoked.json` at the serial it already has, with only its date changed; moss accepts a kill list again at an equal serial, so this needs no hand edit.
 
 **Pin that host, not `symbiosis-lab.github.io`.** The organization serves Pages
 under its own domain, so the `github.io` form answers `301` and redirects here.

@@ -35,6 +35,11 @@ on:
   repository_dispatch:
     types: [publish-index]
   workflow_dispatch:
+  # Weekly, to move the catalog's expiry date forward and re-sign it. It cuts
+  # no releases: a plugin that will not build must not stop the re-signing,
+  # or installs would stop everywhere when the date passed.
+  schedule:
+    - cron: "23 6 * * 1"
 
 # Runs serialize. Two merges landing together must not race to build the same
 # index, and cancelling a half-finished publish would leave releases without
@@ -49,6 +54,7 @@ permissions:
 jobs:
   release:
     name: cut missing releases
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -137,6 +143,7 @@ jobs:
   # tolerates, so the index still deploys.
   starters:
     name: cut missing starter releases
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -230,6 +237,7 @@ jobs:
   # cannot work. A released version is final, as everywhere else.
   native-plan:
     name: plan native plugin releases
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     outputs:
       plugins: ${{ steps.plan.outputs.plugins }}
@@ -339,6 +347,7 @@ jobs:
 
             files=("$out"/*)
             if gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
+                 --latest=false \
                  --title "$id $version" \
                  --notes "Built from \`$dir\` at ${GITHUB_SHA}. See the plugin's README.md for what it does."; then
               published=$((published + 1))
@@ -356,9 +365,10 @@ jobs:
           exit "$failed"
 
   index:
-    name: index and deploy
+    name: index
     # Always: the index must be regenerated even when nothing new was cut, since
-    # a dispatch from moss arrives without this repo changing at all.
+    # a dispatch from moss arrives without this repo changing at all, and the
+    # weekly schedule exists only to move the catalog's expiry date forward.
     #
     # Runs when the plugin release job did not fail, exactly as before starters
     # existed. The native and starters jobs are waited for (so a starter cut in this run is
@@ -367,24 +377,21 @@ jobs:
     # so it is tolerated like any other starter failure. The index builder treats starters as optional
     # too, so a starter problem can never keep index.json or revoked.json from
     # deploying.
+    #
+    # This job never sees the signing key: it hands the unsigned documents to
+    # `sign`. Whatever it produces gets signed, though, so its actions are
+    # pinned by commit like the sign job's.
     needs: [release, native, starters]
     if: always() && needs.release.result != 'failure' && needs.native.result != 'cancelled' && needs.starters.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
-      contents: write # the index release below
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
-
-      - uses: actions/configure-pages@v5
 
       - name: Generate index.json
         env:
@@ -406,6 +413,105 @@ jobs:
           # and reviewed. Clients fetch both from the one pinned origin.
           cp registry/revoked.json public/revoked.json
 
+      # moss offers no installs from a catalog past this date, so an origin
+      # cannot freeze apps on an old copy to hide a newer kill list. The
+      # weekly run moves it forward; revoked.json keeps its hand-written
+      # serial, which clients accept again at the same serial.
+      - name: Stamp the expiry date
+        run: |
+          set -euo pipefail
+          for f in public/index.json public/revoked.json; do
+            node .github/scripts/catalog-signing.mjs stamp "$f" --days 21
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog-unsigned
+          path: public
+          retention-days: 7
+
+  # The only job that can read the signing key. It runs no code from this
+  # repository and no action by tag: it takes the documents `index` built,
+  # signs them with Ubuntu's minisign, and passes them on. Its environment
+  # accepts only main, like github-pages.
+  #
+  # A missing key fails this job, and `deploy` runs only when it succeeds, so
+  # nothing unsigned reaches either address.
+  sign:
+    name: sign
+    needs: index
+    if: always() && needs.index.result == 'success'
+    runs-on: ubuntu-latest
+    environment: catalog-signing
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: catalog-unsigned
+          path: public
+
+      - name: Install minisign
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq minisign >/dev/null
+
+      - name: Sign index.json and revoked.json
+        env:
+          SIGNING_KEY: ${{ secrets.MOSS_REGISTRY_SIGNING_KEY }}
+          SERIAL: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SIGNING_KEY}" ]; then
+            echo "::error::MOSS_REGISTRY_SIGNING_KEY is empty in the catalog-signing environment; refusing to publish an unsigned catalog"
+            exit 1
+          fi
+          key="$(mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SIGNING_KEY" > "$key"
+          for f in index.json revoked.json; do
+            minisign -S -s "$key" -m "public/$f" -t "moss-registry $f, publish run ${SERIAL}"
+          done
+          ls -l public
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog
+          path: public
+          retention-days: 7
+
+  deploy:
+    name: deploy
+    needs: sign
+    if: always() && needs.sign.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the index release below
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: catalog
+          path: public
+
+      # The same check moss makes, against the same keys: a document without a
+      # valid signature by a key in registry/keys/ stops here instead of
+      # reaching apps that would refuse it.
+      - name: Check the signatures against the pinned keys
+        run: node .github/scripts/catalog-signing.mjs check public --keys registry/keys
+
+      - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public
@@ -413,46 +519,68 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
-      # A second address for the same two files: moss reads
-      # releases/latest/download/{index,revoked}.json when Pages is unreachable.
-      # "Latest" must always be the newest index release, so a new release is
-      # created and marked latest, never an asset replaced on an existing one:
-      # `gh release upload --clobber` deletes before it uploads, which leaves a
-      # window where the URL 404s. Plugin, native and starter releases are made
-      # with --latest=false so none of them can take the badge.
+      # A second address for the same files: moss reads
+      # releases/latest/download/{index,revoked}.json(.minisig) when Pages is
+      # unreachable. "Latest" must always be the newest index release, so a
+      # new release is created and marked latest, never an asset replaced on
+      # an existing one: `gh release upload --clobber` deletes before it
+      # uploads, which leaves a window where the URL 404s. Plugin, native and
+      # starter releases are made with --latest=false so none of them can take
+      # the badge.
+      #
+      # One release per attempt, never a gap filled in an earlier one: a
+      # re-run stamps a new date, so its documents differ from the first
+      # attempt's and only its own signatures match them.
       #
       # Uploads public/, the very files given to Pages, not a rebuild.
       - name: Publish the same files as the Latest release
         env:
           GH_TOKEN: ${{ github.token }}
           SERIAL: ${{ github.run_number }}
+          ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
           tag="index-${SERIAL}"
+          [ "$ATTEMPT" = 1 ] || tag="index-${SERIAL}-${ATTEMPT}"
 
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            # Re-run of the same run: keep what is there, fill only a gap.
-            have="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
-            for f in index.json revoked.json; do
-              if ! grep -qx "$f" <<<"$have"; then
-                gh release upload "$tag" "public/$f" --repo "$GITHUB_REPOSITORY"
-              fi
-            done
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --latest
-          else
-            gh release create "$tag" public/index.json public/revoked.json --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --latest \
-              --title "Registry index ${SERIAL}" \
-              --notes "The catalog documents deployed by publish run ${SERIAL}, as a second address to Pages. Only the newest few of these are kept."
-          fi
+          gh release create "$tag" public/index.json public/revoked.json public/index.json.minisig public/revoked.json.minisig --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --latest \
+            --title "Registry index ${SERIAL}" \
+            --notes "The catalog documents deployed by publish run ${SERIAL}, as a second address to Pages. Only the newest few of these are kept."
 
-          # Keep the newest 5 index releases; never touch any other release.
+      # Tags are immutable (the "release tags are immutable" ruleset), so this
+      # removes the release objects and leaves their tags. Housekeeping only:
+      # continue-on-error keeps a failure here from failing the job, which
+      # would skip `verify`.
+      - name: Delete index releases past the newest five
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Never touch any other release.
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName' \
-            | grep -E '^index-[0-9]+$' | sort -t- -k2 -n -r | tail -n +6 \
+            | grep -E '^index-[0-9]+(-[0-9]+)?$' | sort -t- -k2,2nr -k3,3nr | tail -n +6 \
             | while read -r old; do
-                gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+                gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes \
+                  || echo "::warning::could not delete release $old"
               done
+
+  # GitHub turns off a scheduled workflow after 60 days without activity in
+  # the repository. The catalog's expiry date only moves while the schedule
+  # runs, so a quiet spell would end in every app refusing new installs.
+  # Re-enabling the workflow from its own scheduled run resets that clock.
+  keepalive:
+    name: keep the weekly schedule on
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/publish.yml/enable"
 
   # Reads the deployed index the way a client does and re-downloads every
   # starter zip it names, checking sha256 and size. It runs after the deploy and
@@ -461,8 +589,8 @@ jobs:
   # longer match the index and installs of it will fail on users' machines.
   verify:
     name: verify published starters
-    needs: index
-    if: always() && needs.index.result == 'success'
+    needs: deploy
+    if: always() && needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -481,3 +609,18 @@ jobs:
       # must parse, or the fallback is a dead letter.
       - name: Re-download through the Latest release address
         run: node .github/scripts/verify-published.mjs --index-url "https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/index.json" --revoked-url "https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download/revoked.json" --serial "${{ github.run_number }}"
+
+      # Both addresses must serve signatures the pinned keys accept, or apps
+      # that verify keep their cached catalog.
+      - name: Check the signatures at both addresses
+        run: |
+          set -euo pipefail
+          # A new .minisig path can be a cached 404 for a few minutes after the deploy.
+          for base in "https://symbiosis-lab.org/moss-registry" "https://github.com/Symbiosis-Lab/moss-registry/releases/latest/download"; do
+            try=1
+            until node .github/scripts/catalog-signing.mjs check-url "$base" --keys registry/keys; do
+              [ "$try" -lt 5 ] || exit 1
+              try=$((try + 1))
+              sleep 30
+            done
+          done
