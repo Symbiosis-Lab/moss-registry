@@ -1,0 +1,45 @@
+{
+  "name": "threads",
+  "version": "0.1.0",
+  "display_name": "Threads",
+  "description": "Post copies of your site to Threads, linked back to the original",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.19",
+  "preview": true,
+  "entry": "main.bundle.js",
+  "global_name": "ThreadsPlugin",
+  "domains": [
+    "threads.net",
+    "threads.com"
+  ],
+  "contributes": {
+    "channel": {
+      "display_name": "Threads",
+      "setup": {
+        "settings": [
+          {
+            "key": "access_token",
+            "type": "secret",
+            "label": "Access token",
+            "description": "A Threads user access token with threads_basic, threads_content_publish and threads_delete."
+          },
+          {
+            "key": "api",
+            "type": "string",
+            "hidden": true,
+            "default": "https://graph.threads.net"
+          }
+        ]
+      },
+      "syndication": {
+        "forms": [
+          "short",
+          "thread",
+          "teaser"
+        ],
+        "max_chars": 500,
+        "counting": "utf16"
+      }
+    }
+  }
+}

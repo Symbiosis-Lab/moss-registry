@@ -64,6 +64,10 @@ index, install, update, revoke — and none of it cares which kind is moving.
 > merged. That is no longer true: this repo is now the source of truth for
 > plugin code.
 
+## Syndication channels
+
+[Bluesky](plugins/bluesky/README.md), [Mastodon](plugins/mastodon/README.md), [LinkedIn](plugins/linkedin/README.md), [X](plugins/xcom/README.md) and [Threads](plugins/threads/README.md) post copies of site content through moss’s syndication contract. Threads is a preview with manual token renewal; its README records the live API and host redirect checks still needed. The [syndication harness](harness/syndication/README.md) checks these channels locally. Catalog entries are generated from published release manifests, so a source plugin gets no hand-written index entry.
+
 ## Starters
 
 A **starter** is a complete small site a new moss site can begin as: real pages, a real theme and a real map, filled with public-domain or openly licensed words and pictures, so a newcomer sees a finished site before writing anything. There are three today: `essays` (a writer's own site), `organisation` (a society's site) and `vertical` (a vertical Chinese site). Each lives in `starters/<id>/` with a manifest, two posters and the `site/` folder that becomes the user's. Like a theme, a starter is content moss never executes. [`starters/README.md`](starters/README.md) is the contract: what a starter contains, what it guarantees, how it is packed for download and how to add one.
