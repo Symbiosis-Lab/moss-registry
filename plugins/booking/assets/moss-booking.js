@@ -50,6 +50,10 @@ async function mount(view, page, DESK, ENDPOINT) {
   function unavailable(text = `Email the desk at ${desk}.`) {
     return `<div class="flow"><h1 tabindex="-1">Booking online is unavailable</h1><p>${text}</p><a class="btn quiet" href="/">← Back to the site</a></div>`;
   }
+  // A link's page opened without the link: nothing is down, the page opens from an email.
+  function fromEmail(heading, email) {
+    return `<div class="flow"><h1 tabindex="-1">${heading}</h1><p>This page opens from the link in your ${email}.</p><a class="btn quiet" href="/">← Back to the site</a></div>`;
+  }
   const problem = (text) => `<div class="alert x" role="alert"><p>${text}</p></div>`;
   const notice = (text) => `<div class="alert" role="status"><p>${text}</p></div>`;
   const rows = (pairs) => `<div class="sum">${pairs.filter(Boolean).map(([a, b]) => `<div><span>${a}</span><span class="num">${b}</span></div>`).join("")}</div>`;
@@ -261,7 +265,7 @@ async function mount(view, page, DESK, ENDPOINT) {
   // The manage link: the token sits in the address's fragment, so no server ever logs it.
   async function managePage(booking) {
     const token = location.hash.slice(1);
-    if (!token) return show(unavailable("Open the link in your confirmation email."));
+    if (!token) return show(fromEmail("Manage your booking", "confirmation email"));
     let { status, data } = await call(booking, "/manage", { token });
     if (status === 404) return show(`<div class="flow"><h1 tabindex="-1">This link no longer works</h1><p>Email the desk at ${desk}.</p></div>`);
     if (status !== 200) return show(unavailable());
@@ -326,7 +330,7 @@ async function mount(view, page, DESK, ENDPOINT) {
   // The desk's link from a booking email: the booking, and declining it with a reason the client reads.
   async function deskPage(booking) {
     const token = location.hash.slice(1);
-    if (!token) return show(unavailable("Open the link in the booking email."));
+    if (!token) return show(fromEmail("Booking desk", "booking notification email"));
     const { status, data } = await call(booking, "/desk", { token });
     if (status === 404) return show(`<div class="flow"><h1 tabindex="-1">This link no longer works</h1></div>`);
     if (status !== 200) return show(unavailable());
