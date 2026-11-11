@@ -6,14 +6,16 @@ import vm from "node:vm";
 
 const SOURCE = readFileSync(new URL("../assets/moss-booking.js", import.meta.url), "utf8");
 
+const PUBLISHED = { schema: 1, data: { endpoint: "https://booking.example" } };
+
 /** Mounts `<moss-booking page=…>` at an address with no fragment and returns what it drew. */
-async function open(page) {
+async function open(page, published = PUBLISHED) {
   let Element;
   const context = {
     HTMLElement: class { getAttribute(name) { return this.attrs[name] ?? null; } },
     customElements: { define: (_name, cls) => (Element = cls) },
     location: { hash: "" },
-    fetch: async () => ({ ok: true, status: 200, json: async () => ({ data: { endpoint: "https://booking.example" } }) }),
+    fetch: async () => ({ ok: true, status: 200, json: async () => published }),
   };
   vm.runInNewContext(SOURCE, context);
   const view = new Element();
@@ -32,3 +34,9 @@ for (const [page, email] of [["desk", "booking notification email"], ["manage", 
     assert.doesNotMatch(html, /unavailable/i);
   });
 }
+
+test("a published offer in a format other than schema 1 leaves the page's own content", async () => {
+  assert.equal(await open("desk", { schema: 2, data: PUBLISHED.data }), "");
+  assert.equal(await open("desk", PUBLISHED.data), "");
+  assert.notEqual(await open("desk"), "");
+});

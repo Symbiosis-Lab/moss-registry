@@ -4,7 +4,7 @@
   "display_name": "Booking",
   "description": "Let people choose a time, pay and manage a booking on your site",
   "author": "Symbiosis Lab",
-  "min_moss_version": "0.15.22",
+  "min_moss_version": "0.15.23",
   "preview": true,
   "contributes": {
     "blocks": {
@@ -16,20 +16,20 @@
           {
             "key": "page",
             "type": "string",
-            "label": "Screen",
-            "description": "book, done, manage or desk",
-            "default": "book"
+            "options": [
+              "book",
+              "done",
+              "manage",
+              "desk"
+            ]
           },
           {
             "key": "desk",
-            "type": "string",
-            "label": "Desk email",
-            "description": "Where people are told to write when something fails"
+            "type": "string"
           },
           {
             "key": "endpoint",
             "type": "string",
-            "label": "Booking service address",
             "pattern": "^https://",
             "pattern_message": "Use an https address."
           }
@@ -37,19 +37,39 @@
       }
     },
     "public_data": {
-      "config": "services.booking",
       "keys": [
         "endpoint",
+        "enabled",
         "timezone",
         "currency",
+        "services.*.name",
+        "services.*.charge",
+        "services.*.per_hour",
+        "services.*.hours.min",
+        "services.*.hours.max",
+        "services.*.minutes",
+        "services.*.price",
+        "services.*.deposit.percent",
+        "services.*.deposit.hold_hours",
+        "services.*.deposit.balance_days_before",
+        "services.*.fields.*",
+        "services.*.labels.*",
+        "open.mon",
+        "open.tue",
+        "open.wed",
+        "open.thu",
+        "open.fri",
+        "open.sat",
+        "open.sun",
         "start_every",
         "notice_hours",
         "horizon_days",
-        "open",
-        "cancel",
-        "pages",
-        "services",
-        "enabled"
+        "cancel.full_before_hours",
+        "cancel.late_percent",
+        "pages.book",
+        "pages.done",
+        "pages.manage",
+        "pages.desk"
       ],
       "fill": {
         "endpoint": {

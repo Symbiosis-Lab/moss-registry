@@ -27,7 +27,10 @@ async function mount(view, page, DESK, ENDPOINT) {
     try {
       const published = await fetch("/_moss/extensions/booking.json", { cache: "no-store" });
       if (!published.ok) return null;
-      const booking = (await published.json()).data;
+      const body = await published.json();
+      // A format this element was not written for: keep the page's own content.
+      if (body?.schema !== 1) return null;
+      const booking = body.data;
       if (booking?.enabled === false) return null;
       const address = ENDPOINT || booking?.endpoint;
       return address ? { ...booking, endpoint: address } : null;
