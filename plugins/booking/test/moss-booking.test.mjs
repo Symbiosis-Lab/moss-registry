@@ -15,6 +15,8 @@ async function open(page, published = PUBLISHED) {
     HTMLElement: class { getAttribute(name) { return this.attrs[name] ?? null; } },
     customElements: { define: (_name, cls) => (Element = cls) },
     location: { hash: "" },
+    document: { documentElement: {} },
+    getComputedStyle: () => ({ scrollPaddingTop: "0px" }),
     fetch: async () => ({ ok: true, status: 200, json: async () => published }),
   };
   vm.runInNewContext(SOURCE, context);
@@ -22,6 +24,7 @@ async function open(page, published = PUBLISHED) {
   view.attrs = { page };
   view.innerHTML = "";
   view.querySelector = () => null;
+  view.getBoundingClientRect = () => ({ top: 0 });
   view.connectedCallback();
   for (let i = 0; i < 10 && !view.innerHTML; i++) await new Promise((r) => setTimeout(r, 0));
   return view.innerHTML;
@@ -73,6 +76,8 @@ test("the hour stepper stops at the longest booking the published offer allows",
     customElements: { define: (_name, cls) => (Element = cls) },
     location: { hash: "", search: "" },
     URLSearchParams,
+    document: { documentElement: {} },
+    getComputedStyle: () => ({ scrollPaddingTop: "0px" }),
     fetch: async (url) => ({ ok: true, status: 200, json: async () => (String(url).includes("/slots")
       ? { fresh: true, days: [{ date: "2026-12-01", slots: [{ start: "2026-12-01T10:00:00-08:00", open: true }] }] }
       : { schema: 1, data: projected(offer) }) }),
@@ -83,6 +88,7 @@ test("the hour stepper stops at the longest booking the published offer allows",
   view.innerHTML = "";
   view.querySelector = stub;
   view.querySelectorAll = () => [];
+  view.getBoundingClientRect = () => ({ top: 0 });
   view.connectedCallback();
   for (let i = 0; i < 10 && !handlers["[data-go]"]; i++) await new Promise((r) => setTimeout(r, 0));
   handlers["[data-go]"]();

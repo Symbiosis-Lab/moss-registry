@@ -7,7 +7,14 @@ async function mount(view, page, DESK, ENDPOINT) {
 
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const money = (cents, currency) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: currency.toUpperCase(), minimumFractionDigits: cents % 100 ? 2 : 0 });
-  const show = (html) => { view.innerHTML = html; view.querySelector("h1")?.focus(); };
+  // A new screen starts at its top: one that begins above the page's scroll-padding (the room a
+  // sticky site header takes) is brought back into view below it.
+  const show = (html) => {
+    view.innerHTML = html;
+    const room = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+    if (view.getBoundingClientRect().top < room) view.scrollIntoView({ block: "start" });
+    view.querySelector("h1")?.focus({ preventScroll: true });
+  };
 
   // The service's times carry the site's offset, so the wall-clock time is read off the text, never converted.
   const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -49,6 +56,96 @@ async function mount(view, page, DESK, ENDPOINT) {
     }
   }
 
+  // Stripe asks that Stripe.js load from its own address, never bundled. The path picks Stripe's
+  // API version, which must be the booking service's own.
+  const stripeJs = () => window.Stripe ? Promise.resolve(window.Stripe) : new Promise((ok, no) => {
+    const tag = Object.assign(document.createElement("script"), { src: "https://js.stripe.com/basil/stripe.js", onload: () => (window.Stripe ? ok(window.Stripe) : no()), onerror: no });
+    document.head.append(tag);
+  });
+
+  // Stripe draws the card fields in its own frame, where the page's CSS cannot reach, so they take
+  // the site's look through Stripe's Appearance API, read from this element's tokens as they open.
+  // Stripe takes colours only as hex: each token is painted on one pixel and read back, flattened
+  // onto the background where it is translucent. A colour the canvas cannot parse leaves Stripe's own.
+  function siteLook() {
+    const css = getComputedStyle(view);
+    const sans = css.getPropertyValue("--sans").trim();
+    const probe = view.appendChild(Object.assign(document.createElement("span"), { className: "lab" }));
+    const label = getComputedStyle(probe);
+    const labelRule = { fontFamily: label.fontFamily, fontSize: label.fontSize, fontWeight: label.fontWeight, textTransform: label.textTransform, letterSpacing: label.letterSpacing };
+    const pixel = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const hex = (token, under = "#ffffff") => {
+      probe.style.color = `var(${token})`;
+      pixel.fillStyle = "#010203";
+      pixel.fillStyle = getComputedStyle(probe).color;
+      const color = pixel.fillStyle;
+      if (color === "#010203") throw new Error(`unreadable ${token}`);
+      pixel.fillStyle = under;
+      pixel.fillRect(0, 0, 1, 1);
+      pixel.fillStyle = color;
+      pixel.fillRect(0, 0, 1, 1);
+      return "#" + [...pixel.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((c) => c.toString(16).padStart(2, "0")).join("");
+    };
+    const fonts = fontsOf([sans, labelRule.fontFamily]);
+    try {
+      const bg = hex("--bg");
+      const [surface, text, text2, muted, accent, line2] = ["--surface", "--text", "--text-2", "--muted", "--orange", "--line-2"].map((t) => hex(t, bg));
+      const edge = { border: `1px solid ${line2}`, boxShadow: "none", backgroundColor: surface };
+      const lit = { borderColor: accent, boxShadow: `inset 0 0 0 1px ${accent}` };
+      return {
+        fonts,
+        appearance: {
+          theme: "flat",
+          variables: {
+            colorPrimary: accent, colorBackground: surface, colorText: text, colorTextSecondary: text2,
+            colorTextPlaceholder: muted, colorDanger: accent, iconColor: text2, fontFamily: sans,
+            fontSizeBase: css.fontSize, borderRadius: css.getPropertyValue("--radius").trim(), focusBoxShadow: "none",
+          },
+          rules: {
+            ".Label": { ...labelRule, color: muted },
+            ".Input": edge, ".Tab": { ...edge, color: text2 }, ".AccordionItem": edge, ".PickerItem": edge, ".Block": edge,
+            ".Input:focus": lit, ".Tab:focus": lit, ".Tab--selected": { ...lit, color: text }, ".AccordionItem--selected": lit,
+          },
+        },
+      };
+    } catch {
+      return { fonts };
+    } finally {
+      probe.remove();
+    }
+  }
+
+  // The site's own @font-face rules for the families the fields use, with absolute addresses,
+  // since Stripe loads them inside its frame. A stylesheet from another origin cannot be read and is skipped.
+  function fontsOf(stacks) {
+    const unquote = (name) => name.trim().replace(/^["']|["']$/g, "");
+    const families = new Set(stacks.map((s) => unquote(s.split(",")[0])));
+    const out = [];
+    const walk = (sheet) => {
+      let rules;
+      try { rules = sheet.cssRules; } catch { return; }
+      const base = sheet.href || document.baseURI;
+      const each = (list) => { for (const rule of list) {
+        if (rule.styleSheet) walk(rule.styleSheet);
+        if (rule.cssRules) each(rule.cssRules);
+        if (!(rule instanceof CSSFontFaceRule)) continue;
+        const family = unquote(rule.style.getPropertyValue("font-family"));
+        const src = rule.style.getPropertyValue("src");
+        if (!families.has(family) || !/url\(/.test(src)) continue;
+        out.push({
+          family,
+          src: src.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_, _q, u) => `url("${new URL(u, base).href}")`),
+          weight: rule.style.getPropertyValue("font-weight") || undefined,
+          style: rule.style.getPropertyValue("font-style") || undefined,
+          display: "swap",
+        });
+      } };
+      each(rules);
+    };
+    for (const sheet of document.styleSheets) walk(sheet);
+    return out;
+  }
+
   const desk = DESK ? `<a href="mailto:${esc(DESK)}">${esc(DESK)}</a>` : "the desk";
   function unavailable(text = `Email the desk at ${desk}.`) {
     return `<div class="flow"><h1 tabindex="-1">Booking online is unavailable</h1><p>${text}</p><a class="btn quiet" href="/">← Back to the site</a></div>`;
@@ -59,6 +156,7 @@ async function mount(view, page, DESK, ENDPOINT) {
   }
   const problem = (text) => `<div class="alert x" role="alert"><p>${text}</p></div>`;
   const notice = (text) => `<div class="alert" role="status"><p>${text}</p></div>`;
+  const FREED = "Nothing was paid, and the time you chose is free again.";
   const rows = (pairs) => `<div class="sum">${pairs.filter(Boolean).map(([a, b]) => `<div><span>${a}</span><span class="num">${b}</span></div>`).join("")}</div>`;
 
   // What a booking from /status, /manage or /desk says about time and money.
@@ -89,7 +187,7 @@ async function mount(view, page, DESK, ENDPOINT) {
     if (params.get("released") && params.get("booking")) {
       await call(booking, "/holds/release", { booking: params.get("booking") });
       history.replaceState(null, "", location.pathname);
-      note = notice("Nothing was paid, and the time you chose is free again.");
+      note = notice(FREED);
     }
     // Hourly services first, as the confirmed design lists them.
     const services = Object.entries(booking.services).sort(([, a], [, b]) => (b.per_hour ? 1 : 0) - (a.per_hour ? 1 : 0));
@@ -177,7 +275,14 @@ async function mount(view, page, DESK, ENDPOINT) {
   <form class="form">${field("name", "Your name", { auto: "name" })}${field("email", "Email", { type: "email", auto: "email" })}${field("mobile", "Mobile", { type: "tel", auto: "tel" })}${own}
   ${paid() ? `<p class="note">${esc(terms())}</p>` : ""}<button class="btn go wide" type="submit">${paid() ? "Continue to pay" : "Confirm"}</button></form><button class="btn quiet" data-back>← Back</button></div>`);
       view.querySelector("[data-back]").addEventListener("click", () => when());
-      view.querySelector("form").addEventListener("submit", (event) => { event.preventDefault(); hold(Object.fromEntries(new FormData(event.target))); });
+      // One hold per press: a second press while the first is in flight would be refused as a taken time.
+      view.querySelector("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const go = event.target.querySelector("[type=submit]");
+        if (go.disabled) return;
+        go.disabled = true;
+        hold(Object.fromEntries(new FormData(event.target)));
+      });
     }
 
     async function hold(values) {
@@ -185,7 +290,9 @@ async function mount(view, page, DESK, ENDPOINT) {
       const body = { service: state.id, start: state.start, name, email, mobile, fields };
       if (service().per_hour) body.hours = state.hours;
       if (service().deposit && paid()) body.pay = pay();
+      body.checkout = "elements";
       const { status, data } = await call(booking, "/holds", body);
+      if (status === 201 && data.status === "holding" && data.checkout?.client_secret) return payHere(data, values);
       if (status === 201 && data.status === "holding" && /^https:/.test(data.checkout_url ?? "")) return location.assign(data.checkout_url);
       if (status === 201 && data.status === "confirmed") return confirmed(values);
       if (status === 409) return when(problem("That time was just booked by someone else. Please choose another."));
@@ -195,6 +302,66 @@ async function mount(view, page, DESK, ENDPOINT) {
       if (status === 503) return show(unavailable());
       if (status === 429) return who({}, values, problem(`Too many bookings were started from here. Please try again later, or email the desk at ${desk}.`));
       return who({}, values, problem(`Something went wrong. Please try again, or email the desk at ${desk}.`));
+    }
+
+    // Paying in this page: the summary, the Pay button, its errors and its waiting state are the
+    // site's own; only the card fields are Stripe's. Paying returns to the done page.
+    async function payHere(held, values) {
+      const due = held.due_now ?? held.amount;
+      show(`<div class="flow">${steps("Pay")}<span class="eye">${esc(service().name)} · ${esc(whenLabel(state.start))}</span><h1 tabindex="-1">Pay ${esc(m(due))}</h1>
+  <form class="form"><div data-stripe></div><div data-problem></div><button class="btn go wide" type="submit" disabled>Pay</button></form>
+  <button class="btn quiet" data-back>← Back</button></div>`);
+      const go = view.querySelector("[type=submit]");
+      const back = view.querySelector("[data-back]");
+      const said = view.querySelector("[data-problem]");
+      let checkout = null, fields = null, left = false;
+      // Leaving frees the time, unless a payment already went through: the service then keeps the hold.
+      const leave = async (then) => {
+        if (left) return;
+        left = true;
+        fields?.destroy();
+        const { data } = await call(booking, "/holds/release", { booking: held.booking });
+        if (data.status === "holding") return show(unavailable(`Your payment is going through. Stripe emails your receipt; if none has arrived within the hour, email the desk at ${desk} before paying again.`));
+        then();
+      };
+      const failed = () => leave(() => show(unavailable(`The payment form did not load. Nothing was paid. Please try again, or email the desk at ${desk}.`)));
+      const busy = (on) => {
+        go.disabled = back.disabled = on;
+        go.textContent = on ? "Paying…" : "Pay";
+        if (on) go.setAttribute("aria-busy", "true");
+        else go.removeAttribute("aria-busy");
+      };
+      back.addEventListener("click", () => leave(() => who({}, values, notice(FREED))));
+      view.querySelector("form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!checkout || go.disabled) return;
+        busy(true);
+        said.innerHTML = "";
+        try {
+          // On success Stripe goes on to the done page; only a refusal comes back.
+          const result = await checkout.confirm();
+          if (result.type !== "error") return;
+          said.innerHTML = problem(esc(result.error.message));
+        } catch {
+          said.innerHTML = problem(`Something went wrong. Please try again, or email the desk at ${desk}.`);
+        }
+        busy(false);
+      });
+      // Back can come while Stripe.js loads; nothing opens after it.
+      try {
+        const Stripe = await stripeJs();
+        if (left) return;
+        const opened = await Stripe(held.checkout.publishable_key, { stripeAccount: held.checkout.account })
+          .initCheckout({ fetchClientSecret: async () => held.checkout.client_secret, elementsOptions: siteLook() });
+        if (left) return;
+        checkout = opened;
+        fields = checkout.createPaymentElement();
+        fields.on("ready", () => { if (!left) go.disabled = false; });
+        fields.on("loaderror", failed);
+        fields.mount(view.querySelector("[data-stripe]"));
+      } catch {
+        failed();
+      }
     }
 
     function confirmed(values) {
