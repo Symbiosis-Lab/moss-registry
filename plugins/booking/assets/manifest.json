@@ -63,14 +63,12 @@
         {
           "key": "timezone",
           "type": "string",
-          "group": "Bookings",
           "label": "Time zone",
           "placeholder": "America/Los_Angeles"
         },
         {
           "key": "currency",
           "type": "string",
-          "group": "Bookings",
           "label": "Currency",
           "placeholder": "usd",
           "pattern": "^[a-z]{3}$",
@@ -81,6 +79,7 @@
           "type": "map",
           "label": "Services",
           "add_label": "Add service",
+          "placeholder": "guided-walk",
           "key_pattern": "^[a-z0-9-]{1,40}$",
           "items": {
             "type": "object",
@@ -193,6 +192,7 @@
                 "type": "map",
                 "label": "Questions",
                 "add_label": "Add question",
+                "placeholder": "meeting_point",
                 "key_pattern": "^[a-z][a-z0-9_]{0,39}$",
                 "items": {
                   "type": "string",
@@ -214,6 +214,7 @@
                 "type": "map",
                 "label": "Question wording",
                 "add_label": "Add wording",
+                "placeholder": "meeting_point",
                 "key_pattern": "^[a-z][a-z0-9_]{0,39}$",
                 "items": {
                   "type": "string"
@@ -365,7 +366,6 @@
   "translations": {
     "zh": {
       "Booking": "预约",
-      "Bookings": "预约",
       "Time zone": "时区",
       "Currency": "币种",
       "Three lowercase letters, such as usd.": "三个小写字母，例如 usd。",
