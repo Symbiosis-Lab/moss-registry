@@ -125,7 +125,9 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       near(v.colorBackground, rgb(TOKENS.surface), "field background");
       near(v.colorText, text, "text");
       near(v.colorPrimary, oklchHex(0.665, 0.19, 37), "accent");
-      near(rules[".Input"].border.split(" ").pop(), text.map((t, i) => 0.16 * t + 0.84 * bg[i]), "field edge, translucent over the background");
+      // The flat theme draws an unticked box in the field colour: without an edge it vanishes on a dark site.
+      for (const r of [".Input", ".CheckboxInput"]) near(rules[r].border.split(" ").pop(), text.map((t, i) => 0.16 * t + 0.84 * bg[i]), `${r} edge, translucent over the background`);
+      assert.equal(rules[".CheckboxInput--checked"].backgroundColor, v.colorPrimary, "a ticked box in the accent");
       assert.equal(v.borderRadius, "2px");
       assert.match(v.fontFamily, /^"?Archivo"?, system-ui/);
       assert.deepEqual(seen.elementsOptions.fonts.map((f) => [f.family, f.src]), [["Archivo", `url("${SITE}/_moss/theme/fonts/Archivo.woff2") format("woff2")`]]);

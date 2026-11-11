@@ -105,6 +105,7 @@ async function mount(view, page, DESK, ENDPOINT) {
             ".Label": { ...labelRule, color: muted },
             ".Input": edge, ".Tab": { ...edge, color: text2 }, ".AccordionItem": edge, ".PickerItem": edge, ".Block": edge,
             ".Input:focus": lit, ".Tab:focus": lit, ".Tab--selected": { ...lit, color: text }, ".AccordionItem--selected": lit,
+            ".CheckboxInput": edge, ".CheckboxInput--checked": { backgroundColor: accent, borderColor: accent },
           },
         },
       };
