@@ -315,7 +315,13 @@ async function mount(view, page, DESK, ENDPOINT) {
       const go = view.querySelector("[type=submit]");
       const back = view.querySelector("[data-back]");
       const said = view.querySelector("[data-problem]");
-      let checkout = null, fields = null, left = false;
+      let checkout = null, fields = null, left = false, complete = false, hushed = false, appearance = {};
+      // Stripe's own copy of a refusal under the card number, hidden while the page's alert says it.
+      // Appearance rules cannot set `display`; a zero font and line hide it and keep the field's red edge.
+      const hush = (on) => {
+        hushed = on;
+        checkout.changeAppearance(on ? { ...appearance, rules: { ...appearance.rules, ".Error": { fontSize: "0px", lineHeight: "0px", color: "transparent" } } } : appearance);
+      };
       // Leaving frees the time, unless a payment already went through: the service then keeps the hold.
       const leave = async (then) => {
         if (left) return;
@@ -338,11 +344,17 @@ async function mount(view, page, DESK, ENDPOINT) {
         if (!checkout || go.disabled) return;
         busy(true);
         said.innerHTML = "";
+        // Stripe marks the card refused (a change event) right after a refusal, so its note comes back only with the next try.
+        if (hushed) hush(false);
         try {
           // On success Stripe goes on to the done page; only a refusal comes back.
           const result = await checkout.confirm();
           if (result.type !== "error") return;
-          said.innerHTML = problem(esc(result.error.message));
+          // A field left unfinished (no code) carries Stripe's note under it; anything else is the page's to say, once.
+          if (complete || result.error.code) {
+            said.innerHTML = problem(esc(result.error.message));
+            hush(true);
+          }
         } catch {
           said.innerHTML = problem(`Something went wrong. Please try again, or email the desk at ${desk}.`);
         }
@@ -352,12 +364,15 @@ async function mount(view, page, DESK, ENDPOINT) {
       try {
         const Stripe = await stripeJs();
         if (left) return;
+        const look = siteLook();
+        appearance = look.appearance ?? {};
         const opened = await Stripe(held.checkout.publishable_key, { stripeAccount: held.checkout.account })
-          .initCheckout({ fetchClientSecret: async () => held.checkout.client_secret, elementsOptions: siteLook() });
+          .initCheckout({ fetchClientSecret: async () => held.checkout.client_secret, elementsOptions: look });
         if (left) return;
         checkout = opened;
         fields = checkout.createPaymentElement();
         fields.on("ready", () => { if (!left) go.disabled = false; });
+        fields.on("change", (e) => { complete = e.complete; });
         fields.on("loaderror", failed);
         fields.mount(view.querySelector("[data-stripe]"));
       } catch {

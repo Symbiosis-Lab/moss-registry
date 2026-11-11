@@ -48,8 +48,9 @@ const FAKE_STRIPE = `window.Stripe = (key, options) => ({ initCheckout: async (i
       const on = {};
       return { on: (name, f) => (on[name] = f), destroy: () => (window.destroyed = true),
         mount: (node) => { node.innerHTML = '<div class="fake-fields" style="height:240px"></div>'; window.mounted = true;
-          window.ready = () => on.ready?.(); if (window.loadError) setTimeout(() => on.loaderror?.({}), 0); } };
+          window.ready = () => on.ready?.(); window.change = (e) => on.change?.(e); if (window.loadError) setTimeout(() => on.loaderror?.({}), 0); } };
     },
+    changeAppearance: (a) => (window.appearances = [...(window.appearances || []), a]),
     confirm: () => (window.answer ? window.answer() : new Promise(() => {})),
   };
 } });`;
@@ -167,7 +168,8 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       assert.ok(await pay.isDisabled(), "Pay before Stripe's fields are ready");
       await page.evaluate(() => window.ready());
       await page.waitForFunction(() => !document.querySelector("form [type=submit]").disabled);
-      await page.evaluate(() => { window.answer = () => new Promise((ok) => (window.refuse = () => ok({ type: "error", error: { message: "Your card was declined." } }))); });
+      await page.evaluate(() => window.change({ complete: true }));
+      await page.evaluate(() => { window.answer = () => new Promise((ok) => (window.refuse = () => ok({ type: "error", error: { message: "Your card was declined.", code: "paymentFailed" } }))); });
       await pay.click();
       assert.equal(await pay.textContent(), "Paying…");
       assert.equal(await pay.getAttribute("aria-busy"), "true");
@@ -178,6 +180,37 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       assert.equal(await pay.textContent(), "Pay");
       assert.ok(!(await pay.isDisabled()));
       assert.ok(!(await page.locator("[data-back]").isDisabled()));
+
+      // Said once: Stripe's copy under the card number is hidden, the site's look kept, until the next try.
+      const { appearances, seen } = await page.evaluate(() => ({ appearances: window.appearances, seen: window.seen }));
+      assert.equal(appearances?.length, 1, "Stripe's own copy of the refusal hidden");
+      assert.equal(appearances[0].rules[".Error"].fontSize, "0px");
+      assert.deepEqual(appearances[0].rules[".Input"], seen.elementsOptions.appearance.rules[".Input"]);
+      // Stripe calls the card unfinished once it has refused it; pressing Pay again is still refused in the page.
+      await page.evaluate(() => window.change({ complete: false }));
+      await pay.click();
+      const back = await page.evaluate(() => window.appearances);
+      assert.deepEqual(back[1], seen.elementsOptions.appearance, "Stripe's notes back for the next try");
+      await page.evaluate(() => window.refuse());
+      await page.waitForFunction(() => window.appearances.length === 3);
+      assert.equal(await page.locator("[data-problem] [role=alert]").textContent(), "Your card was declined.");
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`${name}: a field left unfinished keeps Stripe's note under it, and the page adds none`, async () => {
+    const browser = await engine.launch();
+    try {
+      const { page } = await open(browser);
+      await toPay(page);
+      await page.waitForFunction(() => window.mounted);
+      await page.evaluate(() => { window.ready(); window.change({ complete: false }); });
+      await page.evaluate(() => { window.answer = async () => ({ type: "error", error: { message: "Your card number is incomplete.", code: null } }); });
+      await page.click("form [type=submit]");
+      await page.waitForFunction(() => document.querySelector("form [type=submit]").textContent === "Pay");
+      assert.equal(await page.locator("[data-problem] [role=alert]").count(), 0);
+      assert.equal(await page.evaluate(() => window.appearances), undefined);
     } finally {
       await browser.close();
     }
