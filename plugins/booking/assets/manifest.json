@@ -42,6 +42,7 @@
         "services.*.name",
         "services.*.per_hour",
         "services.*.hours.min",
+        "services.*.hours.max",
         "services.*.minutes",
         "services.*.price",
         "services.*.deposit.percent",

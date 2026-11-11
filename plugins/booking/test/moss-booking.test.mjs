@@ -40,3 +40,52 @@ test("a published offer in a format other than schema 1 leaves the page's own co
   assert.equal(await open("desk", PUBLISHED.data), "");
   assert.notEqual(await open("desk"), "");
 });
+
+const MANIFEST = JSON.parse(readFileSync(new URL("../assets/manifest.json", import.meta.url), "utf8"));
+
+/** What moss publishes of `table`: only the manifest's `public_data.keys`, `*` standing for any one key. */
+function projected(table, keys = MANIFEST.contributes.public_data.keys) {
+  const out = {};
+  for (const key of keys) {
+    const walk = (from, to, [step, ...rest]) => {
+      for (const name of step === "*" ? Object.keys(from ?? {}) : [step]) {
+        if (from?.[name] === undefined) continue;
+        if (rest.length === 0) to[name] = from[name];
+        else walk(from[name], (to[name] ??= {}), rest);
+      }
+    };
+    walk(table, out, key.split("."));
+  }
+  return out;
+}
+
+test("the hour stepper stops at the longest booking the published offer allows", async () => {
+  const offer = {
+    endpoint: "https://booking.example", timezone: "America/Los_Angeles", currency: "usd",
+    cancel: { full_before_hours: 24, late_percent: 50 }, pages: { book: "/book/" },
+    services: { guard: { name: "Guard", per_hour: 10000, hours: { min: 4, max: 4 } } },
+  };
+  const handlers = {};
+  const stub = (selector) => ({ addEventListener: (_type, fn) => (handlers[selector] = fn), focus() {} });
+  let Element;
+  const context = {
+    HTMLElement: class { getAttribute(name) { return this.attrs[name] ?? null; } },
+    customElements: { define: (_name, cls) => (Element = cls) },
+    location: { hash: "", search: "" },
+    URLSearchParams,
+    fetch: async (url) => ({ ok: true, status: 200, json: async () => (String(url).includes("/slots")
+      ? { fresh: true, days: [{ date: "2026-12-01", slots: [{ start: "2026-12-01T10:00:00-08:00", open: true }] }] }
+      : { schema: 1, data: projected(offer) }) }),
+  };
+  vm.runInNewContext(SOURCE, context);
+  const view = new Element();
+  view.attrs = { page: "book" };
+  view.innerHTML = "";
+  view.querySelector = stub;
+  view.querySelectorAll = () => [];
+  view.connectedCallback();
+  for (let i = 0; i < 10 && !handlers["[data-go]"]; i++) await new Promise((r) => setTimeout(r, 0));
+  handlers["[data-go]"]();
+  for (let i = 0; i < 10 && !view.innerHTML.includes("stepper"); i++) await new Promise((r) => setTimeout(r, 0));
+  assert.match(view.innerHTML, /aria-label="One hour more" disabled/);
+});
