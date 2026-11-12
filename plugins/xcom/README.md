@@ -12,7 +12,9 @@ cascade:
 ---
 ```
 
-Then connect your account once. X's API is paid per use, so set a spending limit in the developer console first. Make an app there with Read and write permission, and under Keys and tokens copy its API key and secret, then make an access token and secret for your own account. In the moss app, enter the four in the channel's settings. Headless, put each in moss's secret store, which is outside the site folder:
+Nothing needs setting up. When moss posts a copy, X's composer opens in moss's panel with the post filled in: sign in to X there the first time, press Post, then close the panel. For a thread, the composer holds the first post and moss shows the rest to add as replies. Then put the post's address in the page's `syndicated:` list, and moss keeps track of that copy from then on.
+
+To have moss post by itself instead, connect X's API. It is paid per use, so set a spending limit in the developer console first. Make an app there with Read and write permission, and under Keys and tokens copy its API key and secret, then make an access token and secret for your own account. In the moss app, enter the four in the channel's settings. Headless, put each in moss's secret store, which is outside the site folder:
 
 ```sh
 for key in api_key api_key_secret access_token access_token_secret; do
