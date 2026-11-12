@@ -1,6 +1,6 @@
 {
   "name": "booking",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "display_name": "Booking",
   "description": "Let people choose a time, pay and manage a booking on your site",
   "author": "Symbiosis Lab",
@@ -39,6 +39,10 @@
         "enabled",
         "timezone",
         "currency",
+        "open.*",
+        "start_every",
+        "notice_hours",
+        "horizon_days",
         "services.*.name",
         "services.*.per_hour",
         "services.*.hours.min",
@@ -48,6 +52,17 @@
         "services.*.deposit.percent",
         "services.*.deposit.hold_hours",
         "services.*.deposit.balance_days_before",
+        "services.*.charge",
+        "services.*.note",
+        "services.*.choice.label",
+        "services.*.choice.options.*.name",
+        "services.*.choice.options.*.per",
+        "services.*.choice.options.*.price",
+        "services.*.add_ons.*.name",
+        "services.*.add_ons.*.per",
+        "services.*.add_ons.*.price",
+        "services.*.add_ons.*.qty.min",
+        "services.*.add_ons.*.qty.max",
         "services.*.fields.*",
         "services.*.labels.*",
         "cancel.full_before_hours",
@@ -224,6 +239,131 @@
                 "key_pattern": "^[a-z][a-z0-9_]{0,39}$",
                 "items": {
                   "type": "string"
+                }
+              },
+              {
+                "key": "note",
+                "type": "string",
+                "label": "Note",
+                "placeholder": "Up to 4 hours and 100 miles."
+              },
+              {
+                "key": "choice",
+                "type": "object",
+                "label": "Choice",
+                "optional": true,
+                "when": {
+                  "charge": "hourly"
+                },
+                "fields": [
+                  {
+                    "key": "label",
+                    "type": "string",
+                    "label": "Label",
+                    "default": "Vehicle"
+                  },
+                  {
+                    "key": "options",
+                    "type": "map",
+                    "label": "Options",
+                    "add_label": "Add option",
+                    "placeholder": "sedan",
+                    "key_pattern": "^[a-z0-9-]{1,40}$",
+                    "items": {
+                      "type": "object",
+                      "fields": [
+                        {
+                          "key": "name",
+                          "type": "string",
+                          "label": "Name"
+                        },
+                        {
+                          "key": "price",
+                          "type": "number",
+                          "label": "Price",
+                          "scale": 100
+                        },
+                        {
+                          "key": "per",
+                          "type": "string",
+                          "label": "Charged",
+                          "default": "hour",
+                          "options": [
+                            {
+                              "value": "hour",
+                              "label": "Per hour"
+                            },
+                            {
+                              "value": "booking",
+                              "label": "Once per booking"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "add_ons",
+                "type": "map",
+                "label": "Add-ons",
+                "add_label": "Add add-on",
+                "placeholder": "guards",
+                "key_pattern": "^[a-z0-9-]{1,40}$",
+                "when": {
+                  "charge": "hourly"
+                },
+                "items": {
+                  "type": "object",
+                  "fields": [
+                    {
+                      "key": "name",
+                      "type": "string",
+                      "label": "Name"
+                    },
+                    {
+                      "key": "price",
+                      "type": "number",
+                      "label": "Price",
+                      "scale": 100
+                    },
+                    {
+                      "key": "per",
+                      "type": "string",
+                      "label": "Charged",
+                      "default": "hour",
+                      "options": [
+                        {
+                          "value": "hour",
+                          "label": "Per hour"
+                        },
+                        {
+                          "value": "booking",
+                          "label": "Once per booking"
+                        }
+                      ]
+                    },
+                    {
+                      "key": "qty",
+                      "type": "object",
+                      "label": "Quantity",
+                      "fields": [
+                        {
+                          "key": "min",
+                          "type": "number",
+                          "label": "Fewest",
+                          "default": 0
+                        },
+                        {
+                          "key": "max",
+                          "type": "number",
+                          "label": "Most",
+                          "default": 1
+                        }
+                      ]
+                    }
+                  ]
                 }
               }
             ]
@@ -420,7 +560,20 @@
       "hours before": "小时前",
       "Late cancellation fee": "逾期取消费",
       "Payments": "付款",
-      "Connect Stripe": "连接 Stripe"
+      "Connect Stripe": "连接 Stripe",
+      "Note": "备注",
+      "Choice": "选择",
+      "Label": "标签",
+      "Options": "选项",
+      "Add option": "添加选项",
+      "Charged": "计费方式",
+      "Per hour": "每小时",
+      "Once per booking": "每次预约一次",
+      "Add-ons": "附加项",
+      "Add add-on": "添加附加项",
+      "Quantity": "数量",
+      "Fewest": "最少",
+      "Most": "最多"
     }
   }
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- A service can be priced by a choice and add-ons: `choice` is one required pick among options that each carry a price, `add_ons` are extras with a quantity range, and each is charged `per = "hour"` (the default) or once per booking. A service with `hours` and a `choice` needs no `per_hour`. `note` is a line shown with the service on Choose and Book and in the confirmation mail. The tab edits all three. The total is the rate, plus the choice, plus each add-on's quantity times its unit price; the booking service computes the same sum and its answer is the one that charges.
+- One booking screen replaces When and Who: options, time, details and the total, then Pay. The total shows on that screen and on Pay and nowhere else, and the button says what it charges.
+- The published offer carries every key the booking service reads, including the opening hours and booking window, so the service takes the offer from `/_moss/extensions/booking.json`.
+- The desk and manage pages, and the booking's confirmation, list what was picked, and the desk page words each question as the offer does.
+
 ## 0.2.0
 
 - The plugin's tab in moss edits the offer: services with an hourly rate or a fixed price, deposits and questions, opening hours, how far ahead a booking may be made, and the cancellation terms. Each change is written into `[services.booking]` in `.moss/config.toml`, so the file stays the one place the offer lives.
