@@ -9,6 +9,8 @@ import { createRequire } from "node:module";
 const { chromium, webkit } = createRequire(process.env.PLAYWRIGHT_FROM || import.meta.url)("playwright");
 const asset = (name) => readFileSync(new URL(`../assets/${name}`, import.meta.url), "utf8");
 
+const VECTORS = JSON.parse(readFileSync(new URL("./price-vectors.json", import.meta.url), "utf8"));
+
 const SITE = "https://site.test";
 const ENDPOINT = "https://booking.test/sites/s/booking";
 const TOKENS = {
@@ -32,7 +34,11 @@ const OFFER = {
   data: {
     endpoint: ENDPOINT, timezone: "America/Los_Angeles", currency: "usd",
     cancel: { full_before_hours: 24, late_percent: 50 }, pages: { book: "/book/", done: "/book/done/" },
-    services: { protection: { name: "Executive protection", per_hour: 12000, hours: { min: 5, max: 12 }, deposit: { percent: 50, hold_hours: 12, balance_days_before: 7 } } },
+    services: {
+      protection: { name: "Executive protection", per_hour: 12000, hours: { min: 5, max: 12 }, deposit: { percent: 50, hold_hours: 12, balance_days_before: 7 } },
+      // moss publishes a table's keys sorted, so the options arrive as armored, sedan, suv, van.
+      pickup: { ...VECTORS.services.pickup, choice: { ...VECTORS.services.pickup.choice, options: Object.fromEntries(Object.entries(VECTORS.services.pickup.choice.options).sort(([a], [b]) => a.localeCompare(b))) } },
+    },
   },
 };
 const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
@@ -55,14 +61,14 @@ const FAKE_STRIPE = `window.Stripe = (key, options) => ({ initCheckout: async (i
   };
 } });`;
 
-async function open(browser, { stripeDelay = 0, released = "expired" } = {}) {
+async function open(browser, { stripeDelay = 0, released = "expired", held = {}, kind = "book", extra = {} } = {}) {
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
   const sent = [];
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type" };
   await page.route(`${SITE}/**`, (route) => {
     const path = new URL(route.request().url()).pathname;
     const files = {
-      "/book/": [PAGE, "text/html"], "/_moss/theme/style.css": [THEME, "text/css"], "/_moss/extensions/booking.json": [JSON.stringify(OFFER), "application/json"],
+      "/book/": [PAGE.replace('page="book"', `page="${kind}"`), "text/html"], "/_moss/theme/style.css": [THEME, "text/css"], "/_moss/extensions/booking.json": [JSON.stringify(OFFER), "application/json"],
       "/_moss/plugins/booking/moss-booking.js": [asset("moss-booking.js"), "text/javascript"], "/_moss/plugins/booking/moss-booking.css": [asset("moss-booking.css"), "text/css"],
     };
     const file = files[path];
@@ -75,8 +81,9 @@ async function open(browser, { stripeDelay = 0, released = "expired" } = {}) {
     sent.push({ path, body: req.postDataJSON?.() ?? null });
     const answers = {
       "/slots": [200, SLOTS],
-      "/holds": [201, { booking: "bk_1", status: "holding", amount: 60000, due_now: 30000, currency: "usd", checkout: CHECKOUT }],
+      "/holds": held.status ? [held.status, held.body] : [201, { booking: "bk_1", status: "holding", amount: 60000, due_now: 30000, currency: "usd", checkout: CHECKOUT, ...held }],
       "/holds/release": [200, { booking: "bk_1", status: released }],
+      ...extra,
     };
     const [status, json] = answers[path] ?? [404, {}];
     return route.fulfill({ status, json, headers: cors });
@@ -91,12 +98,11 @@ async function open(browser, { stripeDelay = 0, released = "expired" } = {}) {
 async function toPay(page, { waitForPay = true } = {}) {
   await page.goto(`${SITE}/book/?service=protection`);
   await page.click("[data-start]");
-  await page.click("[data-go]");
   await page.fill("#f-name", "Ada Client");
   await page.fill("#f-email", "ada@example.com");
   await page.fill("#f-mobile", "+15555550100");
   await page.click("[type=submit]");
-  if (waitForPay) await page.waitForSelector("text=Pay $300");
+  if (waitForPay) await page.waitForSelector('h1:has-text("Pay $300")');
 }
 
 // An oracle independent of the page's pixel read: OKLCH to sRGB by the published matrices.
@@ -109,7 +115,123 @@ function oklchHex(l, c, h) {
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const near = (hex, want, what) => assert.ok(rgb(hex).every((v, i) => Math.abs(v - want[i]) <= 2), `${what}: ${hex} is not ${want}`);
 
+const SUV_FOUR_TWO = VECTORS.cases.find((c) => c.name === "an SUV for 4 hours with 2 guards");
+const dollars = (cents) => `$${(cents / 100).toLocaleString("en-US")}`;
+const stepAt = (page) => page.locator(".steps .on").textContent();
+
+async function fillPickup(page) {
+  await page.fill("#f-name", "Ada Client");
+  await page.fill("#f-email", "ada@example.com");
+  await page.fill("#f-mobile", "+15555550100");
+  await page.fill("#f-where", "LAX, Terminal 4");
+  await page.fill("#f-where_to", "Bel Air, residence");
+}
+
 for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
+  test(`${name}: pickup goes from the options to payment with the total on Book and Pay only`, async () => {
+    const browser = await engine.launch();
+    try {
+      const { page, sent } = await open(browser, { held: { amount: SUV_FOUR_TWO.total, due_now: SUV_FOUR_TWO.total, pay: "full" } });
+      await page.goto(`${SITE}/book/?service=pickup`);
+      assert.equal(await stepAt(page), "Book");
+      assert.deepEqual(await page.locator(".steps span").allTextContents(), ["Choose", "Book", "Pay", "Confirmed"]);
+      // The first option and the shortest booking are picked already: the total reads at once.
+      assert.match(await page.locator(".sum").textContent(), /Total\$110/);
+      assert.deepEqual(await page.locator("input[name=choice]").evaluateAll((l) => l.map((i) => i.value)), ["sedan", "suv", "van", "armored"]);
+      await page.click("[data-start]");
+      await page.fill("#f-name", "Ada Client");
+      await page.click("input[name=choice][value=suv]", { force: true });
+      assert.equal(await page.inputValue("#f-name"), "Ada Client", "typed text survives a redraw");
+      for (let i = 0; i < 3; i++) await page.click("[data-hours][data-step='1']");
+      for (let i = 0; i < 2; i++) await page.click("[data-addon=guards][data-step='1']");
+      assert.equal(await page.inputValue("#f-name"), "Ada Client", "typed text survives a new length");
+      assert.equal(await page.locator(".sum").count(), 1);
+      assert.equal((await page.locator(".sum").textContent()).replace(/\s/g, ""), `Total${dollars(SUV_FOUR_TWO.total)}`);
+      assert.equal(await page.locator("form [type=submit]").textContent(), `Pay ${dollars(SUV_FOUR_TWO.total)}`);
+      await fillPickup(page);
+      await page.click("[type=submit]");
+      await page.waitForSelector(`h1:has-text("Pay ${dollars(SUV_FOUR_TWO.total)}")`);
+      assert.equal(await stepAt(page), "Pay");
+      assert.equal(await page.locator(".sum").count(), 0, "no second price screen");
+      const hold = sent.find((r) => r.path === "/holds").body;
+      assert.deepEqual({ ...hold, start: undefined }, {
+        service: "pickup", hours: 4, choice: "suv", add_ons: { guards: 2 }, checkout: "elements", name: "Ada Client", email: "ada@example.com", mobile: "+15555550100",
+        fields: { where: "LAX, Terminal 4", where_to: "Bel Air, residence", where_to_note: "" }, start: undefined,
+      });
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`${name}: a refused hold comes back to the Book screen with what was typed`, async () => {
+    const browser = await engine.launch();
+    try {
+      const { page } = await open(browser, { held: { status: 422, body: { error: "invalid", fields: { where_to: "required" } } } });
+      await page.goto(`${SITE}/book/?service=pickup`);
+      await page.click("[data-start]");
+      await fillPickup(page);
+      await page.click("[type=submit]");
+      await page.waitForSelector("[role=alert]");
+      assert.equal(await stepAt(page), "Book");
+      assert.equal(await page.inputValue("#f-where"), "LAX, Terminal 4");
+      assert.match(await page.locator("#err-where_to").textContent(), /fill this in/);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`${name}: a total the service refuses says to check the choices, not a marked field`, async () => {
+    const browser = await engine.launch();
+    try {
+      const { page } = await open(browser, { held: { status: 422, body: { error: "invalid", fields: { total: "format" } } } });
+      await page.goto(`${SITE}/book/?service=pickup`);
+      await page.click("[data-start]");
+      await fillPickup(page);
+      await page.click("[type=submit]");
+      assert.match(await page.locator("[role=alert]").textContent(), /Please check your choices\./);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  for (const kind of ["manage", "desk"]) {
+    test(`${name}: the ${kind} page lists what was picked, and the desk words the questions as the offer does`, async () => {
+      const browser = await engine.launch();
+      try {
+        const booking = {
+          booking: "bk_1", status: "confirmed", service: "pickup", service_name: "Pickup and drop-off", start: `${day(10)}T18:00:00-08:00`, hours: 4,
+          selection: [["Vehicle", "SUV"], ["Bodyguard", "2"]], amount: 150000, currency: "usd", paid: 150000, deposit: null, balance: null, paid_with: "card",
+          email: "ada@example.com", name: "Ada Client", mobile: "+15555550100", fields: { where: "LAX", where_to: "Bel Air" },
+          cancel: { allowed: false }, move: { allowed: false }, decline: { allowed: false },
+        };
+        const { page } = await open(browser, { kind, extra: { [`/${kind}`]: [200, booking] } });
+        await page.goto(`${SITE}/book/#tokentokentokentokentoken`);
+        await page.waitForSelector("text=Bodyguard");
+        const text = await page.locator(".sum").first().textContent();
+        assert.match(text, /VehicleSUV/);
+        assert.match(text, /Bodyguard2/);
+        if (kind === "desk") assert.match(await page.locator("moss-booking").textContent(), /Pickup addressLAX/);
+      } finally {
+        await browser.close();
+      }
+    });
+  }
+
+  test(`${name}: pickup is offered on Choose with its limits, and fits a phone`, async () => {
+    const browser = await engine.launch();
+    try {
+      const { page } = await open(browser);
+      await page.goto(`${SITE}/book/`);
+      assert.match(await page.locator("[data-id=pickup]").textContent(), /Pickup and drop-off.*From \$110 an hour · Up to 4 hours and 100 miles\./);
+      await page.click("[data-id=pickup]");
+      await page.click("[data-go]");
+      await page.waitForSelector("text=Up to 4 hours and 100 miles\.");
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no horizontal scroll at 390px");
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`${name}: Stripe's fields open on the site's account in the site's colours, face and corners`, async () => {
     const browser = await engine.launch();
     try {
@@ -144,7 +266,6 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       await page.goto(`${SITE}/book/?service=protection`);
       await page.addStyleTag({ content: "moss-booking { --booking-accent: #0055ff; --booking-radius: 12px; }" });
       await page.click("[data-start]");
-      await page.click("[data-go]");
       await page.fill("#f-name", "Ada Client");
       await page.fill("#f-email", "ada@example.com");
       await page.fill("#f-mobile", "+15555550100");
@@ -299,13 +420,12 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       const { page } = await open(browser);
       await page.goto(`${SITE}/book/?service=protection`);
       await page.click("[data-start]");
-      await page.click("[data-go]");
       await page.fill("#f-name", "Ada Client");
       await page.fill("#f-email", "ada@example.com");
       await page.fill("#f-mobile", "+15555550100");
       await page.evaluate(() => window.scrollTo(0, document.querySelector("form [type=submit]").getBoundingClientRect().top + scrollY - 200));
       await page.click("[type=submit]");
-      await page.waitForSelector("text=Pay $300");
+      await page.waitForSelector('h1:has-text("Pay $300")');
       const top = await page.evaluate(() => document.querySelector(".steps").getBoundingClientRect().top);
       assert.ok(top >= 80, `the step bar starts at ${top}px, under the 80px header`);
     } finally {

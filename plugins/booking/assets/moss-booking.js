@@ -1,6 +1,46 @@
 // <moss-booking>: choosing, paying for, moving and cancelling a booking, on the page that
 // places it. The element's children stay until the offer loads, so they are what shows with
 // no script or no offer. Reads the offer the site publishes; talks to the service named there.
+
+// The fewest and most of an add-on, a missing range being 0 to 1.
+const qtyOf = (add) => add.qty ?? { min: 0, max: 1 };
+
+// Stripe's largest single charge, in cents.
+const MAX_CHARGE = 99_999_999;
+
+// A choice's options, cheapest first: moss publishes a table's keys sorted, so the order they were written in is lost.
+const optionsOf = (s) => Object.entries(s.choice.options).sort(([, a], [, b]) => a.price - b.price);
+
+// The deposit held now, in whole cents rounded down, as the booking service charges it.
+function depositOf(total, percent) {
+  return Math.floor((total * percent) / 100);
+}
+
+// What a booking costs in cents: the service's rate, plus the choice, plus each add-on's quantity
+// times its unit price (per hour booked, or once). null where the service refuses the selection.
+// The service computes the same sum and its own answer is the one that charges; the shared vectors
+// in test/price-vectors.json fail if either side changes alone.
+function totalOf(s, hours, { choice, add_ons } = {}) {
+  const hourly = s.per_hour !== undefined || Boolean(s.choice && s.minutes === undefined);
+  if (hourly && !(Number.isInteger(hours) && hours >= s.hours.min && hours <= s.hours.max)) return null;
+  const unit = (x) => (x.per === "booking" ? x.price : x.price * hours);
+  let total = hourly ? (s.per_hour ?? 0) * hours : s.price;
+  if (s.choice) {
+    if (typeof choice !== "string" || !Object.hasOwn(s.choice.options, choice)) return null;
+    total += unit(s.choice.options[choice]);
+  } else if (choice !== undefined) return null;
+  const given = add_ons === undefined ? {} : add_ons;
+  const extras = s.add_ons ?? {};
+  if (!given || typeof given !== "object" || Array.isArray(given) || Object.keys(given).some((id) => !Object.hasOwn(extras, id))) return null;
+  for (const [id, add] of Object.entries(extras)) {
+    const { min, max } = qtyOf(add);
+    const qty = given[id] === undefined ? min : given[id];
+    if (!Number.isInteger(qty) || qty < min || qty > max) return null;
+    total += qty * unit(add);
+  }
+  return total > MAX_CHARGE ? null : total;
+}
+
 async function mount(view, page, DESK, ENDPOINT) {
 
   const DAYS_SHOWN = 14;
@@ -176,12 +216,14 @@ async function mount(view, page, DESK, ENDPOINT) {
     const paidWith = data.paid_with ? ` · ${PAID_WITH[data.paid_with] ?? data.paid_with}` : "";
     return rows([
       ["When", `${esc(whenLabel(data.start))}${data.hours ? `, ${data.hours} h` : ""}`],
+      ...(data.selection ?? []).map(([label, value]) => [esc(label), esc(value)]),
       deposit ? ["Deposit", esc(deposit + paidWith)] : ["Paid", data.amount ? esc(m(data.amount) + paidWith) : "Free"],
       balance && ["Balance", esc(balance)],
     ]);
   }
 
-  // The booking page: choose a service, a time, then the details; paid services go on to Stripe.
+  // The booking page: choose a service, book it on one screen (options, time, details, the total),
+  // then pay; a service that costs nothing is confirmed on the booking screen.
   async function bookPage(booking) {
     const params = new URLSearchParams(location.search);
     let note = "";
@@ -191,68 +233,120 @@ async function mount(view, page, DESK, ENDPOINT) {
       note = notice(FREED);
     }
     // Hourly services first, as the confirmed design lists them.
-    const services = Object.entries(booking.services).sort(([, a], [, b]) => (b.per_hour ? 1 : 0) - (a.per_hour ? 1 : 0));
-    const state = { id: services[0][0], hours: 0, date: "", start: "", days: [], pay: "deposit" };
+    const services = Object.entries(booking.services).sort(([, a], [, b]) => (b.hours ? 1 : 0) - (a.hours ? 1 : 0));
+    const state = { id: services[0][0], hours: 0, date: "", start: "", days: [], pay: "deposit", choice: "", addOns: {}, values: {} };
     const service = () => booking.services[state.id];
     const m = (cents) => money(cents, booking.currency);
-    const total = () => (service().per_hour ? service().per_hour * state.hours : service().price);
-    const paid = () => Boolean(service().per_hour || service().price);
+    const total = () => totalOf(service(), state.hours, { choice: service().choice ? state.choice : undefined, add_ons: service().add_ons ? state.addOns : undefined });
+    const paid = () => Boolean(service().hours || service().price);
+    // A service starts at its shortest booking, its first option and the fewest of each add-on.
+    function begin(id) {
+      const s = booking.services[id];
+      Object.assign(state, {
+        id, hours: s.hours?.min ?? 0, date: "", start: "",
+        choice: s.choice ? optionsOf(s)[0][0] : "",
+        addOns: Object.fromEntries(Object.entries(s.add_ons ?? {}).map(([k, a]) => [k, qtyOf(a).min])),
+      });
+    }
     // A deposit only when the start leaves time to charge the balance before it.
     const deposit = () => {
       const d = service().deposit;
       if (!d || !paid() || !state.start) return null;
       const balanceDate = daysBefore(state.start.slice(0, 10), d.balance_days_before);
-      return balanceDate > new Date().toISOString().slice(0, 10) ? { ...d, now: Math.round((total() * d.percent) / 100), balanceDate } : null;
+      return balanceDate > new Date().toISOString().slice(0, 10) ? { ...d, now: depositOf(total(), d.percent), balanceDate } : null;
     };
     const pay = () => (deposit() ? state.pay : "full");
     const steps = (at) => {
-      const all = paid() ? ["Choose", "When", "Who", "Pay", "Confirmed"] : ["Choose", "When", "Who", "Confirmed"];
+      const all = paid() ? ["Choose", "Book", "Pay", "Confirmed"] : ["Choose", "Book", "Confirmed"];
       const i = all.indexOf(at);
       return `<div class="steps">${all.map((x, j) => `<span class="${j === i ? "on" : j < i ? "past" : ""}">${x}</span>`).join("")}</div>`;
     };
-    const price = (s) => (s.per_hour ? `${m(s.per_hour)} an hour · ${s.hours.min}-hour minimum` : s.price ? m(s.price) : `${s.minutes} minutes by phone · free`);
+    const rate = (x) => `${m(x.price)}${x.per === "booking" ? "" : " an hour"}`;
+    const price = (s) => {
+      if (s.per_hour) return `${m(s.per_hour)} an hour · ${s.hours.min}-hour minimum`;
+      if (s.choice) return [`From ${rate(optionsOf(s)[0][1])}`, s.note].filter(Boolean).join(" · ");
+      return s.price ? m(s.price) : `${s.minutes} minutes by phone · free`;
+    };
 
     function choose(message = "") {
       show(`<div class="flow">${steps("Choose")}${message}<h1 tabindex="-1">Choose a service</h1>
   <div class="cards">${services.map(([id, s]) => `<button class="card" data-id="${esc(id)}" aria-pressed="${id === state.id}"><b>${esc(s.name)}</b><span>${esc(price(s))}</span></button>`).join("")}
   <a class="card" href="mailto:${esc(DESK)}?subject=Secured%20ride%2C%20guards%20or%20patrol"><b>Secured ride · Guards · Patrol</b><span>Call, text or email the desk</span></a></div>
-  <button class="btn go wide" data-go>Choose a time</button></div>`);
+  <button class="btn go wide" data-go>Continue</button></div>`);
       view.querySelectorAll("[data-id]").forEach((b) => b.addEventListener("click", () => { state.id = b.dataset.id; choose(); }));
-      view.querySelector("[data-go]").addEventListener("click", () => { state.hours = service().hours?.min ?? 0; state.date = state.start = ""; when(); });
+      view.querySelector("[data-go]").addEventListener("click", () => { begin(state.id); load(); });
     }
 
-    function payChoice() {
+    // The total, and how to pay it where the start leaves a choice.
+    function totals() {
+      const s = service();
       const d = deposit();
-      if (!paid()) return rows([[`${service().minutes} minutes by phone`, "<b>Free</b>"]]);
-      const lead = service().per_hour ? [`${state.hours} h × ${m(service().per_hour)}`, `<b>${m(total())}</b>`] : [esc(service().name), `<b>${m(total())}</b>`];
-      if (!d) {
-        return rows([lead]) + (service().deposit && state.start ? `<p class="note">Paid in full: the start is less than ${service().deposit.balance_days_before} days away.</p>` : "");
-      }
+      if (!paid()) return rows([[`${s.minutes} minutes by phone`, "<b>Free</b>"]]);
+      const sum = rows([["Total", `<b>${m(total())}</b>`]]);
+      if (!d) return sum + (s.deposit && state.start ? `<p class="note">Paid in full: the start is less than ${s.deposit.balance_days_before} days away.</p>` : "");
       const option = (value, title, detail) => `<label class="card"><input type="radio" name="pay" value="${value}"${state.pay === value ? " checked" : ""}><b>${title}</b><span>${detail}</span></label>`;
-      return rows([lead]) + `<fieldset class="cards pay"><legend class="lab"><span>How to pay</span></legend>
+      return sum + `<fieldset class="cards pick"><legend class="lab"><span>How to pay</span></legend>
   ${option("deposit", `${m(d.now)} now`, `Held on your card for ${d.hold_hours} hours, then kept; ${m(total() - d.now)} on ${dateLabel(d.balanceDate)}. Card, Apple Pay or Link.`)}
   ${option("full", `${m(total())} now`, "All at once. Card, Apple Pay, Link or USDC.")}</fieldset>`;
     }
 
-    async function when(message = "") {
+    const choices = (s) => !s.choice ? "" : `<fieldset class="cards pick"><legend class="lab"><span>${esc(s.choice.label)}</span></legend>
+  ${optionsOf(s).map(([id, o]) => `<label class="card"><input type="radio" name="choice" value="${esc(id)}"${state.choice === id ? " checked" : ""}><b>${esc(o.name)}</b><span>${esc(rate(o))}</span></label>`).join("")}</fieldset>`;
+    const extras = (s) => Object.entries(s.add_ons ?? {}).map(([id, a]) => stepper(`${esc(a.name)} · ${esc(rate(a))}`, `data-addon="${esc(id)}"`, `One ${esc(a.name.toLowerCase())}`, state.addOns[id], qtyOf(a))).join("");
+
+    // Draws the screen from the state. The text the person has typed is kept in `state.values` before every redraw.
+    function book(message = "", errors = {}) {
       const s = service();
-      const hours = s.per_hour ? `&hours=${state.hours}` : "";
+      const values = state.values;
+      const field = (name, label, { type = "text", auto = "", required = true, area = false } = {}) => {
+        const err = errors[name] ? `<span class="err" id="err-${name}">${errors[name] === "required" ? "Please fill this in." : "Please check this."}</span>` : "";
+        const attrs = `name="${name}" id="f-${name}"${auto ? ` autocomplete="${auto}"` : ""}${required ? " required" : ""}${errors[name] ? ` aria-invalid="true" aria-describedby="err-${name}"` : ""}`;
+        const input = area ? `<textarea ${attrs}>${esc(values[name])}</textarea>` : `<input type="${type}" ${attrs} value="${esc(values[name])}">`;
+        return `<label class="field" for="f-${name}"><span class="lab"><span>${esc(label)}</span>${required ? "" : "<span>Optional</span>"}</span>${input}${err}</label>`;
+      };
+      const own = Object.entries(s.fields || {}).map(([name, need]) =>
+        field(name, s.labels?.[name] ?? name[0].toUpperCase() + name.slice(1).replace(/_/g, " "), { required: need === "required", area: name === "about" || name === "notes" }),
+      ).join("");
+      const due = deposit() && pay() === "deposit" ? deposit().now : total();
+      show(`<div class="flow">${steps("Book")}${message}${s.note ? `<span class="eye">${esc(s.note)}</span>` : ""}<h1 tabindex="-1">${esc(s.name)}</h1>
+  ${choices(s)}${extras(s)}${s.hours ? stepper("Hours", "data-hours", "One hour", state.hours, s.hours) : ""}${slotPicker(booking, state.days, state.date, state.start)}
+  <form class="form">${field("name", "Your name", { auto: "name" })}${field("email", "Email", { type: "email", auto: "email" })}${field("mobile", "Mobile", { type: "tel", auto: "tel" })}${own}
+  ${totals()}${paid() ? `<p class="note">${esc(terms())}</p>` : ""}<button class="btn go wide" type="submit"${state.start ? "" : " disabled"}>${paid() ? `Pay ${esc(m(due))}` : "Confirm"}</button></form><button class="btn quiet" data-back>← Back</button></div>`);
+      const again = (change) => (event) => { keep(); change(event.currentTarget); book(); };
+      view.querySelectorAll("[data-date]").forEach((b) => b.addEventListener("click", again((x) => { state.date = x.dataset.date; state.start = ""; })));
+      view.querySelectorAll("[data-start]").forEach((b) => b.addEventListener("click", again((x) => { state.start = x.dataset.start; })));
+      view.querySelectorAll("[data-addon]").forEach((b) => b.addEventListener("click", again((x) => { state.addOns[x.dataset.addon] += Number(x.dataset.step); })));
+      view.querySelectorAll("input[name=choice], input[name=pay]").forEach((r) => r.addEventListener("change", again((x) => { state[x.name === "choice" ? "choice" : "pay"] = x.value; })));
+      // The start times depend on the hours, so a new length asks the service again.
+      view.querySelectorAll("[data-hours]").forEach((b) => b.addEventListener("click", () => { keep(); state.hours += Number(b.dataset.step); load(); }));
+      view.querySelector("[data-back]").addEventListener("click", () => choose());
+      // One hold per press: a second press while the first is in flight would be refused as a taken time.
+      view.querySelector("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const go = event.target.querySelector("[type=submit]");
+        if (go.disabled) return;
+        go.disabled = true;
+        keep();
+        hold();
+      });
+    }
+
+    function keep() {
+      const form = view.querySelector("form");
+      if (form) for (const [name, value] of new FormData(form)) if (name !== "pay") state.values[name] = value;
+    }
+
+    // Reads the open times for the service and hours, then draws the screen.
+    async function load(message = "", errors = {}) {
+      const s = service();
+      const hours = s.hours ? `&hours=${state.hours}` : "";
       const { status, data } = await call(booking, `/slots?service=${encodeURIComponent(state.id)}&from=${new Date().toISOString().slice(0, 10)}&days=${DAYS_SHOWN}${hours}`);
-      if (status !== 200) return show(unavailable());
-      if (!data.fresh) return show(unavailable());
+      if (status !== 200 || !data.fresh) return show(unavailable());
       state.days = data.days.filter((d) => d.slots.some((t) => t.open));
       if (!state.days.some((d) => d.date === state.date)) state.date = state.days[0]?.date ?? "";
       const day = state.days.find((d) => d.date === state.date);
       if (!day?.slots.some((t) => t.open && t.start === state.start)) state.start = "";
-      show(`<div class="flow">${steps("When")}${message}<span class="eye">${esc(s.name)}</span><h1 tabindex="-1">Choose a time</h1>
-  ${slotPicker(booking, state.days, state.date, state.start)}${s.per_hour ? hourStepper(s.hours, state.hours) : ""}${payChoice()}
-  <button class="btn go wide" data-go${state.start ? "" : " disabled"}>Continue</button><button class="btn quiet" data-back>← Back</button></div>`);
-      view.querySelectorAll("[data-date]").forEach((b) => b.addEventListener("click", () => { state.date = b.dataset.date; state.start = ""; when(); }));
-      view.querySelectorAll("[data-start]").forEach((b) => b.addEventListener("click", () => { state.start = b.dataset.start; when(); }));
-      view.querySelectorAll("[data-hours]").forEach((b) => b.addEventListener("click", () => { state.hours += Number(b.dataset.hours); when(); }));
-      view.querySelectorAll("input[name=pay]").forEach((r) => r.addEventListener("change", () => { state.pay = r.value; }));
-      view.querySelector("[data-go]").addEventListener("click", () => who());
-      view.querySelector("[data-back]").addEventListener("click", () => choose());
+      book(message, errors);
     }
 
     // Stated before money is committed; the amounts come from the site's offer.
@@ -261,53 +355,34 @@ async function mount(view, page, DESK, ENDPOINT) {
       return `Cancelling more than ${h} hours before: full refund. Within ${h} hours: ${pct === 50 ? "half" : `${pct}%`}. No-show: nothing.`;
     };
 
-    function who(errors = {}, values = {}, message = "") {
+    async function hold() {
       const s = service();
-      const field = (name, label, { type = "text", auto = "", required = true, area = false } = {}) => {
-        const err = errors[name] ? `<span class="err" id="err-${name}">${errors[name] === "required" ? "Please fill this in." : "Please check this."}</span>` : "";
-        const attrs = `name="${name}" id="f-${name}"${auto ? ` autocomplete="${auto}"` : ""}${required ? " required" : ""}${errors[name] ? ` aria-invalid="true" aria-describedby="err-${name}"` : ""}`;
-        const input = area ? `<textarea ${attrs}>${esc(values[name])}</textarea>` : `<input type="${type}" ${attrs} value="${esc(values[name])}">`;
-        return `<label class="field" for="f-${name}"><span class="lab"><span>${esc(label)}</span>${required ? "" : "<span>Optional</span>"}</span>${input}${err}</label>`;
-      };
-      const own = Object.entries(s.fields || {}).map(([name, need]) =>
-        field(name, s.labels?.[name] ?? name[0].toUpperCase() + name.slice(1).replace(/_/g, " "), { required: need === "required", area: name === "about" }),
-      ).join("");
-      show(`<div class="flow">${steps("Who")}${message}<span class="eye">${esc(s.name)} · ${esc(whenLabel(state.start))}</span><h1 tabindex="-1">Your details</h1>
-  <form class="form">${field("name", "Your name", { auto: "name" })}${field("email", "Email", { type: "email", auto: "email" })}${field("mobile", "Mobile", { type: "tel", auto: "tel" })}${own}
-  ${paid() ? `<p class="note">${esc(terms())}</p>` : ""}<button class="btn go wide" type="submit">${paid() ? "Continue to pay" : "Confirm"}</button></form><button class="btn quiet" data-back>← Back</button></div>`);
-      view.querySelector("[data-back]").addEventListener("click", () => when());
-      // One hold per press: a second press while the first is in flight would be refused as a taken time.
-      view.querySelector("form").addEventListener("submit", (event) => {
-        event.preventDefault();
-        const go = event.target.querySelector("[type=submit]");
-        if (go.disabled) return;
-        go.disabled = true;
-        hold(Object.fromEntries(new FormData(event.target)));
-      });
-    }
-
-    async function hold(values) {
-      const { name, email, mobile, ...fields } = values;
+      const { name, email, mobile, ...fields } = state.values;
       const body = { service: state.id, start: state.start, name, email, mobile, fields };
-      if (service().per_hour) body.hours = state.hours;
-      if (service().deposit && paid()) body.pay = pay();
+      if (s.hours) body.hours = state.hours;
+      if (s.choice) body.choice = state.choice;
+      if (s.add_ons) body.add_ons = state.addOns;
+      if (s.deposit && paid()) body.pay = pay();
       body.checkout = "elements";
       const { status, data } = await call(booking, "/holds", body);
-      if (status === 201 && data.status === "holding" && data.checkout?.client_secret) return payHere(data, values);
+      if (status === 201 && data.status === "holding" && data.checkout?.client_secret) return payHere(data);
       if (status === 201 && data.status === "holding" && /^https:/.test(data.checkout_url ?? "")) return location.assign(data.checkout_url);
-      if (status === 201 && data.status === "confirmed") return confirmed(values);
-      if (status === 409) return when(problem("That time was just booked by someone else. Please choose another."));
-      if (status === 422 && data.fields?.pay) { state.pay = "full"; return when(problem("This time can only be paid in full.")); }
-      if (status === 422) return who(data.fields || {}, values, problem("Please check the fields marked below."));
-      if (status === 503 && data.error === "calendar_unavailable") return show(unavailable());
+      if (status === 201 && data.status === "confirmed") return confirmed();
+      if (status === 409) return load(problem("That time was just booked by someone else. Please choose another."));
+      if (status === 422 && data.fields?.pay) { state.pay = "full"; return book(problem("This time can only be paid in full.")); }
+      if (status === 422) {
+        const errors = data.fields || {};
+        const marked = Object.keys(errors).some((k) => ["name", "email", "mobile"].includes(k) || Object.hasOwn(s.fields ?? {}, k));
+        return book(problem(marked ? "Please check the fields marked below." : "Please check your choices."), errors);
+      }
       if (status === 503) return show(unavailable());
-      if (status === 429) return who({}, values, problem(`Too many bookings were started from here. Please try again later, or email the desk at ${desk}.`));
-      return who({}, values, problem(`Something went wrong. Please try again, or email the desk at ${desk}.`));
+      if (status === 429) return book(problem(`Too many bookings were started from here. Please try again later, or email the desk at ${desk}.`));
+      return book(problem(`Something went wrong. Please try again, or email the desk at ${desk}.`));
     }
 
     // Paying in this page: the summary, the Pay button, its errors and its waiting state are the
     // site's own; only the card fields are Stripe's. Paying returns to the done page.
-    async function payHere(held, values) {
+    async function payHere(held) {
       const due = held.due_now ?? held.amount;
       show(`<div class="flow">${steps("Pay")}<span class="eye">${esc(service().name)} · ${esc(whenLabel(state.start))}</span><h1 tabindex="-1">Pay ${esc(m(due))}</h1>
   <form class="form"><div data-stripe></div><div data-problem></div><button class="btn go wide" type="submit" disabled>Pay</button></form>
@@ -338,7 +413,7 @@ async function mount(view, page, DESK, ENDPOINT) {
         if (on) go.setAttribute("aria-busy", "true");
         else go.removeAttribute("aria-busy");
       };
-      back.addEventListener("click", () => leave(() => who({}, values, notice(FREED))));
+      back.addEventListener("click", () => leave(() => book(notice(FREED))));
       view.querySelector("form").addEventListener("submit", async (event) => {
         event.preventDefault();
         if (!checkout || go.disabled) return;
@@ -383,9 +458,9 @@ async function mount(view, page, DESK, ENDPOINT) {
       }
     }
 
-    function confirmed(values) {
+    function confirmed() {
       show(`<div class="flow">${steps("Confirmed")}<span class="state"><i></i>Confirmed</span><h1 tabindex="-1">${esc(service().name)}</h1>
-  <p>${esc(whenLabel(state.start))}. Confirmation sent to ${esc(values.email)}.</p><a class="btn quiet" href="/">← Back to the site</a></div>`);
+  <p>${esc(whenLabel(state.start))}. Confirmation sent to ${esc(state.values.email)}.</p><a class="btn quiet" href="/">← Back to the site</a></div>`);
     }
 
     // The map's "Request protection for this trip": trips abroad are quoted by the desk.
@@ -400,9 +475,8 @@ async function mount(view, page, DESK, ENDPOINT) {
     if (to) return trip(to.slice(0, 80));
     const asked = params.get("service");
     if (asked && Object.hasOwn(booking.services, asked)) {
-      state.id = asked;
-      state.hours = service().hours?.min ?? 0;
-      return when();
+      begin(asked);
+      return load();
     }
     choose(note);
   }
@@ -416,8 +490,9 @@ async function mount(view, page, DESK, ENDPOINT) {
     return `<div><div class="lab"><span>Date</span></div><div class="dates">${dates}</div></div><div><div class="lab"><span>Start · ${esc(booking.timezone.split("/").pop().replace("_", " "))} time</span></div><div class="slots">${times}</div></div>`;
   }
 
-  function hourStepper(limits, hours) {
-    return `<div class="seat"><span class="lab" style="margin:0"><span>Hours</span></span><span class="stepper"><button data-hours="-1" aria-label="One hour fewer"${hours <= limits.min ? " disabled" : ""}>−</button><output class="num" aria-live="polite">${hours}</output><button data-hours="1" aria-label="One hour more"${hours >= limits.max ? " disabled" : ""}>+</button></span></div>`;
+  // A count the person raises or lowers within a range; `step` on each button is read by the page.
+  function stepper(label, attr, noun, value, { min, max }) {
+    return `<div class="seat"><span class="lab" style="margin:0"><span>${label}</span></span><span class="stepper"><button type="button" ${attr} data-step="-1" aria-label="${noun} fewer"${value <= min ? " disabled" : ""}>−</button><output class="num" aria-live="polite">${value}</output><button type="button" ${attr} data-step="1" aria-label="${noun} more"${value >= max ? " disabled" : ""}>+</button></span></div>`;
   }
 
   // After Stripe: wait for the payment notice, then say what was booked.
@@ -524,7 +599,7 @@ async function mount(view, page, DESK, ENDPOINT) {
     if (status === 404) return show(`<div class="flow"><h1 tabindex="-1">This link no longer works</h1></div>`);
     if (status !== 200) return show(unavailable());
     const m = (cents) => money(cents, data.currency);
-    const details = rows([["Client", esc(data.name)], ["Email", esc(data.email)], ["Mobile", esc(data.mobile)], ...Object.entries(data.fields || {}).map(([k, v]) => [esc(k[0].toUpperCase() + k.slice(1)), esc(v)])]);
+    const details = rows([["Client", esc(data.name)], ["Email", esc(data.email)], ["Mobile", esc(data.mobile)], ...Object.entries(data.fields || {}).map(([k, v]) => [esc(booking.services[data.service]?.labels?.[k] ?? k[0].toUpperCase() + k.slice(1).replace(/_/g, " ")), esc(v)])]);
 
     function overview(message = "") {
       const state = { cancelled: "Cancelled", declined: "Declined" }[data.status];

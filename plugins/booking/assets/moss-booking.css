@@ -97,10 +97,10 @@ moss-booking {
   .field .err { color: var(--orange); font-size: 15px; }
   .field [aria-invalid="true"] { border-color: var(--orange); }
   .chip:disabled { color: var(--muted); text-decoration: line-through; background: transparent; cursor: not-allowed; }  /* a time the calendar, another booking or the notice rules out */
-  /* The choice between a deposit and paying all at once. */
-  .pay { border: 0; margin: 0; padding: 0; }
-  .pay .card { cursor: pointer; }
-  .pay .card input { position: absolute; opacity: 0; }
-  .pay .card:has(input:checked) { border-color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); }
-  .pay .card:has(input:focus-visible) { outline: 2px solid var(--orange); outline-offset: 2px; }
+  /* Radio choices drawn as cards: a vehicle, or a deposit against paying all at once. */
+  .pick { border: 0; margin: 0; padding: 0; }
+  .pick .card { cursor: pointer; }
+  .pick .card input { position: absolute; opacity: 0; }
+  .pick .card:has(input:checked) { border-color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); }
+  .pick .card:has(input:focus-visible) { outline: 2px solid var(--orange); outline-offset: 2px; }
 }

@@ -1,6 +1,7 @@
 // node --test plugins/booking/test/*.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
@@ -94,4 +95,47 @@ test("the hour stepper stops at the longest booking the published offer allows",
   handlers["[data-go]"]();
   for (let i = 0; i < 10 && !view.innerHTML.includes("stepper"); i++) await new Promise((r) => setTimeout(r, 0));
   assert.match(view.innerHTML, /aria-label="One hour more" disabled/);
+});
+
+const VECTORS = JSON.parse(readFileSync(new URL("./price-vectors.json", import.meta.url), "utf8"));
+
+/** The page's own price formula, taken out of the script. */
+function totalOf() {
+  const context = { HTMLElement: class {}, customElements: { define() {} } };
+  vm.runInNewContext(SOURCE, context);
+  return context.totalOf;
+}
+
+// Commerce runs the same file against its formula, so the two cannot drift apart.
+for (const v of VECTORS.cases) {
+  test(`the page prices ${v.name} as the booking service does`, () => {
+    assert.equal(totalOf()(VECTORS.services[v.service], v.hours, { choice: v.choice, add_ons: v.add_ons }), v.total);
+  });
+}
+
+test("the page shows the deposit the booking service holds, rounded down", () => {
+  const context = { HTMLElement: class {}, customElements: { define() {} } };
+  vm.runInNewContext(SOURCE, context);
+  assert.equal(context.depositOf(333, 50), 166);
+});
+
+test("the manifest publishes every key of the services the vectors price", () => {
+  assert.deepEqual(projected({ services: VECTORS.services }).services, VECTORS.services);
+});
+
+test("the manifest publishes every key the booking service reads from an offer", () => {
+  const offer = {
+    endpoint: "https://booking.example", enabled: true, timezone: "America/Los_Angeles", currency: "usd",
+    open: { mon: ["09:00-17:00"], sat: ["10:00-14:00", "15:00-18:00"] }, start_every: 60, notice_hours: 12, horizon_days: 60,
+    cancel: { full_before_hours: 24, late_percent: 50 }, pages: { book: "/book/", done: "/book/done/", manage: "/book/manage/", desk: "/book/desk/" },
+    services: { ...VECTORS.services, protection: { ...VECTORS.services.protection, charge: "hourly", deposit: { percent: 50, hold_hours: 12, balance_days_before: 7 } } },
+  };
+  assert.deepEqual(projected(offer), offer);
+});
+
+// Commerce's copy of the vectors is the source. This is a copy, pinned: when commerce's file changes,
+// its own test fails until its checksum is updated there, and the new file is copied here with the new checksum.
+const VECTORS_SHA256 = "7bd63da79a825f0455250d837f68ddb00be5ee15321e2d5041f174aac468214d";
+test("the vectors are the copy of commerce's file that the checksum names", () => {
+  assert.equal(createHash("sha256").update(readFileSync(new URL("./price-vectors.json", import.meta.url))).digest("hex"), VECTORS_SHA256);
 });
