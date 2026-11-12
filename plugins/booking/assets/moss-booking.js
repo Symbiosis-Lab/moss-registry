@@ -344,16 +344,15 @@ async function mount(view, page, DESK, ENDPOINT) {
         if (!checkout || go.disabled) return;
         busy(true);
         said.innerHTML = "";
-        // Stripe marks the card refused (a change event) right after a refusal, so its note comes back only with the next try.
-        if (hushed) hush(false);
         try {
           // On success Stripe goes on to the done page; only a refusal comes back.
           const result = await checkout.confirm();
           if (result.type !== "error") return;
           // A field left unfinished (no code) carries Stripe's note under it; anything else is the page's to say, once.
-          if (complete || result.error.code) {
+          // Pressed again after a refusal, Stripe calls the same card unfinished and answers with no code: still the page's.
+          if (hushed || complete || result.error.code) {
             said.innerHTML = problem(esc(result.error.message));
-            hush(true);
+            if (!hushed) hush(true);
           }
         } catch {
           said.innerHTML = problem(`Something went wrong. Please try again, or email the desk at ${desk}.`);
@@ -372,7 +371,11 @@ async function mount(view, page, DESK, ENDPOINT) {
         checkout = opened;
         fields = checkout.createPaymentElement();
         fields.on("ready", () => { if (!left) go.disabled = false; });
-        fields.on("change", (e) => { complete = e.complete; });
+        // Stripe calls a refused card unfinished, so only a complete one ends the refusal the page speaks for.
+        fields.on("change", (e) => {
+          complete = e.complete;
+          if (complete && hushed) hush(false);
+        });
         fields.on("loaderror", failed);
         fields.mount(view.querySelector("[data-stripe]"));
       } catch {

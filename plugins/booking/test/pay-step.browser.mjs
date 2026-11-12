@@ -186,14 +186,18 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       assert.equal(appearances?.length, 1, "Stripe's own copy of the refusal hidden");
       assert.equal(appearances[0].rules[".Error"].fontSize, "0px");
       assert.deepEqual(appearances[0].rules[".Input"], seen.elementsOptions.appearance.rules[".Input"]);
-      // Stripe calls the card unfinished once it has refused it; pressing Pay again is still refused in the page.
+      // Stripe calls the card unfinished once it has refused it, and answers Pay pressed again with no code.
       await page.evaluate(() => window.change({ complete: false }));
+      await page.evaluate(() => { window.answer = async () => ({ type: "error", error: { message: "Your card was declined.", code: null } }); });
       await pay.click();
+      await page.waitForSelector("[data-problem] [role=alert] >> text=Your card was declined.");
+      assert.equal(await pay.textContent(), "Pay");
+      assert.equal((await page.evaluate(() => window.appearances)).length, 1, "Stripe's copy stays hidden while the page says it");
+      // A new card ends it: Stripe's notes come back for whatever is typed next.
+      await page.evaluate(() => window.change({ complete: true }));
       const back = await page.evaluate(() => window.appearances);
-      assert.deepEqual(back[1], seen.elementsOptions.appearance, "Stripe's notes back for the next try");
-      await page.evaluate(() => window.refuse());
-      await page.waitForFunction(() => window.appearances.length === 3);
-      assert.equal(await page.locator("[data-problem] [role=alert]").textContent(), "Your card was declined.");
+      assert.equal(back.length, 2);
+      assert.deepEqual(back[1], seen.elementsOptions.appearance, "Stripe's notes back once the card is complete");
     } finally {
       await browser.close();
     }
