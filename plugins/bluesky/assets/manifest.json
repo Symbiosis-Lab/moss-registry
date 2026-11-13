@@ -1,6 +1,6 @@
 {
   "name": "bluesky",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "display_name": "Bluesky",
   "description": "Post a copy of each new post to your Bluesky account, linked back to your site",
   "author": "Symbiosis Lab",

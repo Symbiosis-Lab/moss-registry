@@ -33,6 +33,10 @@ export interface CopyResult {
     id?: string;
     url?: string;
     parts?: { id: string; url: string }[];
+    /** `find_copy`: no copy, or only part of a thread, is on the network. */
+    absent?: boolean;
+    /** `copy_account`: the signed-in account's DID. */
+    account?: string;
     refused?: { cause: Cause; message?: string };
   } | null;
 }
@@ -55,7 +59,7 @@ export function linkFacets(text: string, links: string[]): unknown[] {
   return facets;
 }
 
-async function session(job: CopyJob): Promise<Session> {
+async function session(job: { config: Record<string, unknown> }): Promise<Session> {
   const handle = String(job.config.handle ?? "");
   const service = String(job.config.service || "https://bsky.social");
   const password = await getSecret("app_password");
@@ -129,8 +133,9 @@ export async function find_copy(job: CopyJob): Promise<CopyResult> {
     const s = await session(job);
     // Every part on the network, the planned count or not, so a later delete reaches them all.
     const refs = await postedFrom(s, job.idempotency_key, 0);
-    // A thread cut short is sent again whole: its parts keep their keys.
-    if (refs.length === 0 || refs.length < (job.parts ?? []).length) return { success: true, copy: null };
+    // The record keys are the copy's own, so their absence is certain. A thread
+    // cut short is sent again whole: its parts keep their keys.
+    if (refs.length === 0 || refs.length < (job.parts ?? []).length) return { success: true, copy: { absent: true } };
     const [first, ...rest] = refs;
     return { success: true, copy: { id: first.uri, url: postUrl(s, first), parts: rest.map((r) => ({ id: r.uri, url: postUrl(s, r) })) } };
   } catch (e) {
@@ -151,8 +156,17 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   }
 }
 
+/** The account moss keeps each copy with: the DID, which a new handle keeps. */
+export async function copy_account(query: { channel: string; config: Record<string, unknown> }): Promise<CopyResult> {
+  try {
+    return { success: true, copy: { account: (await session(query)).did } };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
 // Bluesky cannot edit a post once made, so there is no update_copy: moss
 // reports such a copy as one that cannot be edited.
-const BlueskyPlugin = { publish_copy, find_copy, delete_copy };
+const BlueskyPlugin = { publish_copy, find_copy, delete_copy, copy_account };
 (globalThis as unknown as { BlueskyPlugin: typeof BlueskyPlugin }).BlueskyPlugin = BlueskyPlugin;
 export default BlueskyPlugin;
