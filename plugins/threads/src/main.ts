@@ -98,6 +98,14 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   return { success: true };
 }
 
-const ThreadsPlugin = { publish_copy, find_copy, delete_copy };
+/** The account moss keeps each copy with. */
+export async function copy_account(query: { channel: string; config: Record<string, unknown> }): Promise<CopyResult> {
+  try {
+    const a = await account(query);
+    return { success: true, copy: { account: id(await call(a, "GET", "/me?fields=id")) } };
+  } catch (e) { return refusal(e); }
+}
+
+const ThreadsPlugin = { publish_copy, find_copy, delete_copy, copy_account };
 (globalThis as unknown as { ThreadsPlugin: typeof ThreadsPlugin }).ThreadsPlugin = ThreadsPlugin;
 export default ThreadsPlugin;

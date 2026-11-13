@@ -8,7 +8,7 @@ export class Refusal extends Error {
 export interface Account { api: string; token: string }
 const API = "https://graph.threads.net";
 
-export async function account(job: CopyJob): Promise<Account> {
+export async function account(job: Pick<CopyJob, "config">): Promise<Account> {
   const api = String(job.config.api ?? API).replace(/\/+$/, "");
   // Compare the whole origin before asking the host for a secret.
   if (api !== API && !/^http:\/\/127\.0\.0\.1(?::\d+)?$/.test(api)) {
