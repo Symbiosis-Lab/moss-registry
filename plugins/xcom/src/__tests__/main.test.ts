@@ -2,7 +2,15 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
-vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async (k: string) => secrets[k] ?? null) }));
+const panel = { opened: [] as string[], closed: Promise.resolve({ type: "user" }), app: true };
+vi.mock("@symbiosis-lab/moss-api", () => ({
+  getSecret: vi.fn(async (k: string) => secrets[k] ?? null),
+  openBrowser: vi.fn(async (url: string) => {
+    if (!panel.app) throw new Error("open_action_panel needs the moss app");
+    panel.opened.push(url);
+    return { closed: panel.closed };
+  }),
+}));
 
 import { delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
 import { authorization, percent } from "../oauth1";
@@ -93,6 +101,41 @@ const thread = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text
 beforeEach(() => {
   vi.unstubAllGlobals();
   Object.assign(secrets, CREDS);
+  Object.assign(panel, { opened: [], closed: Promise.resolve({ type: "user" }), app: true });
+});
+
+describe("publish_copy without API keys", () => {
+  const noKeys = () => { for (const k of Object.keys(CREDS)) secrets[k] = null; };
+  const composer = (text: string) => `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
+
+  it("opens X's composer filled with the post, and waits for the author", async () => {
+    noKeys();
+    const x = fakeX();
+    let close!: () => void;
+    panel.closed = new Promise((resolve) => { close = () => resolve({ type: "user" }); });
+    let settled = false;
+    const sent = publish_copy(job()).then((r) => { settled = true; return r; });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(panel.opened).toEqual([composer("Autumn's first hotpot https://example.org/river")]);
+    expect(settled).toBe(false);
+    close();
+    expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: composer("Autumn's first hotpot https://example.org/river") } } });
+    expect(x.calls).toEqual([]);
+  });
+
+  it("hands back a thread's later parts to add as replies", async () => {
+    noKeys();
+    const r = await publish_copy(job({ form: "thread", parts: thread }));
+    expect(panel.opened).toEqual([composer("One.")]);
+    expect(r.copy?.handoff).toEqual({ text: "Two.\n\nThree.", open_url: composer("One.") });
+  });
+
+  it("gives the composer's address when there is no app to open it in", async () => {
+    noKeys();
+    panel.app = false;
+    const r = await publish_copy(job());
+    expect(r.copy?.handoff?.open_url).toBe(composer("Autumn's first hotpot https://example.org/river"));
+  });
 });
 
 describe("oauth1", () => {
