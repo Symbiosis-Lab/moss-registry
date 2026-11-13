@@ -36,6 +36,8 @@ export interface CopyResult {
     parts?: { id: string; url: string }[];
     refused?: { cause: Cause; message?: string };
     handoff?: { text: string; open_url?: string };
+    /** `copy_account`: the signed-in account's id. */
+    account?: string;
   } | null;
 }
 
@@ -62,7 +64,7 @@ const allowed = (api: string) => api === API || /^http:\/\/(127\.0\.0\.1|localho
 
 const KEYS = ["api_key", "api_key_secret", "access_token", "access_token_secret"];
 
-async function account(job: CopyJob): Promise<Account> {
+async function account(job: { config: Record<string, unknown> }): Promise<Account> {
   const api = String(job.config.api ?? "").replace(/\/+$/, "");
   if (!allowed(api)) throw new ApiError(401, `the api setting may name only ${API} or a local test server, not ${api}`);
   const [consumerKey, consumerSecret, token, tokenSecret] = await Promise.all(KEYS.map(getSecret));
@@ -236,6 +238,21 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
 // X edits a post only within 30 minutes of posting it, and each edit makes a
 // new post, so there is no update_copy: moss reports such a copy as one that
 // cannot be edited.
-const XcomPlugin = { publish_copy, find_copy, delete_copy };
+/**
+ * The account moss keeps each copy with: its id, one billed read per run with
+ * copies to work on. Without API keys there is no account to name; the author
+ * posts in the composer as whoever is signed in there.
+ */
+export async function copy_account(query: { channel: string; config: Record<string, unknown> }): Promise<CopyResult> {
+  if ((await Promise.all(KEYS.map(getSecret))).every((k) => !k)) return { success: true };
+  try {
+    const a = await account(query);
+    return { success: true, copy: { account: (await call(a, "GET", "/2/users/me")).data.id } };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
+const XcomPlugin = { publish_copy, find_copy, delete_copy, copy_account };
 (globalThis as unknown as { XcomPlugin: typeof XcomPlugin }).XcomPlugin = XcomPlugin;
 export default XcomPlugin;

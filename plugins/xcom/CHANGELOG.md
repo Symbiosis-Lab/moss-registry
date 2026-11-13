@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- With API keys, tells moss which account it is signed in to, so copies posted from one account are left alone while another is signed in. This costs one read from X's API in each publish that has copies for X.
+
 ## 0.2.0
 
 - Works without API keys: X's composer opens in moss's panel with the copy filled in, and you press Post. A thread's later parts are shown to add as replies. List the post's address under `syndicated:` to keep track of it. With API keys, moss still posts by itself.

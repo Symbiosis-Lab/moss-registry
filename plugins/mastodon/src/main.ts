@@ -33,6 +33,8 @@ export interface CopyResult {
     id?: string;
     url?: string;
     parts?: { id: string; url: string }[];
+    /** `copy_account`: the signed-in account, as its server and id. */
+    account?: string;
     refused?: { cause: Cause; message?: string };
   } | null;
 }
@@ -60,7 +62,7 @@ interface Account {
   token: string;
 }
 
-async function account(job: CopyJob): Promise<Account> {
+async function account(job: { config: Record<string, unknown> }): Promise<Account> {
   const server = String(job.config.server ?? "").replace(/\/+$/, "");
   const token = await getSecret("access_token");
   if (!server || !token) throw new ApiError(401, "connect Mastodon first: your server's address and an access token");
@@ -256,6 +258,17 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   }
 }
 
-const MastodonPlugin = { publish_copy, find_copy, update_copy, delete_copy };
+/** The account moss keeps each copy with: an account id is unique only on its own server. */
+export async function copy_account(query: { channel: string; config: Record<string, unknown> }): Promise<CopyResult> {
+  try {
+    const a = await account(query);
+    const me = await call(a, "GET", "/api/v1/accounts/verify_credentials");
+    return { success: true, copy: { account: `${new URL(a.server).host}/${me.id}` } };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
+const MastodonPlugin = { publish_copy, find_copy, update_copy, delete_copy, copy_account };
 (globalThis as unknown as { MastodonPlugin: typeof MastodonPlugin }).MastodonPlugin = MastodonPlugin;
 export default MastodonPlugin;

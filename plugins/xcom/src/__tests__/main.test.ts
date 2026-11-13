@@ -12,7 +12,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   }),
 }));
 
-import { delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
+import { copy_account, delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
 import { authorization, percent } from "../oauth1";
 
 const CREDS = { api_key: "ck", api_key_secret: "cs&+/", access_token: "tok", access_token_secret: "ts=1" };
@@ -206,6 +206,16 @@ describe("publish_copy", () => {
     const x = fakeX({ failAt: 1, status: 503 });
     await expect(publish_copy(job({ form: "thread", parts: thread }))).rejects.toThrow();
     expect(x.posts.size).toBe(1);
+  });
+});
+
+describe("copy_account", () => {
+  it("names the account by its id with API keys, and none without them", async () => {
+    const x = fakeX();
+    expect(await copy_account({ channel: "xcom", config: job().config })).toEqual({ success: true, copy: { account: "42" } });
+    for (const k of Object.keys(CREDS)) secrets[k] = null;
+    expect(await copy_account({ channel: "xcom", config: job().config })).toEqual({ success: true });
+    expect(x.calls.filter((c) => c.includes("/2/users/me"))).toHaveLength(1);
   });
 });
 

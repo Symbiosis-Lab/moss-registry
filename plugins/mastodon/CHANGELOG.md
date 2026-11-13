@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Tells moss which account it is signed in to, so copies posted from one account are left alone while another is signed in.
+
 ## 0.1.1
 
 - The channel button shows the Mastodon logo.
