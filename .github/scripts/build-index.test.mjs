@@ -185,6 +185,17 @@ test("an entry carries the manifest's metadata and the zip's identity", () => {
   assert.equal(entry.download_url, "https://example.invalid/github-1.5.0.zip");
 });
 
+test("an entry names the kinds the manifest contributes, and nothing of their bodies", () => {
+  const channel = { ...manifest, capabilities: undefined, contributes: { jobs: { syndicate: {} }, channel: { login: true } } };
+  const entry = toEntry(candidate, channel, { sha256: "a", sizeBytes: 1 });
+  assert.deepEqual(entry.contributes, ["channel", "jobs"]);
+  assert.deepEqual(entry.capabilities, []);
+
+  for (const none of [manifest, { ...manifest, contributes: {} }]) {
+    assert.equal("contributes" in toEntry(candidate, none, { sha256: "a", sizeBytes: 1 }), false);
+  }
+});
+
 test("a manifest that disagrees with its tag throws rather than dropping the package", () => {
   // Silently omitting it would be indistinguishable from a revocation to clients.
   assert.throws(
@@ -582,7 +593,7 @@ test("a program-only plugin's entry lists its sorted unique platforms", () => {
   artifact.push({ ...artifact[0] }); // a second derivation naming the same platform
   const entry = toEntry(candidate, manifest, { sha256: "0".repeat(64), sizeBytes: 1 });
   assert.deepEqual(entry.platforms, ["darwin-arm64", "linux-x64"]);
-  assert.ok(!("contributes" in entry), "contributes stays out of the index");
+  assert.deepEqual(entry.contributes, ["derivations"], "the kind is named; its artifacts stay out of the index");
 });
 
 test("a JavaScript plugin's entry has no platforms field", () => {
