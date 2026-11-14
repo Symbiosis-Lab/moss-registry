@@ -5,7 +5,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   openBrowser: vi.fn(async (url: string) => { panel.opened.push(url); return { closed: Promise.resolve() }; }),
   openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
   onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
-  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {} })),
+  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {}, cancelled: async () => {} })),
 }));
 
 import { find_copy, publish_copy, type CopyJob } from "../main";

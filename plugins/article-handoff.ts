@@ -44,20 +44,22 @@ export interface PanelApi {
   startTask(
     label: string,
     options: { hook: "syndicate"; trigger: "manual_one"; hasProgress: false; cancellable: false },
-  ): Promise<{ awaiting(directive: string, venue: string): Promise<void>; succeeded(): Promise<void> }>;
+  ): Promise<{ awaiting(directive: string, venue: string): Promise<void>; succeeded(): Promise<void>; cancelled(): Promise<void> }>;
 }
 
 /**
  * Waits while the author works in the panel. moss stops a hook that has said
  * nothing for a minute, unless it has said it is waiting for a person.
+ * `work` answers whether the author got as far as the network's own page.
  */
-async function whileAuthor(api: Pick<PanelApi, "startTask">, does: string, network: string, work: () => Promise<unknown>): Promise<void> {
+async function whileAuthor(api: Pick<PanelApi, "startTask">, does: string, network: string, work: () => Promise<boolean>): Promise<void> {
   const task = await api.startTask(`Publish on ${network}`, { hook: "syndicate", trigger: "manual_one", hasProgress: false, cancellable: false });
+  let reached = false;
   try {
     await task.awaiting(does, network);
-    await work();
+    reached = await work();
   } finally {
-    await task.succeeded();
+    await (reached ? task.succeeded() : task.cancelled());
   }
 }
 
@@ -97,7 +99,7 @@ export function handoffPage(article: Article, editor: Editor): string {
 (function () {
   var data = ${data};
   var body = new DOMParser().parseFromString(data.html, "text/html").body;
-  // Not the article's words: these send the frame elsewhere, or are code that would be pasted as text.
+  // Not the article: each sends the frame elsewhere, or is code.
   body.querySelectorAll("meta, base, link, script, style").forEach(function (e) { e.remove(); });
   // The editor has its own title field.
   var first = body.firstElementChild;
@@ -146,7 +148,11 @@ export async function handOffArticle(api: PanelApi, article: Article, editor: Ed
     stops.push(await api.onEvent("browser-closed", () => shown && settle(false)));
     await api.openBrowserWithHtml(handoffPage(article, editor));
     shown = true;
-    await whileAuthor(api, "paste and publish the article", editor.name, async () => (await copied) && (await api.openBrowser(editor.url)).closed);
+    await whileAuthor(api, "paste and publish the article", editor.name, async () => {
+      if (!(await copied)) return false;
+      await (await api.openBrowser(editor.url)).closed;
+      return true;
+    });
   } finally {
     for (const stop of stops) stop();
   }
@@ -169,7 +175,10 @@ export async function writeArticle(api: PanelApi, article: Article | null | unde
  */
 export async function openAndWait(api: Pick<PanelApi, "openBrowser" | "startTask">, does: string, network: string, url: string): Promise<void> {
   const { closed } = await api.openBrowser(url);
-  await whileAuthor(api, does, network, () => closed);
+  await whileAuthor(api, does, network, async () => {
+    await closed;
+    return true;
+  });
 }
 
 /**

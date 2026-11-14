@@ -12,7 +12,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   }),
   openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
   onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
-  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {} })),
+  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {}, cancelled: async () => {} })),
 }));
 
 import { copy_account, delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
