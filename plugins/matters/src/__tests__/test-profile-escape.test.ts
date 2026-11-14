@@ -73,7 +73,6 @@ vi.mock("../credential", () => ({
   markSessionInvalidated: vi.fn().mockResolvedValue(undefined),
   authHeaderToken: vi.fn().mockResolvedValue(""),
   captureLogin: vi.fn().mockResolvedValue(""),
-  prepareWebviewAuth: vi.fn().mockResolvedValue(undefined),
   beginFreshLogin: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -89,8 +88,6 @@ vi.mock("../api", async () => {
     fetchAllArticleCommentCounts: vi.fn().mockResolvedValue(new Map()),
     createDraft: vi.fn(),
     fetchDraft: vi.fn(),
-    uploadCoverByUrl: vi.fn(),
-    uploadEmbedByUrl: vi.fn(),
   };
 });
 

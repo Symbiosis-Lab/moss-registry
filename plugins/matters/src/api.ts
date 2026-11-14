@@ -30,6 +30,7 @@ import type {
   ViewerArticleCommentCountsResponse,
   UserArticleCommentCountsResponse,
   PutDraftInput,
+  EditArticleInput,
   PutDraftResponse,
   PutCollectionInput,
   PutCollectionResponse,
@@ -453,6 +454,7 @@ mutation PutDraft($input: PutDraftInput!) {
       id
       shortHash
       slug
+      state
     }
   }
 }
@@ -469,6 +471,7 @@ query GetDraft($id: ID!) {
         id
         shortHash
         slug
+        state
       }
     }
   }
@@ -507,7 +510,7 @@ export class MattersAuthError extends Error {
  * failure (no answer, a server error) leaves unknown whether it was.
  */
 export class MattersRefusal extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly code?: string) {
     super(message);
     this.name = "MattersRefusal";
   }
@@ -552,26 +555,37 @@ async function handleGraphqlResponse<T>(
     // non-JSON body (e.g. an HTML error page); fall through to status check
   }
 
+  const result = parsed as { errors?: GraphqlErrorShape[]; data: T } | null;
+  const partial = result?.data && Object.values(result.data as object).some((v) => v != null);
+  // Even an authentication error beside mutation data cannot prove nothing happened.
+  if (result?.errors?.length && partial) throw new Error(result.errors[0]?.message || "Partial GraphQL failure");
   if (authenticated) {
     const authCode = findAuthErrorCode(parsed);
-    if (authCode) {
+    if (authCode && result?.errors?.every((e) => e.extensions?.code && AUTH_ERROR_CODES.has(e.extensions.code))) {
       await markSessionInvalidated();
       throw new MattersAuthError(authCode, `Matters rejected the session (${authCode})`);
     }
   }
+  if (result?.errors?.length) {
+    const message = result.errors[0]?.message || "GraphQL error";
+    const code = result.errors[0]?.extensions?.code;
+    // Unknown resolver failures can happen AFTER a mutation took effect.
+    const refusalCodes = new Set([
+      "BAD_USER_INPUT", "FORBIDDEN", "FORBIDDEN_BY_STATE", "FORBIDDEN_BY_TARGET_STATE",
+      "DRAFT_NOT_FOUND", "ARTICLE_NOT_FOUND", "ARTICLE_INACTIVE", "ASSET_NOT_FOUND",
+      "ARTICLE_REVISION_REACH_LIMIT", "ACTION_LIMIT_EXCEEDED", "TOO_MANY_TAGS_FOR_ARTICLE",
+      "UNABLE_TO_UPLOAD_FROM_URL",
+    ]);
+    const refused = result.errors.every((e) => e.extensions?.code && refusalCodes.has(e.extensions.code));
+    throw refused ? new MattersRefusal(message, response.status, code) : new Error(message);
+  }
   if (!response.ok) {
     const failed = `GraphQL request failed (${response.status}): ${bodySnippet(text)}`;
-    throw response.status < 500 ? new MattersRefusal(failed, response.status) : new Error(failed);
+    // An HTTP status alone cannot establish whether a mutation took effect.
+    throw new Error(failed);
   }
-  const result = parsed as { errors?: GraphqlErrorShape[]; data: T } | null;
   if (!result) {
     throw new Error(`GraphQL request failed (${response.status}): non-JSON response: ${bodySnippet(text)}`);
-  }
-  if (result.errors && result.errors.length > 0) {
-    const message = result.errors[0]?.message || "GraphQL error";
-    // With data beside the errors, part of the request took effect.
-    const partial = result.data && Object.values(result.data as object).some((v) => v != null);
-    throw partial ? new Error(message) : new MattersRefusal(message, response.status);
   }
   return result.data;
 }
@@ -1299,6 +1313,7 @@ export async function uploadAssetMultipart(
   contentType: string,
   assetType: "embed" | "embedaudio" | "cover",
   entityId: string,
+  entityType: "draft" | "article" = "draft",
 ): Promise<{ id: string; path: string }> {
   const token = await authHeaderToken();
   if (!token) {
@@ -1307,7 +1322,7 @@ export async function uploadAssetMultipart(
 
   const operations = JSON.stringify({
     query: SINGLE_FILE_UPLOAD_MUTATION,
-    variables: { input: { type: assetType, entityType: "draft", entityId, file: null } },
+    variables: { input: { type: assetType, entityType, entityId, file: null } },
   });
   const map = JSON.stringify({ "0": ["variables.input.file"] });
 
@@ -1394,4 +1409,69 @@ export async function createCollection(input: PutCollectionInput): Promise<{ id:
 
   console.log(`   ✅ Collection created with ID: ${data.putCollection.id}`);
   return data.putCollection;
+}
+
+/** Public identity is the Article global ID, never its draft ID or short hash. */
+export interface PublishedArticle {
+  id: string;
+  shortHash: string;
+  slug: string;
+  state: string;
+}
+
+export type RemoteCopy =
+  | (PublishedArticle & { __typename: "Article" })
+  | { __typename: "Moment"; id: string; shortHash: string; state: string }
+  | (MattersDraftWithArticle & { __typename: "Draft" });
+
+export async function fetchRemoteCopy(id: string): Promise<RemoteCopy | null> {
+  const data = await graphqlQuery<{ node: RemoteCopy | null }>(`
+    query CopyNode($id: ID!) {
+      node(input: { id: $id }) {
+        __typename
+        ... on Article { id shortHash slug state }
+        ... on Moment { id shortHash state }
+        ... on Draft { id publishState article { id shortHash slug state } }
+      }
+    }`, { id });
+  if (!data || !("node" in data)) throw new Error("Matters did not confirm the copy lookup");
+  if (data.node !== null && (!data.node || !["Article", "Moment", "Draft"].includes(data.node.__typename))) {
+    throw new Error("Matters returned an unexpected copy type");
+  }
+  return data.node;
+}
+
+export async function publishArticle(id: string): Promise<MattersDraftWithArticle> {
+  const data = await graphqlQuery<{ publishArticle: MattersDraftWithArticle }>(`
+    mutation PublishArticle($input: PublishArticleInput!) {
+      publishArticle(input: $input) {
+        id publishState article { id shortHash slug state }
+      }
+    }`, { input: { id } });
+  return data.publishArticle;
+}
+
+export async function editArticle(input: EditArticleInput): Promise<PublishedArticle> {
+  const data = await graphqlQuery<{ editArticle: PublishedArticle }>(`
+    mutation EditArticle($input: EditArticleInput!) {
+      editArticle(input: $input) { id shortHash slug state }
+    }`, { input });
+  return data.editArticle;
+}
+
+export async function deleteMoment(id: string): Promise<{ id: string; state: string }> {
+  const data = await graphqlQuery<{ deleteMoment: { id: string; state: string } }>(`
+    mutation DeleteMoment($input: DeleteMomentInput!) {
+      deleteMoment(input: $input) { id state }
+    }`, { input: { id } });
+  return data.deleteMoment;
+}
+
+export async function uploadAssetByUrl(
+  url: string, type: "embed" | "cover", entityId: string, entityType: "draft" | "article" = "draft",
+): Promise<{ id: string; path: string }> {
+  const data = await graphqlQuery<{ singleFileUpload: { id: string; path: string } }>(
+    SINGLE_FILE_UPLOAD_MUTATION, { input: { url, type, entityId, entityType } },
+  );
+  return data.singleFileUpload;
 }

@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-matters",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Syndicate articles between local system and Matters.town",
   "main": "dist/main.bundle.js",
   "scripts": {
@@ -18,7 +18,8 @@
     "test:features": "vitest run --project features",
     "test:e2e": "vitest run --project e2e",
     "codegen": "graphql-codegen --config codegen.ts",
-    "codegen:watch": "graphql-codegen --config codegen.ts --watch"
+    "codegen:watch": "graphql-codegen --config codegen.ts --watch",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "moss",
@@ -44,7 +45,7 @@
     "@graphql-codegen/schema-ast": "^5.0.2",
     "@graphql-codegen/typescript": "^5.0.10",
     "@graphql-codegen/typescript-operations": "^5.1.0",
-    "@symbiosis-lab/moss-api": "^0.16.0",
+    "@symbiosis-lab/moss-api": "^0.18.0",
     "@tauri-apps/api": "^2.11.1",
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^3.2.7",

@@ -6,7 +6,6 @@
  *   - the account-keyed store slot, and the pending slot a first login uses
  *   - authHeaderToken: stored-token-only path (old getAccessToken(false))
  *   - captureLogin: cookie-capture login path (old getAccessToken(true))
- *   - prepareWebviewAuth: projects the stored token into the __access_token cookie
  *   - beginFreshLogin: clears stored token AND plugin cookies before fresh login
  *
  * The dead-token filter (expired exp, invalidatedAt-stamped) is session.test.ts's,
@@ -24,7 +23,6 @@ import * as keystore from "./helpers/secret-store-mock";
 
 const files = new Map<string, string>();
 
-const mockSetPluginCookie = vi.fn().mockResolvedValue(undefined);
 const mockClearPluginCookies = vi.fn().mockResolvedValue(undefined);
 const mockGetPluginCookie = vi.fn();
 const mockReadPluginFile = vi.fn<(path: string) => Promise<string>>();
@@ -36,7 +34,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   writePluginFile: (...a: [string, string]) => mockWritePluginFile(...a),
   pluginFileExists: (...a: [string]) => mockPluginFileExists(...a),
   getPluginCookie: (...a: unknown[]) => mockGetPluginCookie(...a),
-  setPluginCookie: (...a: unknown[]) => mockSetPluginCookie(...a),
   clearPluginCookies: (...a: unknown[]) => mockClearPluginCookies(...a),
   getSecret: (key: string) => keystore.getSecret(key),
   setSecret: (key: string, value: string) => keystore.setSecret(key, value),
@@ -45,7 +42,6 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
 import {
   authHeaderToken,
   captureLogin,
-  prepareWebviewAuth,
   beginFreshLogin,
   bindStoredToken,
   getSessionState,
@@ -82,7 +78,6 @@ beforeEach(() => {
   // must not leak that into the next one.
   vi.restoreAllMocks();
   files.clear();
-  mockSetPluginCookie.mockResolvedValue(undefined);
   mockClearPluginCookies.mockResolvedValue(undefined);
   mockReadPluginFile.mockImplementation(async (path) => {
     const content = files.get(path);
@@ -388,26 +383,6 @@ describe("captureLogin", () => {
 
     expect(await captureLogin()).toBe("stored-token");
     expect(mockGetPluginCookie).not.toHaveBeenCalled();
-  });
-});
-
-// ── prepareWebviewAuth ────────────────────────────────────────────────────────
-
-describe("prepareWebviewAuth", () => {
-  it("projects the stored token into the __access_token cookie", async () => {
-    bindFolderTo("alice");
-    keystore.secretStore.set("access_token:alice", "tok-α");
-
-    await prepareWebviewAuth();
-
-    expect(mockSetPluginCookie).toHaveBeenCalledWith([
-      { name: "__access_token", value: "tok-α" },
-    ]);
-  });
-
-  it("is a no-op when there is no usable token", async () => {
-    await prepareWebviewAuth();
-    expect(mockSetPluginCookie).not.toHaveBeenCalled();
   });
 });
 

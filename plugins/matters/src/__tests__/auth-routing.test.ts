@@ -97,7 +97,6 @@ vi.mock("../credential", () => ({
   markSessionInvalidated: vi.fn().mockResolvedValue(undefined),
   authHeaderToken: vi.fn(),
   captureLogin: (...args: unknown[]) => mockGetAccessToken(...args),
-  prepareWebviewAuth: vi.fn().mockResolvedValue(undefined),
   beginFreshLogin: vi.fn().mockResolvedValue(undefined),
 }));
 

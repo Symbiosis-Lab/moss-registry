@@ -1,8 +1,8 @@
 {
   "name": "matters",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "display_name": "Matters",
-  "description": "Post copies of your posts to Matters.town: short posts as moments, articles as drafts you publish there",
+  "description": "Publish copies of your posts to Matters.town: short posts as moments and long posts as articles",
   "author": "moss team",
   "min_moss_version": "0.15.19",
   "preview": true,
@@ -18,18 +18,15 @@
   ],
   "icon": "icon.svg",
   "config": {
-    "add_canonical_link": true,
     "sync_on_build": true
   },
   "config_schema": {
-    "add_canonical_link": "boolean",
     "sync_on_build": "boolean"
   },
   "config_labels": {
     "sync_on_build": "Auto-Import Posts"
   },
   "config_descriptions": {
-    "add_canonical_link": "Add a link back to your site when your posts are syndicated to Matters.",
     "sync_on_build": "Automatically check Matters.town for new posts and drafts each time your site rebuilds."
   },
   "contributes": {

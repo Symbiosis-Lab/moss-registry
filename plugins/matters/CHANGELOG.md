@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0]
+
+### Changed
+
+- Long copies publish directly and return the confirmed Article ID and URL. Interrupted publication remains recoverable without an original-site backlink.
+- Every image and cover must upload to Matters before publication; a failed picture refuses the copy. Formula images preserve their alt text. Legacy SVG, MathML and TeX carriers explicitly refuse until core supplies typeset images; ordinary inline code remains intact.
+- **BREAKING:** Removed `add_canonical_link` and plugin-added original links. Core owns `link_back` and its wording.
+
+### Added
+
+- `update_copy` revises the existing article and explains when the revision limit prevents further changes.
+- `delete_copy` deletes moments and archives articles, explaining that Matters retains the archive.
+
 ## 1.4.2
 
 ### Patch Changes

@@ -48,8 +48,6 @@ if (TEST_WALLET_KEY)
     let authResult: WalletAuthResult;
     let authenticatedQuery: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>;
     let articleData: DraftInput;
-    let canonicalUrl: string;
-    let addCanonicalLink: boolean;
     let createdDraft: Draft | null = null;
     let fetchedDraft: Draft | null = null;
 
@@ -101,47 +99,6 @@ if (TEST_WALLET_KEY)
       And("I should receive a draft ID", () => {
         expect(createdDraft!.id).toBeDefined();
         expect(createdDraft!.id.length).toBeGreaterThan(0);
-      });
-    });
-
-    Scenario("Draft includes canonical link", ({ Given, When, Then, And }) => {
-      Given('I have an article with canonical URL "https://my-site.com/test-article"', () => {
-        canonicalUrl = "https://my-site.com/test-article";
-        articleData = {
-          title: `Canonical Test - ${Date.now()}`,
-          content: "<p>Original article content.</p>",
-          tags: ["test"],
-        };
-      });
-
-      And("add_canonical_link is enabled", () => {
-        addCanonicalLink = true;
-      });
-
-      When("I create a draft on Matters", async () => {
-        // Build content with canonical link
-        const contentWithCanonical = addCanonicalLink
-          ? `${articleData.content}\n\n<hr/><p>Originally published at <a href="${canonicalUrl}">${canonicalUrl}</a></p>`
-          : articleData.content;
-
-        const response = await authenticatedQuery<PutDraftResponse>(PUT_DRAFT_MUTATION, {
-          input: {
-            title: articleData.title,
-            content: contentWithCanonical,
-            tags: articleData.tags,
-          },
-        });
-
-        createdDraft = response.putDraft;
-      });
-
-      Then("the draft content should contain the canonical URL", () => {
-        expect(createdDraft).not.toBeNull();
-        expect(createdDraft!.content).toContain(canonicalUrl);
-      });
-
-      And("it should be formatted as a link at the end", () => {
-        expect(createdDraft!.content).toContain(`href="${canonicalUrl}"`);
       });
     });
 
