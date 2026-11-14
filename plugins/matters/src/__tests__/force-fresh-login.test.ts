@@ -7,7 +7,6 @@
  *        which is proven by credential.test.ts)
  *   (b) re-binds boundUserName/userName to the freshly-authenticated account
  *       via affirmBindingFromProfile() on success
- *   (c) prepareWebviewAuth() is called BEFORE the draft-room openBrowser()
  *
  * Mirror of auth-routing.test.ts mock harness — same factory structure, same
  * hoisted helpers, same full mock set needed to drive process() end-to-end.
@@ -43,7 +42,6 @@ const mockTaskAwaiting = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 // Hoisted credential mock spies so tests can inspect invocationCallOrder.
 const mockBeginFreshLogin = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-const mockPrepareWebviewAuth = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockOpenBrowserHoisted = vi.hoisted(() => vi.fn().mockResolvedValue({ closed: new Promise<void>(() => {}) }));
 
 vi.mock("@symbiosis-lab/moss-api", () => ({
@@ -84,7 +82,6 @@ vi.mock("../credential", () => ({
   markSessionInvalidated: vi.fn().mockResolvedValue(undefined),
   authHeaderToken: vi.fn(),
   captureLogin: (...args: unknown[]) => mockGetAccessToken(...args),
-  prepareWebviewAuth: (...args: unknown[]) => mockPrepareWebviewAuth(...args),
   beginFreshLogin: (...args: unknown[]) => mockBeginFreshLogin(...args),
 }));
 
@@ -159,7 +156,7 @@ vi.mock("../social", () => ({
   reconcileLegacySocialData: vi.fn().mockResolvedValue(false),
 }));
 
-import { process as processHook } from "../main";
+import { process as processHook, login } from "../main";
 
 // ============================================================================
 // Fixtures
@@ -173,9 +170,7 @@ beforeEach(() => {
   mockTaskAwaiting.mockResolvedValue(undefined);
   // Restore hoisted openBrowser after clearAllMocks
   mockOpenBrowserHoisted.mockResolvedValue({ closed: new Promise<void>(() => {}) });
-  // Default: beginFreshLogin + prepareWebviewAuth no-op
   mockBeginFreshLogin.mockResolvedValue(undefined);
-  mockPrepareWebviewAuth.mockResolvedValue(undefined);
 });
 
 // ============================================================================
@@ -183,6 +178,17 @@ beforeEach(() => {
 // ============================================================================
 
 describe("force-fresh login", () => {
+  it("standalone successful login closes the browser exactly once", async () => {
+    mockGetConfig.mockResolvedValue({ userName: "alice" });
+    mockGetAccessToken.mockResolvedValueOnce(null).mockResolvedValue("fresh-token");
+    mockFetchUserProfile.mockResolvedValue({ userName: "alice", displayName: "Alice" });
+
+    expect(await login({ trigger: "settings_manual" } as never)).toMatchObject({ success: true, message: "Connected to Matters" });
+    expect(mockOpenBrowserHoisted).toHaveBeenCalledExactlyOnceWith("https://matters.town/login");
+    expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
+    expect(mockCloseBrowser.mock.invocationCallOrder[0]).toBeGreaterThan(mockOpenBrowserHoisted.mock.invocationCallOrder[0]);
+  });
+
   it("calls beginFreshLogin BEFORE opening the login browser", async () => {
     // Unbound fresh folder — will reach promptLogin() via the binding-guard path.
     mockGetConfig.mockResolvedValue({});

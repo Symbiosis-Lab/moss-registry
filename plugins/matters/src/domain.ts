@@ -128,13 +128,6 @@ export function loginUrl(): string {
   return `https://${currentDomain}/login`;
 }
 
-/**
- * Get the draft editor URL
- */
-export function draftUrl(draftId: string): string {
-  return `https://${currentDomain}/me/drafts/${draftId}`;
-}
-
 /** A moment's page. */
 export function momentUrl(shortHash: string): string {
   return `https://${currentDomain}/m/${shortHash}`;

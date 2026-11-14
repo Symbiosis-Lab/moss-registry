@@ -14,13 +14,6 @@ Feature: Create Draft on Matters
     And the draft should have publishState "unpublished"
     And I should receive a draft ID
 
-  Scenario: Draft includes canonical link
-    Given I have an article with canonical URL "https://my-site.com/test-article"
-    And add_canonical_link is enabled
-    When I create a draft on Matters
-    Then the draft content should contain the canonical URL
-    And it should be formatted as a link at the end
-
   Scenario: Fetch draft by ID
     Given I have created a draft on Matters
     When I fetch the draft by ID
