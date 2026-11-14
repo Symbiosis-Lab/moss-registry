@@ -20,7 +20,7 @@ const { webkit, chromium } = createRequire(process.env.PLAYWRIGHT_FROM)("playwri
 const article = {
   title: "On rivers",
   html: `<h1>On rivers</h1><h2>Source</h2><p>A <a href="https://example.org/p/">link</a> and <strong>bold</strong>.</p>` +
-    `<img src="https://example.org/pic.png" alt="pic"><img src="x:" onerror="parent.hit=1;window.hit=1"><script>window.hit = 1; parent.hit = 1;</script><meta http-equiv="refresh" content="0;url=https://elsewhere.test/"><base href="https://elsewhere.test/">`,
+    `<img src="https://example.org/pic.png" alt="pic"><img src="x:" onerror="parent.hit=1;window.hit=1"><script>window.hit = 1; parent.hit = 1;</script><style>p { color: red }</style><meta http-equiv="refresh" content="0;url=https://elsewhere.test/"><base href="https://elsewhere.test/">`,
 };
 
 for (const [name, engine] of [["webkit", webkit], ["chromium", chromium]]) {
@@ -50,7 +50,7 @@ for (const [name, engine] of [["webkit", webkit], ["chromium", chromium]]) {
     assert.match(pasted.html, /<h2>Source<\/h2>/, `${name}: headings`);
     assert.match(pasted.html, /href="https:\/\/example\.org\/p\/"/, `${name}: links`);
     assert.match(pasted.html, /src="https:\/\/example\.org\/pic\.png"/, `${name}: pictures by address`);
-    assert.doesNotMatch(pasted.html, /<meta|<base/, `${name}: nothing that sends the frame elsewhere`);
+    assert.doesNotMatch(pasted.html, /<meta|<base|<script|<style/, `${name}: nothing that sends the frame elsewhere, and no code`);
     assert.doesNotMatch(pasted.html, /<h1/, `${name}: the title is left for the editor's own field`);
     assert.match(pasted.text, /^Source\n\nA link and bold\.$/, `${name}: plain text beside it, a paragraph per block`);
     // A copy the engine refuses is said on the button, and no editor opens.

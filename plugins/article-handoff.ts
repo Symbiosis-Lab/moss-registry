@@ -97,8 +97,8 @@ export function handoffPage(article: Article, editor: Editor): string {
 (function () {
   var data = ${data};
   var body = new DOMParser().parseFromString(data.html, "text/html").body;
-  // Nothing an article needs, and each can send the frame elsewhere.
-  body.querySelectorAll("meta, base, link").forEach(function (e) { e.remove(); });
+  // Not the article's words: these send the frame elsewhere, or are code that would be pasted as text.
+  body.querySelectorAll("meta, base, link, script, style").forEach(function (e) { e.remove(); });
   // The editor has its own title field.
   var first = body.firstElementChild;
   if (first && first.tagName === "H1" && first.textContent.trim() === data.title.trim()) first.remove();
