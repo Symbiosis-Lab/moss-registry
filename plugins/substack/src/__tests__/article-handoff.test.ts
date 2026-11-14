@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COPIED, handOffArticle, handoffPage, type PanelApi } from "../../../article-handoff";
+import { COPIED, handOffArticle, handoffPage, openAndWait, type PanelApi } from "../../../article-handoff";
 
 const editor = { name: "Substack", url: "https://rivers.substack.com/publish/post" };
 
@@ -30,23 +30,27 @@ describe("handOffArticle", () => {
       openBrowserWithHtml: async () => { log.push("page"); },
       openBrowser: async (url) => { log.push(`open ${url}`); return { closed: new Promise<void>((resolve) => (close = resolve)) }; },
       onEvent: async (name, handler) => { on[name] = handler as () => void; return () => { log.push(`stop ${name}`); }; },
+      startTask: async () => ({ awaiting: async (directive, venue) => { log.push(`awaiting ${directive} in ${venue}`); }, succeeded: async () => { log.push("waited"); } }),
     };
     return { api, log, on, close: () => close() };
   }
 
-  it("opens the editor only after the copy, and ends when the panel closes", async () => {
+  const waiting = "awaiting paste and publish the article in Substack";
+
+  it("tells moss it waits for the author from the page to the close, and opens the editor only after the copy", async () => {
     const f = fake();
     let done = false;
     const run = handOffArticle(f.api, { title: "T", html: "<p>x</p>" }, editor).then(() => { done = true; });
     await new Promise((r) => setTimeout(r, 5));
-    expect(f.log).toEqual(["page"]);
+    expect(f.log).toEqual(["page", waiting]);
     f.on[COPIED]();
     await new Promise((r) => setTimeout(r, 5));
-    expect(f.log).toEqual(["page", `open ${editor.url}`]);
+    expect(f.log).toEqual(["page", waiting, `open ${editor.url}`]);
     expect(done).toBe(false);
     f.close();
     await run;
-    expect(f.log.slice(2).sort()).toEqual([`stop ${COPIED}`, "stop browser-closed"]);
+    expect(f.log[3]).toBe("waited");
+    expect(f.log.slice(4).sort()).toEqual([`stop ${COPIED}`, "stop browser-closed"]);
   });
 
   it("ends without opening the editor when the panel closes first", async () => {
@@ -55,7 +59,7 @@ describe("handOffArticle", () => {
     await new Promise((r) => setTimeout(r, 5));
     f.on["browser-closed"]();
     await run;
-    expect(f.log.filter((l) => l.startsWith("open"))).toEqual([]);
+    expect(f.log.slice(0, 3)).toEqual(["page", waiting, "waited"]);
   });
 
   it("takes a close heard before its page is up as the panel before it", async () => {
@@ -68,9 +72,19 @@ describe("handOffArticle", () => {
     expect(done).toBe(false);
     f.on[COPIED]();
     await new Promise((r) => setTimeout(r, 5));
-    expect(f.log).toEqual(["page", `open ${editor.url}`]);
+    expect(f.log).toEqual(["page", waiting, `open ${editor.url}`]);
     f.close();
     await run;
+  });
+
+  it("ends the wait when the editor cannot open", async () => {
+    const f = fake();
+    f.api.openBrowser = async () => { throw new Error("no editor"); };
+    const run = handOffArticle(f.api, { title: "T", html: "<p>x</p>" }, editor);
+    await new Promise((r) => setTimeout(r, 5));
+    f.on[COPIED]();
+    await expect(run).rejects.toThrow("no editor");
+    expect(f.log.slice(0, 3)).toEqual(["page", waiting, "waited"]);
   });
 
   it("stops listening when it cannot start", async () => {
@@ -79,5 +93,26 @@ describe("handOffArticle", () => {
     f.api.onEvent = async (name, handler) => { if (name === "browser-closed") throw new Error("no events"); return on(name, handler); };
     await expect(handOffArticle(f.api, { title: "T", html: "" }, editor)).rejects.toThrow("no events");
     expect(f.log).toEqual([`stop ${COPIED}`]);
+  });
+});
+
+describe("openAndWait", () => {
+  it("tells moss it waits for the author while the page is open, and not when there is no panel", async () => {
+    const log: string[] = [];
+    let close!: () => void;
+    const api = {
+      openBrowser: async (url: string) => { log.push(`open ${url}`); return { closed: new Promise<void>((resolve) => (close = resolve)) }; },
+      startTask: async () => ({ awaiting: async (directive: string, venue: string) => { log.push(`awaiting ${directive} in ${venue}`); }, succeeded: async () => { log.push("waited"); } }),
+    };
+    const run = openAndWait(api, "post", "X", "https://x.test/");
+    await new Promise((r) => setTimeout(r, 5));
+    expect(log).toEqual(["open https://x.test/", "awaiting post in X"]);
+    close();
+    await run;
+    expect(log[2]).toBe("waited");
+
+    log.length = 0;
+    await expect(openAndWait({ ...api, openBrowser: async () => { throw new Error("no app"); } }, "post", "X", "https://x.test/")).rejects.toThrow("no app");
+    expect(log).toEqual([]);
   });
 });

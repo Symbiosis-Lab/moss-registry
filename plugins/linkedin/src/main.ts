@@ -4,7 +4,7 @@
  * post on the author's own member profile through LinkedIn's Posts API.
  */
 
-import { getSecret, onEvent, openBrowser, openBrowserWithHtml } from "@symbiosis-lab/moss-api";
+import { getSecret, onEvent, openBrowser, openBrowserWithHtml, startTask } from "@symbiosis-lab/moss-api";
 import { listedByAddress, refusedContent, writeArticle, type Article } from "../../article-handoff";
 
 export interface Part {
@@ -127,7 +127,7 @@ function refused(e: unknown): CopyResult {
 const ARTICLES = { name: "LinkedIn", url: "https://www.linkedin.com/article/new/" };
 
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
-  if (job.form === "long") return writeArticle({ openBrowser, openBrowserWithHtml, onEvent }, job.article, ARTICLES);
+  if (job.form === "long") return writeArticle({ openBrowser, openBrowserWithHtml, onEvent, startTask }, job.article, ARTICLES);
   let a: Account;
   let author: string;
   try {

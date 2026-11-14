@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
-const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[], closed: Promise.resolve({ type: "user" }), app: true };
+const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[], closed: Promise.resolve({ type: "user" }), app: true, waits: [] as string[] };
 vi.mock("@symbiosis-lab/moss-api", () => ({
   getSecret: vi.fn(async (k: string) => secrets[k] ?? null),
   openBrowser: vi.fn(async (url: string) => {
@@ -12,6 +12,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
   }),
   openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
   onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
+  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {} })),
 }));
 
 import { copy_account, delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
@@ -103,7 +104,7 @@ const thread = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text
 beforeEach(() => {
   vi.unstubAllGlobals();
   Object.assign(secrets, CREDS);
-  Object.assign(panel, { pages: [], on: {}, opened: [], closed: Promise.resolve({ type: "user" }), app: true });
+  Object.assign(panel, { pages: [], on: {}, opened: [], closed: Promise.resolve({ type: "user" }), app: true, waits: [] });
 });
 
 describe("publish_copy without API keys", () => {
@@ -119,6 +120,7 @@ describe("publish_copy without API keys", () => {
     const sent = publish_copy(job()).then((r) => { settled = true; return r; });
     await new Promise((r) => setTimeout(r, 10));
     expect(panel.opened).toEqual([composer("Autumn's first hotpot https://example.org/river")]);
+    expect(panel.waits).toEqual(["post in X"]);
     expect(settled).toBe(false);
     close();
     expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: composer("Autumn's first hotpot https://example.org/river") } } });
@@ -333,6 +335,7 @@ describe("an article", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(panel.pages).toHaveLength(1);
     expect(panel.pages[0]).toContain("Copy and open X");
+    expect(panel.waits).toEqual(["paste and publish the article in X"]);
     expect(panel.opened).toEqual([]);
     panel.on["article-handoff:copied"]();
     expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: editor } } });

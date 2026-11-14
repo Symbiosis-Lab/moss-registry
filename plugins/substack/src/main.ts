@@ -6,7 +6,7 @@
  * link back to the original.
  */
 
-import { onEvent, openBrowser, openBrowserWithHtml } from "@symbiosis-lab/moss-api";
+import { onEvent, openBrowser, openBrowserWithHtml, startTask } from "@symbiosis-lab/moss-api";
 import { handoffResult, writeArticle, type Article } from "../../article-handoff";
 
 export interface CopyJob {
@@ -45,7 +45,7 @@ function editor(job: CopyJob): string | CopyResult {
 
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   const url = editor(job);
-  return typeof url === "string" ? writeArticle({ openBrowser, openBrowserWithHtml, onEvent }, job.article, { name: "Substack", url }) : url;
+  return typeof url === "string" ? writeArticle({ openBrowser, openBrowserWithHtml, onEvent, startTask }, job.article, { name: "Substack", url }) : url;
 }
 
 const decode = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&");

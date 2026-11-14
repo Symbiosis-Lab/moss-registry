@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[] };
+const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[], waits: [] as string[] };
 vi.mock("@symbiosis-lab/moss-api", () => ({
   openBrowser: vi.fn(async (url: string) => { panel.opened.push(url); return { closed: Promise.resolve() }; }),
   openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
   onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
+  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {} })),
 }));
 
 import { find_copy, publish_copy, type CopyJob } from "../main";
@@ -22,7 +23,7 @@ const serve = (status: number, body = "") => vi.stubGlobal("fetch", vi.fn(async 
 
 beforeEach(() => {
   vi.unstubAllGlobals();
-  Object.assign(panel, { pages: [], on: {}, opened: [] });
+  Object.assign(panel, { pages: [], on: {}, opened: [], waits: [] });
 });
 
 describe("publish_copy", () => {
@@ -30,6 +31,7 @@ describe("publish_copy", () => {
     const sent = publish_copy(job());
     await new Promise((r) => setTimeout(r, 10));
     expect(panel.pages[0]).toContain("Copy and open Substack");
+    expect(panel.waits).toEqual(["paste and publish the article in Substack"]);
     expect(panel.opened).toEqual([]);
     panel.on["article-handoff:copied"]();
     expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: `${HOME}/publish/post` } } });

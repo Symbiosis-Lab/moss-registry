@@ -6,8 +6,8 @@
  * X's own editor.
  */
 
-import { getSecret, onEvent, openBrowser, openBrowserWithHtml } from "@symbiosis-lab/moss-api";
-import { handoffResult, listedByAddress, openAndWait, refusedContent, writeArticle, type Article } from "../../article-handoff";
+import { getSecret, onEvent, openBrowser, openBrowserWithHtml, startTask } from "@symbiosis-lab/moss-api";
+import { handoffResult, ifPanel, listedByAddress, openAndWait, refusedContent, writeArticle, type Article } from "../../article-handoff";
 import { authorization, type Credentials } from "./oauth1";
 
 export interface Part {
@@ -129,18 +129,14 @@ async function compose(job: CopyJob): Promise<CopyResult> {
   const [first, ...rest] = job.parts ?? [];
   if (!first) return refusedContent("the copy has no text");
   const open_url = `${COMPOSER}?text=${encodeURIComponent(first.text)}`;
-  try {
-    await openAndWait({ openBrowser }, open_url);
-  } catch {
-    // Without the app there is no panel; the address alone opens the composer.
-  }
+  await ifPanel("X", openAndWait({ openBrowser, startTask }, "post", "X", open_url));
   return { success: true, copy: { handoff: { text: rest.map((p) => p.text).join("\n\n"), open_url } } };
 }
 
 const ARTICLES = { name: "X", url: "https://x.com/compose/articles" };
 
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
-  if (job.form === "long") return writeArticle({ openBrowser, openBrowserWithHtml, onEvent }, job.article, ARTICLES);
+  if (job.form === "long") return writeArticle({ openBrowser, openBrowserWithHtml, onEvent, startTask }, job.article, ARTICLES);
   if ((await Promise.all(KEYS.map(getSecret))).every((k) => !k)) return compose(job);
   let a: Account;
   try {

@@ -4,6 +4,7 @@
 
 - Long pages can go to X as Articles. Turn on Articles in the channel's settings (X has them for paid accounts): moss shows the article with a button that copies it and opens X's article editor in the panel; paste, check and publish there, then list the article's address under `syndicated:`. With Articles off, a long page is still sent as its opening with a link.
 - A copy listed by its address under `syndicated:` is removed on X itself: moss says so, where it used to report it removed.
+- X's composer stays open until you close it, and the next channel's page waits for it.
 - Needs moss 0.15.25.
 
 ## 0.2.1

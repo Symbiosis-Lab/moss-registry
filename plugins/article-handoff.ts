@@ -41,6 +41,24 @@ export interface PanelApi {
   openBrowser(url: string): Promise<{ closed: Promise<unknown> }>;
   openBrowserWithHtml(html: string): Promise<void>;
   onEvent<T>(name: string, handler: (payload: T) => void): Promise<() => void>;
+  startTask(
+    label: string,
+    options: { hook: "syndicate"; trigger: "manual_one"; hasProgress: false; cancellable: false },
+  ): Promise<{ awaiting(directive: string, venue: string): Promise<void>; succeeded(): Promise<void> }>;
+}
+
+/**
+ * Waits while the author works in the panel. moss stops a hook that has said
+ * nothing for a minute, unless it has said it is waiting for a person.
+ */
+async function whileAuthor(api: Pick<PanelApi, "startTask">, does: string, network: string, work: () => Promise<unknown>): Promise<void> {
+  const task = await api.startTask(`Publish on ${network}`, { hook: "syndicate", trigger: "manual_one", hasProgress: false, cancellable: false });
+  try {
+    await task.awaiting(does, network);
+    await work();
+  } finally {
+    await task.succeeded();
+  }
 }
 
 /** The page tells the plugin the article is on the clipboard. */
@@ -128,7 +146,7 @@ export async function handOffArticle(api: PanelApi, article: Article, editor: Ed
     stops.push(await api.onEvent("browser-closed", () => shown && settle(false)));
     await api.openBrowserWithHtml(handoffPage(article, editor));
     shown = true;
-    if (await copied) await openAndWait(api, editor.url);
+    await whileAuthor(api, "paste and publish the article", editor.name, async () => (await copied) && (await api.openBrowser(editor.url)).closed);
   } finally {
     for (const stop of stops) stop();
   }
@@ -141,15 +159,23 @@ export async function handOffArticle(api: PanelApi, article: Article, editor: Ed
  */
 export async function writeArticle(api: PanelApi, article: Article | null | undefined, editor: Editor): Promise<HandoffResult> {
   if (!article) return refusedContent("the copy has no article");
-  try {
-    await handOffArticle(api, article, editor);
-  } catch {
-    // Without the app there is no panel; the editor's address is the hand-off.
-  }
+  await ifPanel(editor.name, handOffArticle(api, article, editor));
   return handoffResult(editor.url);
 }
 
-/** One panel at a time: the next copy waits for this one to close. */
-export async function openAndWait(api: Pick<PanelApi, "openBrowser">, url: string): Promise<void> {
-  await (await api.openBrowser(url)).closed;
+/**
+ * One panel at a time: the next copy waits for this one to close. The panel
+ * opens first, so a run without the app starts no task.
+ */
+export async function openAndWait(api: Pick<PanelApi, "openBrowser" | "startTask">, does: string, network: string, url: string): Promise<void> {
+  const { closed } = await api.openBrowser(url);
+  await whileAuthor(api, does, network, () => closed);
+}
+
+/**
+ * Without the app there is no panel, and the address is the hand-off.
+ * moss-api cannot tell that from a panel failing in the app, so log it.
+ */
+export async function ifPanel(network: string, shown: Promise<void>): Promise<void> {
+  await shown.catch((e) => console.warn(`${network}: not shown in the panel: ${e instanceof Error ? e.message : e}`));
 }

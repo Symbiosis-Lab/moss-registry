@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
-const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[] };
+const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[], waits: [] as string[] };
 vi.mock("@symbiosis-lab/moss-api", () => ({
   getSecret: vi.fn(async (k: string) => secrets[k] ?? null),
   openBrowser: vi.fn(async (url: string) => { panel.opened.push(url); return { closed: Promise.resolve() }; }),
   openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
   onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
+  startTask: vi.fn(async () => ({ awaiting: async (directive: string, venue: string) => { panel.waits.push(`${directive} in ${venue}`); }, succeeded: async () => {} })),
 }));
 
 import { delete_copy, littleText, publish_copy, update_copy, type CopyJob } from "../main";
@@ -89,7 +90,7 @@ function job(over: Partial<CopyJob> = {}): CopyJob {
 beforeEach(() => {
   vi.unstubAllGlobals();
   secrets.access_token = "token";
-  Object.assign(panel, { pages: [], on: {}, opened: [] });
+  Object.assign(panel, { pages: [], on: {}, opened: [], waits: [] });
 });
 
 describe("littleText", () => {
@@ -191,6 +192,7 @@ describe("an article", () => {
     const sent = publish_copy(job({ form: "long", parts: [], article: { title: "On rivers", html: "<p>Long.</p>" } }));
     await new Promise((r) => setTimeout(r, 10));
     expect(panel.pages[0]).toContain("Copy and open LinkedIn");
+    expect(panel.waits).toEqual(["paste and publish the article in LinkedIn"]);
     panel.on["article-handoff:copied"]();
     const editor = "https://www.linkedin.com/article/new/";
     expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: editor } } });
