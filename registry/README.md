@@ -86,12 +86,12 @@ Two consequences worth knowing:
 
 The rule, so the field list is never re-debated: **the index re-emits every
 manifest field that drives pre-install catalog presentation.** Post-install
-fields (`config_schema`, `contributes`, `domain`, `domains`, `entry`,
-`config_verify`) stay out — once the plugin is installed, its own manifest is
+fields (`config_schema`, what each `contributes` entry holds, `domain`,
+`domains`, `entry`, `config_verify`) stay out — once the plugin is installed, its own manifest is
 authoritative for those.
 
 Two optional booleans, both omitted when false so older entries serialize
-unchanged, and one optional list:
+unchanged, and two optional lists:
 
 - **`preview`** — the publisher says this version is not ready to be offered
   by default. This is *presentation, never a safety mechanism*: safety is
@@ -104,3 +104,4 @@ unchanged, and one optional list:
 - **`requires_stack`** — first install pulls a machine-wide companion runtime;
   clients use it to show a download-consent surface before install.
 - **`platforms`** — present only on a plugin that is a program moss downloads (no `entry`, `contributes.derivations` with downloaded artifacts): the sorted, unique `platform` values of those artifacts, such as `["darwin-arm64"]`. A client can hide the plugin on a machine it has no program for. It is omitted for a JavaScript plugin, so those entries are unchanged. The index builder only emits it after checking that every artifact URL in the manifest is an asset of the same release and that the bytes match the manifest's sha256; a mismatch fails the run (like a manifest that disagrees with its tag) instead of listing a plugin that would fail at first use.
+- **`contributes`** — the names of the kinds the manifest's `contributes` declares, sorted, such as `["channel", "jobs"]`, and nothing of what each holds. A client uses it to offer a plugin in the right place before it is installed: a channel where channels are added, a host where hosts are. It is omitted when the manifest contributes nothing. It is a claim about the artifact; once the plugin is installed its own manifest decides.

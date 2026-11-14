@@ -153,10 +153,18 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   //
   // The rule for what belongs here: re-emit every manifest field that drives
   // PRE-INSTALL catalog presentation. Post-install fields (config_schema,
-  // contributes, domain, domains, entry, config_verify) stay out — the
-  // installed manifest is authoritative for those.
+  // the bodies of contributes, domain, domains, entry, config_verify) stay
+  // out — the installed manifest is authoritative for those.
   if (manifest.preview === true) entry.preview = true;
   if (manifest.requires_stack === true) entry.requires_stack = true;
+
+  // Which kinds of thing the plugin contributes, by name only: a client
+  // offers a channel where channels are added and a host where hosts are, and
+  // has to know which this is before anything is installed. `capabilities`
+  // cannot say it: manifests declare `contributes` instead and leave that
+  // list out.
+  const kinds = Object.keys(manifest.contributes ?? {}).sort();
+  if (kinds.length) entry.contributes = kinds;
 
   return entry;
 }
