@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
-vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async (k: string) => secrets[k] ?? null) }));
+const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[] };
+vi.mock("@symbiosis-lab/moss-api", () => ({
+  getSecret: vi.fn(async (k: string) => secrets[k] ?? null),
+  openBrowser: vi.fn(async (url: string) => { panel.opened.push(url); return { closed: Promise.resolve() }; }),
+  openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
+  onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
+}));
 
 import { delete_copy, littleText, publish_copy, update_copy, type CopyJob } from "../main";
 
@@ -83,6 +89,7 @@ function job(over: Partial<CopyJob> = {}): CopyJob {
 beforeEach(() => {
   vi.unstubAllGlobals();
   secrets.access_token = "token";
+  Object.assign(panel, { pages: [], on: {}, opened: [] });
 });
 
 describe("littleText", () => {
@@ -175,5 +182,39 @@ describe("delete_copy", () => {
     const li = fakeLinkedin();
     expect((await delete_copy(job({ op: "delete", previous: null }))).success).toBe(true);
     expect(li.calls.filter((c) => c.startsWith("DELETE"))).toEqual([]);
+  });
+});
+
+describe("an article", () => {
+  it("is shown to copy, then LinkedIn's article editor opens; the API is not called", async () => {
+    const li = fakeLinkedin();
+    const sent = publish_copy(job({ form: "long", parts: [], article: { title: "On rivers", html: "<p>Long.</p>" } }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(panel.pages[0]).toContain("Copy and open LinkedIn");
+    panel.on["article-handoff:copied"]();
+    const editor = "https://www.linkedin.com/article/new/";
+    expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: editor } } });
+    expect(panel.opened).toEqual([editor]);
+    expect(li.calls).toEqual([]);
+  });
+
+  it("is refused when the job carries none, and no empty post is made in its place", async () => {
+    const li = fakeLinkedin();
+    const r = await publish_copy(job({ form: "long", parts: [], article: null }));
+    expect(r.copy?.refused?.cause).toBe("content");
+    expect(panel.pages).toEqual([]);
+    expect(li.calls).toEqual([]);
+  });
+
+  it("listed by its address is edited and removed on LinkedIn, not through the API", async () => {
+    const li = fakeLinkedin();
+    const listed = "https://www.linkedin.com/pulse/on-rivers-alex-abc123/";
+    const previous = { id: listed, url: listed, parts: [] };
+    const removed = await delete_copy(job({ op: "delete", previous }));
+    expect(removed.success).toBe(false);
+    expect(removed.copy?.refused).toEqual({ cause: "content", message: `remove it on LinkedIn: ${listed}` });
+    const edited = await update_copy(job({ op: "update", previous }));
+    expect(edited.copy?.refused).toEqual({ cause: "content", message: `edit it on LinkedIn: ${listed}` });
+    expect(li.calls).toEqual([]);
   });
 });

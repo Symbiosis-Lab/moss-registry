@@ -2,10 +2,12 @@
  * X channel: posts one copy per call, as moss's syndication contract asks.
  * moss decides what is due and shapes the text. With no API keys, X's own
  * composer opens prefilled and the author presses Post; with them, this posts
- * through X's v2 API, signed with OAuth 1.0a.
+ * through X's v2 API, signed with OAuth 1.0a. An article always goes through
+ * X's own editor.
  */
 
-import { getSecret, openBrowser } from "@symbiosis-lab/moss-api";
+import { getSecret, onEvent, openBrowser, openBrowserWithHtml } from "@symbiosis-lab/moss-api";
+import { handoffResult, listedByAddress, openAndWait, refusedContent, writeArticle, type Article } from "../../article-handoff";
 import { authorization, type Credentials } from "./oauth1";
 
 export interface Part {
@@ -18,8 +20,9 @@ export interface CopyJob {
   channel: string;
   idempotency_key: string;
   post: { url: string; source_path: string; title: string; lang?: string | null; date?: string | null };
-  form?: "short" | "thread" | "teaser";
+  form?: "short" | "thread" | "teaser" | "long";
   parts?: Part[];
+  article?: Article | null;
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
   previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
@@ -124,18 +127,20 @@ const COMPOSER = "https://x.com/intent/post";
  */
 async function compose(job: CopyJob): Promise<CopyResult> {
   const [first, ...rest] = job.parts ?? [];
-  if (!first) return { success: false, message: "the copy has no text", copy: { refused: { cause: "content", message: "the copy has no text" } } };
+  if (!first) return refusedContent("the copy has no text");
   const open_url = `${COMPOSER}?text=${encodeURIComponent(first.text)}`;
   try {
-    // One composer at a time: the next copy waits for this panel to close.
-    await (await openBrowser(open_url)).closed;
+    await openAndWait({ openBrowser }, open_url);
   } catch {
     // Without the app there is no panel; the address alone opens the composer.
   }
   return { success: true, copy: { handoff: { text: rest.map((p) => p.text).join("\n\n"), open_url } } };
 }
 
+const ARTICLES = { name: "X", url: "https://x.com/compose/articles" };
+
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
+  if (job.form === "long") return writeArticle({ openBrowser, openBrowserWithHtml, onEvent }, job.article, ARTICLES);
   if ((await Promise.all(KEYS.map(getSecret))).every((k) => !k)) return compose(job);
   let a: Account;
   try {
@@ -194,12 +199,16 @@ const unsure = (why: string): CopyResult => ({
  * to the part before. Each look-up is two billed reads.
  */
 export async function find_copy(job: CopyJob): Promise<CopyResult> {
+  // An article is found only by its address under syndicated:.
+  if (job.form === "long") return handoffResult(ARTICLES.url);
+  // A copy whose text no longer fits the channel has nothing to be recognised by.
+  const parts = job.parts ?? [];
+  if (!parts.length) return { success: false, message: "the copy's text is no longer known, so it cannot be looked up" };
   try {
     const a = await account(job);
     const me = (await call(a, "GET", "/2/users/me")).data;
     const latest: Post[] = (await call(a, "GET", `/2/users/${me.id}/tweets?max_results=20&tweet.fields=referenced_tweets,entities`)).data ?? [];
     const repliesTo = (p: Post) => p.referenced_tweets?.find((r) => r.type === "replied_to")?.id;
-    const parts = job.parts ?? [];
     const chain: string[] = [];
     for (const part of parts) {
       const matches = latest.filter((p) => same(sentText(p), part.text) && repliesTo(p) === chain[chain.length - 1]);
@@ -220,6 +229,7 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const previous = job.previous;
     if (!previous) return { success: true };
+    if (listedByAddress(previous)) return refusedContent(`remove it on X: ${previous.url}`);
     const a = await account(job);
     for (const id of [...(previous.parts ?? []).map((p) => p.id).reverse(), previous.id]) {
       try {

@@ -66,7 +66,7 @@ index, install, update, revoke — and none of it cares which kind is moving.
 
 ## Syndication channels
 
-[Bluesky](plugins/bluesky/README.md), [Mastodon](plugins/mastodon/README.md), [LinkedIn](plugins/linkedin/README.md), [X](plugins/xcom/README.md) and [Threads](plugins/threads/README.md) post copies of site content through moss’s syndication contract. Threads is a preview with manual token renewal; its README records the live API and host redirect checks still needed. The [syndication harness](harness/syndication/README.md) checks these channels locally. Catalog entries are generated from published release manifests, so a source plugin gets no hand-written index entry.
+[Bluesky](plugins/bluesky/README.md), [Mastodon](plugins/mastodon/README.md), [LinkedIn](plugins/linkedin/README.md), [X](plugins/xcom/README.md) and [Threads](plugins/threads/README.md) post copies of site content through moss’s syndication contract. Threads is a preview with manual token renewal; its README records the live API and host redirect checks still needed. [Substack](plugins/substack/README.md) has no posting API, so it hands each article to Substack's own editor. The [syndication harness](harness/syndication/README.md) checks these channels locally. Catalog entries are generated from published release manifests, so a source plugin gets no hand-written index entry.
 
 ## Starters
 

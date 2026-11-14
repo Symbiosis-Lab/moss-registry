@@ -1,10 +1,10 @@
 {
   "name": "linkedin",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "display_name": "LinkedIn",
   "description": "Post a copy of each new post to your LinkedIn profile, linked back to your site",
   "author": "Symbiosis Lab",
-  "min_moss_version": "0.15.19",
+  "min_moss_version": "0.15.25",
   "preview": true,
   "entry": "main.bundle.js",
   "global_name": "LinkedinPlugin",
@@ -16,11 +16,13 @@
       "setup": {
         "settings": [
           { "key": "access_token", "type": "secret", "label": "Access token", "description": "Made with LinkedIn's token generator for your app, with the scopes openid, profile and w_member_social. It lasts 60 days.", "help_url": "https://www.linkedin.com/developers/tools/oauth/token-generator" },
+          { "key": "articles", "type": "boolean", "label": "Articles", "description": "Send long pages as LinkedIn articles, pasted into LinkedIn's own editor. Off, a long page is posted as its opening with a link.", "default": false },
           { "key": "api", "type": "string", "hidden": true, "default": "https://api.linkedin.com" }
         ]
       },
       "syndication": {
-        "forms": ["short", "teaser"],
+        "forms": ["short", "long", "teaser"],
+        "long_setting": "articles",
         "max_chars": 3000,
         "counting": "utf16"
       }

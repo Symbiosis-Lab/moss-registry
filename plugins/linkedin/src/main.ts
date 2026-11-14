@@ -4,7 +4,8 @@
  * post on the author's own member profile through LinkedIn's Posts API.
  */
 
-import { getSecret } from "@symbiosis-lab/moss-api";
+import { getSecret, onEvent, openBrowser, openBrowserWithHtml } from "@symbiosis-lab/moss-api";
+import { listedByAddress, refusedContent, writeArticle, type Article } from "../../article-handoff";
 
 export interface Part {
   text: string;
@@ -16,8 +17,9 @@ export interface CopyJob {
   channel: string;
   idempotency_key: string;
   post: { url: string; source_path: string; title: string; lang?: string | null; date?: string | null };
-  form?: "short" | "thread" | "teaser";
+  form?: "short" | "thread" | "teaser" | "long";
   parts?: Part[];
+  article?: Article | null;
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
   previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
@@ -33,6 +35,7 @@ export interface CopyResult {
     url?: string;
     parts?: { id: string; url: string }[];
     refused?: { cause: Cause; message?: string };
+    handoff?: { text: string; open_url?: string };
   } | null;
 }
 
@@ -120,7 +123,11 @@ function refused(e: unknown): CopyResult {
   throw e;
 }
 
+/** LinkedIn's API makes posts, not articles: an article goes through its own editor. */
+const ARTICLES = { name: "LinkedIn", url: "https://www.linkedin.com/article/new/" };
+
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
+  if (job.form === "long") return writeArticle({ openBrowser, openBrowserWithHtml, onEvent }, job.article, ARTICLES);
   let a: Account;
   let author: string;
   try {
@@ -155,6 +162,7 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
 export async function update_copy(job: CopyJob): Promise<CopyResult> {
   const previous = job.previous;
   if (!previous) return { success: false, message: "no copy to edit", copy: { refused: { cause: "unknown", message: "no copy to edit" } } };
+  if (listedByAddress(previous)) return refusedContent(`edit it on LinkedIn: ${previous.url}`);
   try {
     const a = await account(job);
     await call(a, "POST", postPath(previous.id), { patch: { $set: { commentary: littleText(job.parts?.[0]?.text ?? "") } } }, { "X-RestLi-Method": "PARTIAL_UPDATE" });
@@ -168,6 +176,7 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const previous = job.previous;
     if (!previous) return { success: true };
+    if (listedByAddress(previous)) return refusedContent(`remove it on LinkedIn: ${previous.url}`);
     const a = await account(job);
     // LinkedIn answers a post already deleted as it answers one it deletes.
     await call(a, "DELETE", postPath(previous.id), undefined, { "X-RestLi-Method": "DELETE" });

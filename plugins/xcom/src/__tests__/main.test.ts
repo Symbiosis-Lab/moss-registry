@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
-const panel = { opened: [] as string[], closed: Promise.resolve({ type: "user" }), app: true };
+const panel = { pages: [] as string[], on: {} as Record<string, () => void>, opened: [] as string[], closed: Promise.resolve({ type: "user" }), app: true };
 vi.mock("@symbiosis-lab/moss-api", () => ({
   getSecret: vi.fn(async (k: string) => secrets[k] ?? null),
   openBrowser: vi.fn(async (url: string) => {
@@ -10,6 +10,8 @@ vi.mock("@symbiosis-lab/moss-api", () => ({
     panel.opened.push(url);
     return { closed: panel.closed };
   }),
+  openBrowserWithHtml: vi.fn(async (html: string) => { panel.pages.push(html); }),
+  onEvent: vi.fn(async (name: string, handler: () => void) => { panel.on[name] = handler; return () => {}; }),
 }));
 
 import { copy_account, delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
@@ -101,7 +103,7 @@ const thread = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text
 beforeEach(() => {
   vi.unstubAllGlobals();
   Object.assign(secrets, CREDS);
-  Object.assign(panel, { opened: [], closed: Promise.resolve({ type: "user" }), app: true });
+  Object.assign(panel, { pages: [], on: {}, opened: [], closed: Promise.resolve({ type: "user" }), app: true });
 });
 
 describe("publish_copy without API keys", () => {
@@ -306,5 +308,61 @@ describe("delete_copy", () => {
     const x = fakeX();
     expect((await delete_copy(job({ op: "delete", previous: null }))).success).toBe(true);
     expect(x.calls.filter((c) => c.startsWith("DELETE"))).toEqual([]);
+  });
+
+  it("says a copy listed by its address is removed on X, with or without API keys", async () => {
+    const x = fakeX();
+    const listed = "https://x.com/alex/article/1790000000000000000";
+    for (const keys of [CREDS, {}]) {
+      for (const k of Object.keys(CREDS)) secrets[k] = (keys as Record<string, string>)[k] ?? null;
+      const r = await delete_copy(job({ op: "delete", previous: { id: listed, url: listed } }));
+      expect(r.success).toBe(false);
+      expect(r.copy?.refused).toEqual({ cause: "content", message: `remove it on X: ${listed}` });
+    }
+    expect(x.calls).toEqual([]);
+  });
+});
+
+describe("an article", () => {
+  const article = { title: "On rivers", html: "<h1>On rivers</h1><p>Long.</p>" };
+  const editor = "https://x.com/compose/articles";
+
+  it("is shown to copy, then X's article editor opens, with or without API keys", async () => {
+    const x = fakeX();
+    const sent = publish_copy(job({ form: "long", parts: [], article }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(panel.pages).toHaveLength(1);
+    expect(panel.pages[0]).toContain("Copy and open X");
+    expect(panel.opened).toEqual([]);
+    panel.on["article-handoff:copied"]();
+    expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: editor } } });
+    expect(panel.opened).toEqual([editor]);
+    expect(x.calls).toEqual([]);
+  });
+
+  it("waits to be listed under syndicated:, and is never looked up among posts", async () => {
+    const x = fakeX();
+    expect(await find_copy(job({ op: "find", form: "long", parts: [], article }))).toEqual({ success: true, copy: { handoff: { text: "", open_url: editor } } });
+    expect(x.calls).toEqual([]);
+  });
+
+  it("is refused when the job carries none, and nothing is posted in its place", async () => {
+    const x = fakeX();
+    const r = await publish_copy(job({ form: "long", parts: [], article: null }));
+    expect(r.copy?.refused?.cause).toBe("content");
+    expect(panel.pages).toEqual([]);
+    expect(x.calls).toEqual([]);
+  });
+});
+
+describe("find_copy for a copy whose text is no longer known", () => {
+  it("says nothing is known, without reading the account's posts", async () => {
+    const x = fakeX();
+    for (const parts of [undefined, []]) {
+      const r = await find_copy(job({ op: "find", form: undefined, parts }));
+      expect(r.success).toBe(false);
+      expect(r.copy).toBeUndefined();
+    }
+    expect(x.calls).toEqual([]);
   });
 });

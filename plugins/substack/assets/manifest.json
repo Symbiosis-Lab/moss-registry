@@ -1,0 +1,36 @@
+{
+  "name": "substack",
+  "version": "0.1.0",
+  "display_name": "Substack",
+  "description": "Hand each article to Substack's own editor, copied and ready to paste",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.25",
+  "preview": true,
+  "entry": "main.bundle.js",
+  "global_name": "SubstackPlugin",
+  "domains": [
+    "substack.com"
+  ],
+  "contributes": {
+    "channel": {
+      "display_name": "Substack",
+      "setup": {
+        "settings": [
+          {
+            "key": "publication",
+            "type": "string",
+            "required": true,
+            "label": "Publication",
+            "description": "Your Substack's address, such as https://example.substack.com, or its own domain."
+          }
+        ]
+      },
+      "syndication": {
+        "forms": [
+          "long"
+        ],
+        "host_setting": "publication"
+      }
+    }
+  }
+}

@@ -14,6 +14,8 @@ cascade:
 
 Nothing needs setting up. When moss posts a copy, X's composer opens in moss's panel with the post filled in: sign in to X there the first time, press Post, then close the panel. For a thread, the composer holds the first post and moss shows the rest to add as replies. Then put the post's address in the page's `syndicated:` list, and moss keeps track of that copy from then on.
 
+To send long pages as X Articles, turn on Articles in the channel's settings. X has Articles for paid accounts. moss shows the article with a button that copies it and opens X's article editor in the panel: type the title, paste, check the pictures, publish, close the panel, then put the article's address in the page's `syndicated:` list. With Articles off, a long page goes out as its opening with a link.
+
 To have moss post by itself instead, connect X's API. It is paid per use, so set a spending limit in the developer console first. Make an app there with Read and write permission, and under Keys and tokens copy its API key and secret, then make an access token and secret for your own account. In the moss app, enter the four in the channel's settings. Headless, put each in moss's secret store, which is outside the site folder:
 
 ```sh
