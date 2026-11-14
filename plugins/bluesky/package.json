@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-bluesky",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Post a copy of each new post to Bluesky",
   "main": "dist/main.bundle.js",
   "scripts": {

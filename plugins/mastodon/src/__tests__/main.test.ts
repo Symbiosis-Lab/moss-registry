@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async () => "token") }));
 
-import { delete_copy, find_copy, plainText, publish_copy, update_copy, type CopyJob } from "../main";
+import { copy_account, delete_copy, find_copy, plainText, publish_copy, update_copy, type CopyJob } from "../main";
 
 /** A status as servers render it: links as anchors whose visible text is shortened. */
 const html = (text: string) =>
@@ -122,6 +122,15 @@ describe("publish_copy", () => {
     const server = fakeServer({ failAt: 1, status: 502 });
     await expect(publish_copy(job({ form: "thread", parts: thread }))).rejects.toThrow();
     expect(server.statuses.size).toBe(1);
+  });
+});
+
+describe("copy_account", () => {
+  it("names the account by its server and id, and fails when the token does", async () => {
+    fakeServer();
+    expect(await copy_account({ channel: "mastodon", config: job().config })).toEqual({ success: true, copy: { account: `${new URL(String(job().config.server)).host}/7` } });
+    fakeServer({ token: "other" });
+    expect((await copy_account({ channel: "mastodon", config: job().config })).success).toBe(false);
   });
 });
 

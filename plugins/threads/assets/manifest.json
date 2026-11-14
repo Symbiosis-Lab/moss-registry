@@ -1,6 +1,6 @@
 {
   "name": "threads",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "display_name": "Threads",
   "description": "Post copies of your site to Threads, linked back to the original",
   "author": "Symbiosis Lab",

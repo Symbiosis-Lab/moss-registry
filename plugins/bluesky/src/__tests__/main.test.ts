@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async () => "app-pass") }));
 
-import { delete_copy, find_copy, linkFacets, publish_copy, type CopyJob } from "../main";
+import { copy_account, delete_copy, find_copy, linkFacets, publish_copy, type CopyJob } from "../main";
 import { recordKey } from "../atproto";
 
 /** An in-memory data server: one repo, the calls the plugin makes. */
@@ -103,10 +103,19 @@ describe("publish_copy", () => {
   });
 });
 
+describe("copy_account", () => {
+  it("names the account by its DID, and fails when the sign-in does", async () => {
+    fakePds();
+    expect(await copy_account({ channel: "bluesky", config: job().config })).toEqual({ success: true, copy: { account: "did:plc:alex" } });
+    fakePds({ password: "other" });
+    expect((await copy_account({ channel: "bluesky", config: job().config })).success).toBe(false);
+  });
+});
+
 describe("find_copy and delete_copy", () => {
   it("finds a copy an interrupted send made, and reports none when there is none", async () => {
     fakePds();
-    expect((await find_copy(job({ op: "find" }))).copy).toBeNull();
+    expect((await find_copy(job({ op: "find" }))).copy).toEqual({ absent: true });
     const posted = await publish_copy(job());
     expect((await find_copy(job({ op: "find" }))).copy?.id).toBe(posted.copy?.id);
   });

@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { getSecret } from "@symbiosis-lab/moss-api";
 vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async () => "private-token") }));
-import plugin, { publish_copy, find_copy, delete_copy, type CopyJob } from "../main";
+import plugin, { publish_copy, find_copy, delete_copy, copy_account, type CopyJob } from "../main";
 import manifest from "../../assets/manifest.json";
 
 const page = "https://example.org/note/";
@@ -46,6 +46,7 @@ function standIn(o: Options = {}) {
       posts.delete(path.slice(1)); return response(200, { success: true });
     }
     if (path === "/me/threads") return response(200, { data: [...posts.values()] });
+    if (path === "/me") return response(200, { id: "7001" });
     if (containers.has(path.slice(1))) {
       const statuses = o.readiness ?? ["FINISHED"];
       return response(200, { status: statuses[Math.min(polls++, statuses.length - 1)] });
@@ -182,4 +183,11 @@ it("does not expose a secret-store error", async () => {
   standIn(); vi.mocked(getSecret).mockRejectedValueOnce(new Error("private-token"));
   const result = await publish_copy(job());
   expect(result.copy?.refused?.cause).toBe("auth"); expect(JSON.stringify(result)).not.toContain("private-token");
+});
+
+it("names the signed-in account by its Threads user id, and fails without a token", async () => {
+  standIn();
+  expect(await copy_account({ channel: "threads", config: job().config })).toEqual({ success: true, copy: { account: "7001" } });
+  vi.mocked(getSecret).mockResolvedValue(null);
+  expect((await copy_account({ channel: "threads", config: job().config })).success).toBe(false);
 });

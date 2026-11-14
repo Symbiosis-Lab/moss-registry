@@ -24,6 +24,8 @@ export interface CopyResult {
     id?: string;
     url?: string;
     parts?: { id: string; url: string }[];
+    /** `copy_account`: the signed-in account's Threads user id. */
+    account?: string;
     refused?: { cause: Cause; message?: string };
   } | null;
 }
