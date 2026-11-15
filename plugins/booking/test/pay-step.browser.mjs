@@ -495,6 +495,33 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
     }
   });
 
+  test(`${name}: text typed while the times load survives the redraw and a trip back to Choose`, async () => {
+    const browser = await engine.launch();
+    try {
+      let holding = false, release = () => {};
+      const gate = () => holding && new Promise((ok) => (release = ok));
+      const { page, sent } = await open(browser, { wait: { "/slots": gate } });
+      await page.goto(`${SITE}/book/?service=studio`);
+      const more = page.locator('[aria-label="One hour more"]');
+      await more.waitFor();
+      holding = true;
+      await more.click();
+      while (sent.filter((r) => r.path === "/slots").length < 2) await page.waitForTimeout(20);
+      await page.fill("#f-name", "Ada Client");
+      holding = false; release();
+      await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]'));
+      assert.equal(await page.inputValue("#f-name"), "Ada Client", "typed while the hours were read");
+      await page.fill("#f-email", "ada@example.com");
+      await page.click("[data-back]");
+      await page.click("[data-go]");
+      await page.waitForSelector("#f-email");
+      assert.equal(await page.inputValue("#f-email"), "ada@example.com", "typed before Back");
+      assert.equal(await page.inputValue("#f-name"), "Ada Client");
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`${name}: drawing the same screen again keeps the focused control and the scroll`, async () => {
     const browser = await engine.launch();
     try {

@@ -2,7 +2,7 @@
 
 ## 0.4.0
 
-- A press that sends makes every control in the booking inert until its answer is drawn, and the pressed button turns; this covers Continue, the hours, Book, Pay, Move, Cancel and Decline, and a failed answer releases it. The move screen reads its times once.
+- A press that sends makes every control in the booking inert until its answer is drawn, and the pressed button turns; this covers Continue, the hours, Book, Pay, Move, Cancel and Decline, and a failed answer releases it. What the visitor types while it waits is kept. The move screen reads its times once.
 - Choosing a card, an option, an add-on, a date or a time draws the screen again with focus and the page where they were.
 - Every visitor word comes from one table, in English and Simplified Chinese by the page's `lang`; the offer's `words` table replaces any of them. Money and dates follow the page's `lang`, and amounts use the currency's own minor unit.
 - `quoted` in the offer lists services the desk prices itself, shown as cards that email the desk. The trip request screen is gone.

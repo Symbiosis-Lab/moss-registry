@@ -473,7 +473,7 @@ async function mount(view, page, DESK, ENDPOINT) {
     const terms = () => say("terms", { hours: booking.cancel.full_before_hours, percent: booking.cancel.late_percent });
 
     // Draws the Book screen from the state: a new screen when `fresh`, else the same one again.
-    // The text the person has typed is kept in `state.values` before every draw.
+    // What the person types is kept in `state.values` as they type, so no draw loses it.
     function book({ message = "", errors = {}, fresh = false } = {}) {
       const s = service();
       const values = state.values;
@@ -489,14 +489,14 @@ async function mount(view, page, DESK, ENDPOINT) {
   ${choices(s)}${extras(s)}${hourly(s) && stepper(say("hours"), ["data-hours", ""], say("one_hour"), state.hours, s.hours)}${slotPicker(booking, state.days, state.date, state.start)}
   <form class="form">${field("name", say("your_name"), { auto: "name" })}${field("email", say("email"), { type: "email", auto: "email" })}${field("mobile", say("mobile"), { type: "tel", auto: "tel" })}${own}
   ${totals()}${paid() && h`<p class="note">${terms()}</p>`}<button class="btn go wide" type="submit"${!state.start && h` disabled`}>${paid() ? say("pay_amount", { amount: amount(due()) }) : say("confirm")}</button></form><button class="btn quiet" data-back>${say("back")}</button></div>`);
-      const again = (change) => (event) => { keep(); change(event.currentTarget); book(); };
+      view.querySelector("form").addEventListener("input", keep);
+      const again = (change) => (event) => { change(event.currentTarget); book(); };
       view.querySelectorAll("[data-date]").forEach((b) => b.addEventListener("click", again((x) => { state.date = x.dataset.date; state.start = ""; })));
       view.querySelectorAll("[data-start]").forEach((b) => b.addEventListener("click", again((x) => { state.start = x.dataset.start; })));
       view.querySelectorAll("[data-addon]").forEach((b) => b.addEventListener("click", again((x) => { state.addOns[x.dataset.addon] += Number(x.dataset.step); })));
       view.querySelectorAll("input[name=choice], input[name=pay]").forEach((r) => r.addEventListener("change", again((x) => { state[x.name] = x.value; })));
       // The start times depend on the hours, so a new length asks the service again; it shows at once.
       view.querySelectorAll("[data-hours]").forEach((b) => b.addEventListener("click", () => send(b, () => {
-        keep();
         state.hours += Number(b.dataset.step);
         b.parentNode.querySelector("output").textContent = state.hours;
         return load({ fresh: false });
@@ -505,6 +505,7 @@ async function mount(view, page, DESK, ENDPOINT) {
       view.querySelector("form").addEventListener("submit", (event) => {
         event.preventDefault();
         const go = event.target.querySelector("[type=submit]");
+        // Autofill need not fire `input`, so the fields are read once more before sending.
         if (!go.disabled) send(go, () => { keep(); return hold(); });
       });
     }
