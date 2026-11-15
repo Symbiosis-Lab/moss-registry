@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- (`1.6.3`) Publishing works again. Since moss 0.15.1 keeps the built site in `.moss/build.nosync/`, the plugin looked for it in the old place and every publish stopped with "Cannot locate current generation". It now reads the new place, still reads the old one on earlier moss, and stops with git's own reason if the build cannot be staged instead of going on to publish nothing. The build is taken back out of git's index once its tree is written, so the copy of your source pushed to `main` never carries it.
+- (`1.6.3`) Pages marked `draft: true` are no longer published to GitHub Pages. moss builds drafts for the preview and leaves them off the list of files it hands a deploy plugin; the plugin staged the whole build instead of that list.
+- (`1.6.3`) The copy of your site's source that publishing pushes to the repository's `main` branch leaves out pages marked `draft: true`, so a public repository never shows a draft. A draft already on `main` is removed from it at the next publish; its earlier commits remain in the repository's history.
+- (`1.6.3`) On Windows, publishing stops at once with "Publishing to GitHub Pages from Windows arrives in the next moss update." instead of failing part-way on tools Windows does not have.
+
 ### Changed
 
 - When git is not installed, publishing waits with a Download button for moss's copy of git, and goes on once it is there, instead of failing straight away. It fails with the usual git message if nothing arrives within ten minutes.

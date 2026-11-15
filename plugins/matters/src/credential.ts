@@ -16,8 +16,7 @@
  * project dimension, deliberately, because a per-vault store re-introduces the
  * shared-folder problem. matters' token is per-ACCOUNT, so the key carries the
  * account: `access_token:<boundUserName>`. Two folders bound to one account
- * share a token (correct); two folders bound to two accounts do not (also
- * correct, and what `prepareWebviewAuth` depends on).
+ * share a token; two folders bound to two accounts do not.
  *
  * Which account a token belongs to is decided in exactly ONE place. A capture
  * never knows whose token it holds — logging in as a second account happens
@@ -32,13 +31,8 @@
  * `getSessionState` must keep "expired" distinguishable from "never logged in"
  * because the two route differently.
  *
- * The two credentials a folder uses are both projections of the stored token:
- *   - the `x-access-token` HTTP header for API calls (authHeaderToken)
- *   - the global `__access_token` cookie for matters.town webviews (prepareWebviewAuth)
- *
- * The global cookie is never a durable store — it is set just-in-time before a
- * webview, cleared before a fresh login, and read exactly once (capturing a
- * fresh login back into the keystore).
+ * API calls use the stored token through authHeaderToken. The global cookie
+ * is cleared before a fresh login and captured back into the keystore.
  */
 
 import {
@@ -46,7 +40,6 @@ import {
   writePluginFile,
   pluginFileExists,
   getPluginCookie,
-  setPluginCookie,
   clearPluginCookies,
   getSecret,
   setSecret,
@@ -532,28 +525,6 @@ export async function captureLogin(): Promise<string | null | undefined> {
   } catch (error) {
     console.error(`❌ Failed to capture login token: ${error}`);
     return null;
-  }
-}
-
-/**
- * Project this folder's stored token into the global `__access_token` cookie
- * so a matters.town webview authenticates as the BOUND account. The cookie is
- * the webview's only credential (matters-web reads it via auto-send to
- * server.matters.town — verified 2026-06-23). The manifest domain (.matters.town)
- * + http_only are applied by the Rust write path, so the browser auto-sends it.
- * Best-effort: a write failure must not abort the syndication flow. No-op when
- * there is no usable token.
- */
-export async function prepareWebviewAuth(): Promise<void> {
-  const token = await authHeaderToken();
-  if (!token) {
-    console.warn("⚠️ prepareWebviewAuth: no usable token; webview will be unauthenticated");
-    return;
-  }
-  try {
-    await setPluginCookie([{ name: accessTokenCookieName(), value: token }]);
-  } catch (e) {
-    console.warn(`⚠️ prepareWebviewAuth: failed to set matters cookie: ${e}`);
   }
 }
 

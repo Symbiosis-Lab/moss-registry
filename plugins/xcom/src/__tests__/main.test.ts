@@ -2,9 +2,17 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const secrets: Record<string, string | null> = {};
-vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async (k: string) => secrets[k] ?? null) }));
+const panel = { opened: [] as string[], closed: Promise.resolve({ type: "user" }), app: true };
+vi.mock("@symbiosis-lab/moss-api", () => ({
+  getSecret: vi.fn(async (k: string) => secrets[k] ?? null),
+  openBrowser: vi.fn(async (url: string) => {
+    if (!panel.app) throw new Error("open_action_panel needs the moss app");
+    panel.opened.push(url);
+    return { closed: panel.closed };
+  }),
+}));
 
-import { delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
+import { copy_account, delete_copy, find_copy, publish_copy, type CopyJob } from "../main";
 import { authorization, percent } from "../oauth1";
 
 const CREDS = { api_key: "ck", api_key_secret: "cs&+/", access_token: "tok", access_token_secret: "ts=1" };
@@ -24,6 +32,7 @@ function expectedSignature(method: string, url: string, header: string, consumer
 function fakeX(opts: { failAt?: number; status?: number; type?: string } = {}) {
   const posts = new Map<string, { id: string; text: string; reply?: string }>();
   const calls: string[] = [];
+  const shortLinks = new Map<string, string>();
   let next = 1000;
   const reply = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === undefined ? "" : JSON.stringify(body)) });
   vi.stubGlobal(
@@ -49,10 +58,24 @@ function fakeX(opts: { failAt?: number; status?: number; type?: string } = {}) {
       }
       if (u.pathname === "/2/users/me") return reply(200, { data: { id: "42", name: "Alex", username: "alex" } });
       if (u.pathname === "/2/users/42/tweets") {
-        // As X answers: `& < >` escaped, links shortened, replies marked only when asked for.
-        const shown = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/https?:\/\/\S+/g, "https://t.co/abc123");
-        const refs = u.searchParams.get("tweet.fields") === "referenced_tweets";
-        return reply(200, { data: [...posts.values()].reverse().map((p) => ({ id: p.id, text: shown(p.text), ...(refs && p.reply ? { referenced_tweets: [{ type: "replied_to", id: p.reply }] } : {}) })) });
+        // As X answers: `& < >` escaped, each link replaced by its own short one, replies and links' addresses only when asked for.
+        const fields = (u.searchParams.get("tweet.fields") ?? "").split(",");
+        return reply(200, {
+          data: [...posts.values()].reverse().map((p) => {
+            const urls: { url: string; expanded_url: string }[] = [];
+            const text = p.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/https?:\/\/\S+/g, (link) => {
+              const short = `https://t.co/${shortLinks.get(link) ?? shortLinks.set(link, `s${shortLinks.size}`).get(link)}`;
+              urls.push({ url: short, expanded_url: link });
+              return short;
+            });
+            return {
+              id: p.id,
+              text,
+              ...(fields.includes("referenced_tweets") && p.reply ? { referenced_tweets: [{ type: "replied_to", id: p.reply }] } : {}),
+              ...(fields.includes("entities") && urls.length ? { entities: { urls } } : {}),
+            };
+          }),
+        });
       }
       return reply(404, { title: "Not Found Error" });
     }),
@@ -78,6 +101,41 @@ const thread = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text
 beforeEach(() => {
   vi.unstubAllGlobals();
   Object.assign(secrets, CREDS);
+  Object.assign(panel, { opened: [], closed: Promise.resolve({ type: "user" }), app: true });
+});
+
+describe("publish_copy without API keys", () => {
+  const noKeys = () => { for (const k of Object.keys(CREDS)) secrets[k] = null; };
+  const composer = (text: string) => `https://x.com/intent/post?text=${encodeURIComponent(text)}`;
+
+  it("opens X's composer filled with the post, and waits for the author", async () => {
+    noKeys();
+    const x = fakeX();
+    let close!: () => void;
+    panel.closed = new Promise((resolve) => { close = () => resolve({ type: "user" }); });
+    let settled = false;
+    const sent = publish_copy(job()).then((r) => { settled = true; return r; });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(panel.opened).toEqual([composer("Autumn's first hotpot https://example.org/river")]);
+    expect(settled).toBe(false);
+    close();
+    expect(await sent).toEqual({ success: true, copy: { handoff: { text: "", open_url: composer("Autumn's first hotpot https://example.org/river") } } });
+    expect(x.calls).toEqual([]);
+  });
+
+  it("hands back a thread's later parts to add as replies", async () => {
+    noKeys();
+    const r = await publish_copy(job({ form: "thread", parts: thread }));
+    expect(panel.opened).toEqual([composer("One.")]);
+    expect(r.copy?.handoff).toEqual({ text: "Two.\n\nThree.", open_url: composer("One.") });
+  });
+
+  it("gives the composer's address when there is no app to open it in", async () => {
+    noKeys();
+    panel.app = false;
+    const r = await publish_copy(job());
+    expect(r.copy?.handoff?.open_url).toBe(composer("Autumn's first hotpot https://example.org/river"));
+  });
 });
 
 describe("oauth1", () => {
@@ -151,15 +209,33 @@ describe("publish_copy", () => {
   });
 });
 
-describe("find_copy", () => {
-  it("finds the copy by its text though X has escaped it and replaced its link, and nothing when there is none", async () => {
+describe("copy_account", () => {
+  it("names the account by its id with API keys, and none without them", async () => {
     const x = fakeX();
-    const fish = job({ parts: [{ text: "Fish & chips <by the sea> https://example.org/river", links: [] }] });
-    expect((await find_copy(fish)).copy).toBeNull();
+    expect(await copy_account({ channel: "xcom", config: job().config })).toEqual({ success: true, copy: { account: "42" } });
+    for (const k of Object.keys(CREDS)) secrets[k] = null;
+    expect(await copy_account({ channel: "xcom", config: job().config })).toEqual({ success: true });
+    expect(x.calls.filter((c) => c.includes("/2/users/me"))).toHaveLength(1);
+  });
+});
+
+describe("find_copy", () => {
+  it("finds the copy by its text though X has escaped it and replaced its link", async () => {
+    const x = fakeX();
+    const fish = job({ op: "find", parts: [{ text: "Fish & chips <by the sea> https://example.org/river", links: [] }] });
     await publish_copy(fish);
-    expect((await find_copy(fish)).copy).toEqual({ id: "1000", url: "https://x.com/i/status/1000", parts: [] });
+    expect(await find_copy(fish)).toEqual({ success: true, copy: { id: "1000", url: "https://x.com/i/status/1000", parts: [] } });
     // The look-up's query is signed too, or X refuses it.
-    expect(x.calls).toContain("GET /2/users/42/tweets?max_results=20&tweet.fields=referenced_tweets");
+    expect(x.calls).toContain("GET /2/users/42/tweets?max_results=20&tweet.fields=referenced_tweets,entities");
+  });
+
+  it("tells posts apart by their links' addresses, though X shows every link as its own short one", async () => {
+    fakeX();
+    const photo = (link: string) => job({ op: "find", parts: [{ text: `Photo of the day ${link}`, links: [link] }] });
+    await publish_copy(photo("https://example.org/a"));
+    expect((await find_copy(photo("https://example.org/b"))).success).toBe(false);
+    await publish_copy(photo("https://example.org/b"));
+    expect((await find_copy(photo("https://example.org/b"))).copy?.id).toBe("1001");
   });
 
   it("finds a whole thread, each part a reply to the one before", async () => {
@@ -172,17 +248,39 @@ describe("find_copy", () => {
     });
   });
 
+  // moss posts again on "none"; the copy may be older than the posts read, or its text edited since.
+  it("cannot tell when none of the latest posts is the copy", async () => {
+    fakeX();
+    const r = await find_copy(job({ op: "find" }));
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/retry-copies/);
+  });
+
+  it("says what each way out of an uncertain copy costs", async () => {
+    fakeX();
+    const r = await find_copy(job({ op: "find" }));
+    expect(r.message).toMatch(/syndicated:.*first post/);
+    expect(r.message).toMatch(/retry-copies.*twice/);
+  });
+
   it("does not take posts with the parts' words for the thread unless each replies to the part before", async () => {
     fakeX();
     for (const part of thread) await publish_copy(job({ parts: [part] }));
-    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toBeNull();
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
   });
 
-  it("takes a thread found cut short down, so the next send posts it whole", async () => {
+  it("cannot tell when the copy has more replies than the post has parts, as when it was shortened after the send", async () => {
+    fakeX();
+    await publish_copy(job({ form: "thread", parts: thread }));
+    expect((await find_copy(job({ op: "find", form: "short", parts: thread.slice(0, 1) }))).success).toBe(false);
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread.slice(0, 2) }))).success).toBe(false);
+  });
+
+  it("cannot tell when a thread is only partly there, and leaves its posts alone", async () => {
     const x = fakeX();
     await publish_copy(job({ form: "thread", parts: thread.slice(0, 2) }));
-    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).copy).toBeNull();
-    expect(x.posts.size).toBe(0);
+    expect((await find_copy(job({ op: "find", form: "thread", parts: thread }))).success).toBe(false);
+    expect(x.posts.size).toBe(2);
   });
 });
 
@@ -202,5 +300,11 @@ describe("delete_copy", () => {
     expect(r.success).toBe(true);
     expect(x.posts.size).toBe(0);
     expect(x.calls.filter((c) => c.startsWith("DELETE"))).toEqual(["DELETE /2/tweets/1002", "DELETE /2/tweets/1001", "DELETE /2/tweets/1000"]);
+  });
+
+  it("has nothing to remove when the delete names no copy", async () => {
+    const x = fakeX();
+    expect((await delete_copy(job({ op: "delete", previous: null }))).success).toBe(true);
+    expect(x.calls.filter((c) => c.startsWith("DELETE"))).toEqual([]);
   });
 });

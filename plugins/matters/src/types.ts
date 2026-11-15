@@ -1,18 +1,16 @@
 /**
  * Plugin-specific type definitions for the Matters Syndicator Plugin
  *
- * Common types (ProcessContext, SyndicateContext, HookResult, etc.) are
+ * Common types (ProcessContext, HookResult, etc.) are
  * imported from moss-plugin-sdk.
  */
 
 // Re-export SDK types for convenience
 export type {
   ProcessContext,
-  SyndicateContext,
   HookResult,
   DeploymentInfo,
   ProjectInfo,
-  ArticleInfo,
   PluginMessage,
 } from "@symbiosis-lab/moss-api";
 
@@ -443,8 +441,9 @@ export interface MattersDraftWithArticle extends MattersDraft {
     id: string;
     shortHash: string;
     slug: string;
+    state?: string;
   };
-  publishState: "unpublished" | "pending" | "published";
+  publishState: "unpublished" | "pending" | "published" | "error";
 }
 
 export interface PutDraftInput {
@@ -453,8 +452,14 @@ export interface PutDraftInput {
   content?: string;
   summary?: string;
   tags?: string[];
-  cover?: string;
+  /** Omit to retain the cover; null removes it. */
+  cover?: string | null;
   collections?: string[];
+}
+
+export interface EditArticleInput extends Omit<PutDraftInput, "id"> {
+  id: string;
+  state?: "archived";
 }
 
 export interface PutDraftResponse {

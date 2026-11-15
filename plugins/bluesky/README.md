@@ -20,7 +20,7 @@ printf '%s' 'xxxx-xxxx-xxxx-xxxx' | moss plugin secret set bluesky app_password 
 
 A post that fits in 300 characters is posted whole. A post written in parts, with a line holding only `---` between blank lines, is posted as a thread. Anything longer, and every titled article, is posted as its opening and a link card to the original.
 
-A copy cannot be edited once posted, because Bluesky has no edit; moss says so when a post changes after its copy went out. Each copy has a record key derived from the post, so a send that is interrupted and tried again lands on the same record rather than making a second post.
+A copy cannot be edited once posted, because Bluesky has no edit; moss says so when a post changes after its copy went out. Each copy has a record key derived from the post's note id and the channel, nothing an author edits, so a send that is interrupted and tried again lands on the same record rather than making a second post.
 
 ## Network access
 

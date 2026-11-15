@@ -20,7 +20,7 @@ export interface CopyJob {
   form?: "short" | "thread" | "teaser";
   parts?: Part[];
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
-  previous?: { id: string; url: string; parts: { id: string; url: string }[] } | null;
+  previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
 }
 
@@ -33,6 +33,8 @@ export interface CopyResult {
     id?: string;
     url?: string;
     parts?: { id: string; url: string }[];
+    /** `copy_account`: the signed-in account, as its server and id. */
+    account?: string;
     refused?: { cause: Cause; message?: string };
   } | null;
 }
@@ -60,7 +62,7 @@ interface Account {
   token: string;
 }
 
-async function account(job: CopyJob): Promise<Account> {
+async function account(job: { config: Record<string, unknown> }): Promise<Account> {
   const server = String(job.config.server ?? "").replace(/\/+$/, "");
   const token = await getSecret("access_token");
   if (!server || !token) throw new ApiError(401, "connect Mastodon first: your server's address and an access token");
@@ -148,26 +150,75 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
   return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
 }
 
-/** The copy among the account's recent statuses: its first part's text, or a status linking to the post. */
+/** How far the author's statuses since a copy are read before the copy is called uncertain: an interrupted send is looked up at the next publish. */
+const PAGE = 40;
+const PAGES = 10;
+
+/** Mastodon's ids are numbers and GoToSocial's are ULIDs; both sort by length, then character by character. */
+const later = (a: string, b: string) => (a.length !== b.length ? a.length > b.length : a > b);
+
+/** The author's own statuses after `id`, or null when they fill every page read. */
+async function statusesAfter(a: Account, me: string, id: string): Promise<Status[] | null> {
+  const all: Status[] = [];
+  let after = id;
+  for (let page = 0; page < PAGES; page++) {
+    const batch: Status[] = await call(a, "GET", `/api/v1/accounts/${me}/statuses?limit=${PAGE}&min_id=${after}`);
+    // Only an empty page ends it: a server that filters after its limit answers short pages before the last.
+    if (!batch.length) return all;
+    all.push(...batch);
+    after = batch.reduce((max, s) => (later(s.id, max) ? s.id : max), after);
+  }
+  return null;
+}
+
+/**
+ * The answer when the copy cannot be recognised. A status carries nothing a
+ * client chose, only its text, and the text may have been edited since the
+ * send; moss posts again on "none", so it is told nothing is certain instead.
+ */
+const unsure = (why: string): CopyResult => ({
+  success: false,
+  message: `${why}. Listing the copy under syndicated: tracks only its first status, so removing it later leaves a thread's replies; with --retry-copies, any of it that is there is posted twice`,
+});
+
+/**
+ * The copy among the account's recent statuses: the one status with its first
+ * part's text or a link to the post, then each later part as the author's
+ * reply to the part before.
+ */
 export async function find_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const a = await account(job);
     const me = await call(a, "GET", "/api/v1/accounts/verify_credentials");
     const statuses: Status[] = await call(a, "GET", `/api/v1/accounts/${me.id}/statuses?limit=40&exclude_replies=true`);
-    const text = job.parts?.[0]?.text ?? "";
-    const found = statuses.find((s) => !s.in_reply_to_id && (same(plainText(s.content), text) || s.content.includes(job.post.url)));
-    return { success: true, copy: found ? { id: found.id, url: address(found) } : null };
+    const parts = job.parts ?? [];
+    const matches = statuses.filter((s) => !s.in_reply_to_id && (same(plainText(s.content), parts[0]?.text ?? "") || s.content.includes(`href="${job.post.url}"`)));
+    if (matches.length !== 1) return unsure(matches.length ? `${matches.length} statuses match the copy` : "no recent status matches the copy");
+    const chain = [matches[0]];
+    // The author's own statuses, not the replies under the copy: a server cuts that list before dropping muted accounts, so it can hide the copy's own.
+    const since = await statusesAfter(a, me.id, chain[0].id);
+    if (!since) return unsure(`the account has more than ${PAGE * PAGES} statuses since the copy`);
+    const replies = (s: Status) => since.filter((d) => d.in_reply_to_id === s.id);
+    for (const part of parts.slice(1)) {
+      const next = replies(chain[chain.length - 1]).find((s) => same(plainText(s.content), part.text));
+      if (!next) return unsure(`only ${chain.length} of the thread's ${parts.length} parts are on the account`);
+      chain.push(next);
+    }
+    // The post may have lost parts since the send, or the author replied to the copy: either way it is not certain which statuses are the copy.
+    if (replies(chain[chain.length - 1]).length) return unsure("the copy on the account goes on past the post's last part");
+    const [first, ...rest] = chain;
+    return { success: true, copy: { id: first.id, url: address(first), parts: rest.map((s) => ({ id: s.id, url: address(s) })) } };
   } catch (e) {
     return refused(e);
   }
 }
 
-/** Edit each status of the copy in place. A thread can change its words, not its number of parts. */
+/** Edit each status of the copy whose words changed, in place. A thread can change its words, not its number of parts. */
 export async function update_copy(job: CopyJob): Promise<CopyResult> {
   const previous = job.previous;
   const parts = job.parts ?? [];
   if (!previous) return { success: false, message: "no copy to edit", copy: { refused: { cause: "unknown", message: "no copy to edit" } } };
-  const ids = [previous.id, ...previous.parts.map((p) => p.id)];
+  const ids = [previous.id, ...(previous.parts ?? []).map((p) => p.id)];
   if (ids.length !== parts.length) {
     const message = `the thread now has ${parts.length} parts and its copy ${ids.length}; Mastodon can edit a status but not add or remove one`;
     return { success: false, message, copy: { refused: { cause: "content", message } } };
@@ -175,11 +226,14 @@ export async function update_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const a = await account(job);
     for (let i = 0; i < ids.length; i++) {
+      // GoToSocial refuses an edit that changes nothing, and Mastodon would record it as one.
+      const current: Status = await call(a, "GET", `/api/v1/statuses/${ids[i]}`);
+      if (same(plainText(current.content), parts[i].text)) continue;
       const body: Record<string, unknown> = { status: parts[i].text };
       if (job.post.lang) body.language = job.post.lang;
       await call(a, "PUT", `/api/v1/statuses/${ids[i]}`, body);
     }
-    return { success: true, copy: { id: previous.id, url: previous.url, parts: previous.parts } };
+    return { success: true, copy: { id: previous.id, url: previous.url, parts: previous.parts ?? [] } };
   } catch (e) {
     return refused(e);
   }
@@ -190,7 +244,7 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
     const a = await account(job);
     const previous = job.previous;
     if (!previous) return { success: true };
-    for (const id of [...previous.parts.map((p) => p.id).reverse(), previous.id]) {
+    for (const id of [...(previous.parts ?? []).map((p) => p.id).reverse(), previous.id]) {
       try {
         await call(a, "DELETE", `/api/v1/statuses/${id}`);
       } catch (e) {
@@ -204,6 +258,17 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   }
 }
 
-const MastodonPlugin = { publish_copy, find_copy, update_copy, delete_copy };
+/** The account moss keeps each copy with: an account id is unique only on its own server. */
+export async function copy_account(query: { channel: string; config: Record<string, unknown> }): Promise<CopyResult> {
+  try {
+    const a = await account(query);
+    const me = await call(a, "GET", "/api/v1/accounts/verify_credentials");
+    return { success: true, copy: { account: `${new URL(a.server).host}/${me.id}` } };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
+const MastodonPlugin = { publish_copy, find_copy, update_copy, delete_copy, copy_account };
 (globalThis as unknown as { MastodonPlugin: typeof MastodonPlugin }).MastodonPlugin = MastodonPlugin;
 export default MastodonPlugin;

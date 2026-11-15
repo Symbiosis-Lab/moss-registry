@@ -8,7 +8,7 @@
  */
 
 import { GITHUB_API_BASE, GITHUB_API_HEADERS } from "./github-api";
-import { executeBinary, listSiteFilesWithSizes, type ExecuteResult } from "@symbiosis-lab/moss-api";
+import { executeBinary, listSiteFilesWithSizes, readFile, type ExecuteResult } from "@symbiosis-lab/moss-api";
 import { showToast } from "./utils";
 import { parseGitHubUrl, isSameGitHubRepo } from "./git";
 
@@ -184,6 +184,8 @@ export interface DeployViaGitPushOptions {
   gitPath: string;
   /** Custom domain to include as CNAME file in gh-pages branch */
   domain?: string;
+  /** The files to publish, relative to the generation: DeployContext.site_files, which leaves out drafts. */
+  siteFiles: readonly string[];
 }
 
 /**
@@ -256,49 +258,49 @@ function parsePushProgress(
 }
 
 /**
- * Resolve the current generation directory path (relative to project root).
+ * Where moss keeps the build, newest layout first: `.moss/build.nosync/` since
+ * moss 0.15.1, `.moss/build/` before. The old one never sits beside a new one:
+ * moss renames it into the new layout at the start of its first build.
+ */
+const BUILD_ROOTS = [".moss/build.nosync", ".moss/build"] as const;
+
+/**
+ * The current generation's directory, relative to the project root, such as
+ * `.moss/build.nosync/generations/abc123`: the real directory behind the
+ * `current` symlink, since `git write-tree --prefix` does not follow symlinks.
  *
- * The build pipeline writes output to `.moss/build/generations/<hash>/` and
- * updates `.moss/build/current` (a symlink) to point to that directory.
- * `.moss/build/site/` is empty in the generations model — never stage from there.
- *
- * Returns a path like `.moss/build/generations/abc123def456` — the real directory
- * git can stage and extract a tree from (git does not follow symlinks for
- * `write-tree --prefix`).
- *
- * @throws {Error} if the current symlink is absent or unresolvable
+ * @throws {Error} if no layout has a resolvable `current`
  */
 export async function resolveCurrentGenDir(): Promise<string> {
-  // `readlink` on macOS does NOT support -f, but the symlink target is already
-  // absolute (set_current_ptr uses an absolute path), so plain `readlink` suffices.
-  const result = await executeBinary({
-    binaryPath: "readlink",
-    args: [".moss/build/current"],
-    workingDir: ".",
-    timeoutMs: 5_000,
-    env: {},
-  });
-  if (!result.success || !result.stdout.trim()) {
-    throw new Error(
-      "Cannot locate current generation: .moss/build/current symlink is missing or unresolvable. " +
-      "Run a build first before deploying."
-    );
+  for (const root of BUILD_ROOTS) {
+    // `readlink` on macOS has no -f, but moss writes the target absolute.
+    const result = await executeBinary({
+      binaryPath: "readlink",
+      args: [`${root}/current`],
+      workingDir: ".",
+      timeoutMs: 5_000,
+      env: {},
+    });
+    const genId = result.success ? result.stdout.trim().split("/").filter(Boolean).pop() : undefined;
+    if (genId) return `${root}/generations/${genId}`;
   }
-  // The symlink target is absolute: /abs/path/to/.moss/build/generations/<id>
-  // Extract just the generation ID and reconstruct the relative path.
-  const absTarget = result.stdout.trim();
-  const genId = absTarget.split("/").filter(Boolean).pop();
-  if (!genId) {
-    throw new Error(`Unexpected generation symlink target: ${absTarget}`);
-  }
-  return `.moss/build/generations/${genId}`;
+  throw new Error(
+    `Cannot locate current generation: ${BUILD_ROOTS[0]}/current is missing or unresolvable. ` +
+    "Run a build first before deploying."
+  );
+}
+
+/** Whether a page source's front matter says `draft: true`, which moss never publishes. */
+export function isDraftSource(text: string): boolean {
+  const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---\s*(\r?\n|$)/);
+  return !!fm && /^draft:[ \t]*[Tt][Rr][Uu][Ee][ \t]*(#.*)?$/m.test(fm[1]);
 }
 
 /**
  * Deploy site to GitHub Pages via a single git repo.
  *
  * Uses one git repo at the project root. Stages site files from the current
- * generation directory (.moss/build/current → .moss/build/generations/<id>/),
+ * generation directory (`current` → `generations/<id>/` under moss's build directory),
  * extracts the generation tree as an orphan commit and pushes it to gh-pages,
  * then backs up source files to main. This gives GitHub Pages the site content
  * at the branch root while keeping source on main.
@@ -439,13 +441,20 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     });
 
     // ── 2. Resolve current generation dir and stage its files ────────────
-    // .moss/build/site/ is empty in the generations model (#816). The real
-    // output lives at .moss/build/current → .moss/build/generations/<id>/.
-    // git does not follow symlinks for write-tree --prefix, so we resolve
-    // the symlink to the actual (relative) generation directory first.
+    // Only the files moss lists: the generation also holds drafts built for
+    // the preview. moss gitignores its build directory, hence -f; literal
+    // pathspecs, so a file name is never read as a pattern.
     onProgress(5, "Staging site files...");
     const genDir = await resolveCurrentGenDir();
-    await git(["add", `${genDir}/`]);
+    const staged = await executeBinary({
+      binaryPath: options.gitPath,
+      args: ["add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"],
+      stdin: options.siteFiles.map((f) => `:(literal)${genDir}/${f}\0`).join(""),
+      workingDir: ".",
+      timeoutMs: 600_000,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (!staged.success) throw new Error(`Failed to stage the built site: ${sanitize(staged.stderr, token)}`);
 
     // ── 3. Get site tree SHA directly from index ─────────────────────────
     // Remove index.lock again: iCloud can re-lock the index between git add
@@ -458,6 +467,10 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
     onProgress(10, "Preparing gh-pages...");
     const writeTree = await git(["write-tree", `--prefix=${genDir}/`]);
     if (!writeTree.success) throw new Error(`Failed to write site tree: ${sanitize(writeTree.stderr, token)}`);
+    // Out of the index again, or the source backup's `add --all` below would commit the build to main.
+    const buildRoot = genDir.slice(0, genDir.indexOf("/generations/"));
+    const unstaged = await git(["rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", `${buildRoot}/`]);
+    if (!unstaged?.success) throw new Error(`Failed to unstage the built site: ${sanitize(unstaged?.stderr ?? "", token)}`);
 
     // Inject .nojekyll (always) and CNAME (when domain is set) into the
     // gh-pages tree. Without .nojekyll, GitHub runs Jekyll which may skip
@@ -595,7 +608,26 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
         });
       }
 
+      // Drafts stay out of the backup: the author keeps them private, and the
+      // repository may be public. `git grep` finds candidates; the front matter decides.
+      const candidates = await git(["grep", "--untracked", "-I", "-l", "-z", "-E", "^draft:[[:space:]]*[Tt][Rr][Uu][Ee]", "--", "*.md", "*.markdown"]);
+      const drafts: string[] = [];
+      for (const file of candidates.success ? candidates.stdout.split("\0").filter(Boolean) : []) {
+        if (isDraftSource(await readFile(file))) drafts.push(file);
+      }
       await git(["add", "--all"]);
+      if (drafts.length > 0) {
+        const unstaged = await executeBinary({
+          binaryPath: options.gitPath,
+          args: ["rm", "--cached", "-q", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"],
+          stdin: drafts.map((f) => `:(literal)${f}\0`).join(""),
+          workingDir: ".",
+          timeoutMs: 60_000,
+          env: { GIT_TERMINAL_PROMPT: "0" },
+        });
+        // Better no backup than a backup that publishes drafts.
+        if (!unstaged.success) throw new Error(`could not keep drafts out of the backup: ${sanitize(unstaged.stderr, token)}`);
+      }
       const diff = await git(["diff", "--cached", "--quiet"]);
       if (!diff.success) {
         // Has changes to commit

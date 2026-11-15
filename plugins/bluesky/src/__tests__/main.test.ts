@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@symbiosis-lab/moss-api", () => ({ getSecret: vi.fn(async () => "app-pass") }));
 
-import { delete_copy, find_copy, linkFacets, publish_copy, type CopyJob } from "../main";
+import { copy_account, delete_copy, find_copy, linkFacets, publish_copy, type CopyJob } from "../main";
 import { recordKey } from "../atproto";
 
 /** An in-memory data server: one repo, the calls the plugin makes. */
@@ -103,12 +103,56 @@ describe("publish_copy", () => {
   });
 });
 
+describe("copy_account", () => {
+  it("names the account by its DID, and fails when the sign-in does", async () => {
+    fakePds();
+    expect(await copy_account({ channel: "bluesky", config: job().config })).toEqual({ success: true, copy: { account: "did:plc:alex" } });
+    fakePds({ password: "other" });
+    expect((await copy_account({ channel: "bluesky", config: job().config })).success).toBe(false);
+  });
+});
+
 describe("find_copy and delete_copy", () => {
   it("finds a copy an interrupted send made, and reports none when there is none", async () => {
     fakePds();
-    expect((await find_copy(job({ op: "find" }))).copy).toBeNull();
+    expect((await find_copy(job({ op: "find" }))).copy).toEqual({ absent: true });
     const posted = await publish_copy(job());
     expect((await find_copy(job({ op: "find" }))).copy?.id).toBe(posted.copy?.id);
+  });
+
+  it("lands a retry on the first send's records though the post's date changed in between", async () => {
+    const pds = fakePds();
+    const parts = [{ text: "One.", links: [] }, { text: "Two.", links: [] }];
+    const first = await publish_copy(job({ form: "thread", parts }));
+    const again = await publish_copy(job({ form: "thread", parts, post: { ...job().post, date: "2027-01-02T09:00:00Z" } }));
+    expect(pds.records.size).toBe(2);
+    expect(again.copy).toEqual(first.copy);
+  });
+
+  it("finds every part of a thread an interrupted send made, so a later delete can remove them all", async () => {
+    fakePds();
+    const parts = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text: "Three.", links: [] }];
+    const posted = await publish_copy(job({ form: "thread", parts }));
+    const found = await find_copy(job({ op: "find", form: "thread", parts, post: { ...job().post, date: "2027-01-02T09:00:00Z" } }));
+    expect(found.copy).toEqual(posted.copy);
+  });
+
+  it("returns a thread's earlier parts when a retry's post was shortened, so none is left untracked", async () => {
+    const pds = fakePds();
+    const parts = [{ text: "One.", links: [] }, { text: "Two.", links: [] }, { text: "Three.", links: [] }];
+    const first = await publish_copy(job({ form: "thread", parts }));
+    const again = await publish_copy(job({ form: "short", parts: parts.slice(0, 1) }));
+    expect(pds.records.size).toBe(3);
+    expect(again.copy).toEqual(first.copy);
+  });
+
+  it("returns every earlier part however long the thread was", async () => {
+    const pds = fakePds();
+    const parts = Array.from({ length: 101 }, (_, i) => ({ text: `Part ${i + 1}.`, links: [] }));
+    await publish_copy(job({ form: "thread", parts }));
+    const again = await publish_copy(job({ form: "thread", parts: parts.slice(0, 100) }));
+    expect(pds.records.size).toBe(101);
+    expect(again.copy?.parts).toHaveLength(100);
   });
 
   it("removes every part of a thread", async () => {
@@ -118,15 +162,28 @@ describe("find_copy and delete_copy", () => {
     expect(r.success).toBe(true);
     expect(pds.records.size).toBe(0);
   });
+
+  it("removes a copy whose record lists no parts", async () => {
+    const pds = fakePds();
+    const posted = await publish_copy(job());
+    const r = await delete_copy(job({ op: "delete", previous: { id: posted.copy!.id!, url: posted.copy!.url! } }));
+    expect(r.success).toBe(true);
+    expect(pds.records.size).toBe(0);
+  });
 });
 
 describe("record keys and facets", () => {
   it("a record key is a 13-character TID, the same for a part on every send and different per part", () => {
-    const a = recordKey("0123456789abcdef", "2026-11-06T14:32:00Z", 0);
+    const a = recordKey("0123456789abcdef0123456789abcdef", 0);
     expect(a).toMatch(/^[2-7a-z]{13}$/);
-    expect(recordKey("0123456789abcdef", "2026-11-06T14:32:00Z", 0)).toBe(a);
-    expect(recordKey("0123456789abcdef", "2026-11-06T14:32:00Z", 1)).not.toBe(a);
-    expect(recordKey("fedcba9876543210", "2026-11-06T14:32:00Z", 0)).not.toBe(a);
+    expect(recordKey("0123456789abcdef0123456789abcdef", 0)).toBe(a);
+    expect(recordKey("0123456789abcdef0123456789abcdef", 1)).not.toBe(a);
+    expect(recordKey("fedcba9876543210fedcba9876543210", 0)).not.toBe(a);
+  });
+
+  it("a record key is different for every part of a long thread", () => {
+    const keys = new Set(Array.from({ length: 2048 }, (_, i) => recordKey("0123456789abcdef0123456789abcdef", i)));
+    expect(keys.size).toBe(2048);
   });
 
   it("facet offsets count UTF-8 bytes, so a link after Chinese text is marked where it is", () => {

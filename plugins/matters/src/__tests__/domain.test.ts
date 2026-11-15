@@ -8,7 +8,6 @@ import {
   getDomain,
   accessTokenCookieName,
   loginUrl,
-  draftUrl,
   articleUrl,
   isMattersUrl,
   isInternalMattersLink,
@@ -158,24 +157,6 @@ describe("Domain Module", () => {
       );
       await initializeDomain();
       expect(loginUrl()).toBe("https://matters.icu/login");
-    });
-
-    it("draftUrl constructs correct URL", async () => {
-      await initializeDomain();
-      expect(draftUrl("draft-123")).toBe(
-        "https://matters.town/me/drafts/draft-123"
-      );
-    });
-
-    it("draftUrl uses configured domain", async () => {
-      ctx.filesystem.setFile(
-        `${ctx.projectPath}/.moss/plugins/${PLUGIN_NAME}/config.json`,
-        JSON.stringify({ domain: "matters.icu" })
-      );
-      await initializeDomain();
-      expect(draftUrl("draft-456")).toBe(
-        "https://matters.icu/me/drafts/draft-456"
-      );
     });
 
     it("articleUrl constructs correct URL", async () => {

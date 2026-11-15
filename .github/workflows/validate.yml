@@ -188,6 +188,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A plugin can keep what its build script builds once, such as a library
+      # compiled from pinned sources, in native/vendor/<platform>/, and runs then
+      # reuse it until the plugin's pins or scripts change. A cache a PR saves is
+      # visible only to that PR's own runs; the ones saved on main are shared.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ matrix.plugin }}/native/vendor/${{ matrix.platform }}
+          key: native-${{ matrix.id }}-${{ matrix.platform }}-${{ matrix.runner }}-${{ hashFiles(format('{0}/native/vendor.toml', matrix.plugin), format('{0}/native/scripts/**', matrix.plugin), format('{0}/native/build-*.sh', matrix.plugin)) }}
+
       - name: Build and run the ${{ matrix.platform }} program
         env:
           PLUGIN: ${{ matrix.plugin }}

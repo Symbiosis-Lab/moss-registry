@@ -19,7 +19,7 @@ export interface CopyJob {
   form?: "short" | "thread" | "teaser";
   parts?: Part[];
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
-  previous?: { id: string; url: string; parts: { id: string; url: string }[] } | null;
+  previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
 }
 
@@ -153,8 +153,8 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
 
 /** Edit the copy's text in place. Its card cannot change, since LinkedIn edits only a post's text. */
 export async function update_copy(job: CopyJob): Promise<CopyResult> {
-  // moss sends every update and delete with the copy it changes.
-  const previous = job.previous!;
+  const previous = job.previous;
+  if (!previous) return { success: false, message: "no copy to edit", copy: { refused: { cause: "unknown", message: "no copy to edit" } } };
   try {
     const a = await account(job);
     await call(a, "POST", postPath(previous.id), { patch: { $set: { commentary: littleText(job.parts?.[0]?.text ?? "") } } }, { "X-RestLi-Method": "PARTIAL_UPDATE" });
@@ -166,8 +166,9 @@ export async function update_copy(job: CopyJob): Promise<CopyResult> {
 
 export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   try {
+    const previous = job.previous;
+    if (!previous) return { success: true };
     const a = await account(job);
-    const previous = job.previous!;
     // LinkedIn answers a post already deleted as it answers one it deletes.
     await call(a, "DELETE", postPath(previous.id), undefined, { "X-RestLi-Method": "DELETE" });
     return { success: true };

@@ -114,7 +114,8 @@ Each `run.artifact` entry needs `kind: "download"`, a `platform` (`darwin-arm64`
 
 The build-script contract is the only thing the registry knows about how your program is built:
 
-- CI runs `bash native/build-<platform>.sh` with `native/` as the working directory, on a runner of that platform: macOS 14 for `darwin-arm64`, Ubuntu 22.04 for `linux-x64` and `linux-arm64`. The script builds from source and packages the archive. A Linux program runs on the glibc it was built against or newer, so 2.35 is the floor.
+- CI runs `bash native/build-<platform>.sh` with `native/` as the working directory, on a runner of that platform: macOS 15 for `darwin-arm64`, Ubuntu 22.04 for `linux-x64` and `linux-arm64`. The script builds from source and packages the archive. A Linux program runs on the glibc it was built against or newer, so 2.35 is the floor. A macOS program runs on the macOS its deployment target names or newer. moss runs on macOS 12, so set `MACOSX_DEPLOYMENT_TARGET=12.0`: a C or C++ build without it targets the runner's macOS, and so do Homebrew's libraries, so build what you ship from source.
+- CI keeps `native/vendor/<platform>/` between runs, keyed on the platform, the runner and the contents of `native/vendor.toml`, `native/scripts/` and the build scripts, so a dependency the script builds from pinned sources can be built there once rather than on every run.
 - It logs to stderr and prints the archive's path, absolute or relative to `native/`, as the last line of stdout.
 - The archive is named `<id>-<version>-<platform>.<archive_format>`, for example `pdf-ocr-0.2.4-darwin-arm64.tar.gz`.
 - Every declared `executable` must be in the archive as a regular file with an execute bit, and `<executable> --version` must exit 0.

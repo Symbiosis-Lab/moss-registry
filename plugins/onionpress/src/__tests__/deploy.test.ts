@@ -99,7 +99,7 @@ describe("deploy — success", () => {
     const result = await deploy(CONTEXT);
 
     expect(result.success).toBe(true);
-    expect(mockPack).toHaveBeenCalledWith("moss-123");
+    expect(mockPack).toHaveBeenCalledWith("moss-123", ["index.html"]);
     expect(mockUpload).toHaveBeenCalledWith(
       "http://127.0.0.1:8080/wp-json/onionpress/v1",
       "moss-123",

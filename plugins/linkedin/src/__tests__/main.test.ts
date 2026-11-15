@@ -153,6 +153,13 @@ describe("update_copy", () => {
     expect(r.copy).toEqual({ id: posted.id, url: posted.url, parts: [] });
     expect(li.posts.get(posted.id!).text).toBe("Edited (twice) #food");
   });
+
+  it("refuses an edit that names no copy", async () => {
+    fakeLinkedin();
+    const r = await update_copy(job({ op: "update", parts: [{ text: "Edited", links: [] }], previous: null }));
+    expect(r.success).toBe(false);
+    expect(r.copy?.refused?.message).toMatch(/no copy to edit/);
+  });
 });
 
 describe("delete_copy", () => {
@@ -162,5 +169,11 @@ describe("delete_copy", () => {
     expect((await delete_copy(job({ op: "delete", previous: { id: posted.id!, url: posted.url!, parts: [] } }))).success).toBe(true);
     expect(li.posts.size).toBe(0);
     expect(li.calls.at(-1)).toBe(`DELETE /rest/posts/${encodeURIComponent(posted.id!)} DELETE`);
+  });
+
+  it("has nothing to remove when the delete names no copy", async () => {
+    const li = fakeLinkedin();
+    expect((await delete_copy(job({ op: "delete", previous: null }))).success).toBe(true);
+    expect(li.calls.filter((c) => c.startsWith("DELETE"))).toEqual([]);
   });
 });

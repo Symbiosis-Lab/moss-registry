@@ -20,6 +20,7 @@ vi.mock("../utils", () => ({
 vi.mock("@symbiosis-lab/moss-api", () => ({
   executeBinary: vi.fn(),
   listSiteFilesWithSizes: vi.fn().mockResolvedValue([]),
+  readFile: vi.fn(),
 }));
 
 import { executeBinary, listSiteFilesWithSizes } from "@symbiosis-lab/moss-api";
@@ -32,6 +33,7 @@ import {
   getOriginOwnerRepo,
   looksLikeCorruptGit,
   resolveCurrentGenDir,
+  isDraftSource,
   type DeployViaGitPushOptions,
   type DeployResult,
 } from "../github-deploy";
@@ -44,10 +46,13 @@ const TOKEN = "ghp_test-token-123";
 const OWNER = "testuser";
 const REPO = "my-site";
 
-/** Simulated absolute readlink output for .moss/build/current */
-const GEN_ABS = "/Users/test/.../project/.moss/build/generations/gen-abc123def456";
+/** Simulated absolute readlink output for .moss/build.nosync/current */
+const GEN_ABS = "/Users/test/.../project/.moss/build.nosync/generations/gen-abc123def456";
 /** Relative generation directory path (what resolveCurrentGenDir returns) */
-const GEN_DIR = ".moss/build/generations/gen-abc123def456";
+const GEN_DIR = ".moss/build.nosync/generations/gen-abc123def456";
+/** What moss lists for a deploy: the generation's files, drafts left out */
+const SITE_FILES = ["index.html", "notes/a [draft?].html"];
+const STAGE_ARGS = ["add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"];
 
 /**
  * Helper to create a mock Response for fetch
@@ -224,6 +229,21 @@ describe("github-deploy", () => {
   });
 
   // ==========================================================================
+  // isDraftSource
+  // ==========================================================================
+  describe("isDraftSource", () => {
+    it("reads draft: true from the front matter only", () => {
+      expect(isDraftSource("---\ntitle: Plans\ndraft: true\n---\n# Plans\n")).toBe(true);
+      expect(isDraftSource("---\r\ndraft: true # not yet\r\n---\r\nbody")).toBe(true);
+      expect(isDraftSource("---\ndraft: True\n---\n")).toBe(true);
+      expect(isDraftSource("---\ndraft: false\n---\n")).toBe(false);
+      expect(isDraftSource('---\ndraft: "true"\n---\n')).toBe(false);
+      expect(isDraftSource("---\ntitle: Notes\n---\n\ndraft: true\n")).toBe(false);
+      expect(isDraftSource("# No front matter\n\ndraft: true\n")).toBe(false);
+    });
+  });
+
+  // ==========================================================================
   // resolveCurrentGenDir
   // ==========================================================================
   describe("resolveCurrentGenDir", () => {
@@ -237,48 +257,36 @@ describe("github-deploy", () => {
       mockExecuteBinary.mockReset();
     });
 
-    it("resolves symlink target to relative generation dir path", async () => {
+    it("resolves moss's build layout to the generation directory behind current", async () => {
       mockExecuteBinary.mockResolvedValueOnce(
-        execResult(true, "/Users/test/project/.moss/build/generations/gen-abc123def456\n")
+        execResult(true, "/Users/test/project/.moss/build.nosync/generations/gen-abc123def456\n")
       );
 
-      const result = await resolveCurrentGenDir();
-      expect(result).toBe(".moss/build/generations/gen-abc123def456");
-    });
-
-    it("calls readlink with .moss/build/current argument", async () => {
-      mockExecuteBinary.mockResolvedValueOnce(
-        execResult(true, "/some/path/.moss/build/generations/gen-xyz789\n")
-      );
-
-      await resolveCurrentGenDir();
-
+      expect(await resolveCurrentGenDir()).toBe(".moss/build.nosync/generations/gen-abc123def456");
       expect(mockExecuteBinary).toHaveBeenCalledWith(
-        expect.objectContaining({
-          binaryPath: "readlink",
-          args: [".moss/build/current"],
-        })
+        expect.objectContaining({ binaryPath: "readlink", args: [".moss/build.nosync/current"] })
       );
     });
 
-    it("throws when .moss/build/current symlink is missing (readlink fails)", async () => {
-      mockExecuteBinary.mockResolvedValueOnce(
-        execResult(false, "", "readlink: .moss/build/current: No such file or directory")
-      );
+    it("falls back to the layout moss used before 0.15.1", async () => {
+      mockExecuteBinary
+        .mockResolvedValueOnce(execResult(false, "", "readlink: .moss/build.nosync/current: No such file or directory"))
+        .mockResolvedValueOnce(execResult(true, "/Users/test/project/.moss/build/generations/gen-old\n"));
 
-      await expect(resolveCurrentGenDir()).rejects.toThrow(
-        "Cannot locate current generation"
-      );
+      expect(await resolveCurrentGenDir()).toBe(".moss/build/generations/gen-old");
+      expect(mockExecuteBinary.mock.calls[1][0].args).toEqual([".moss/build/current"]);
+    });
+
+    it("throws when neither layout has a current generation", async () => {
+      mockExecuteBinary.mockResolvedValue(execResult(false, "", "readlink: No such file or directory"));
+
+      await expect(resolveCurrentGenDir()).rejects.toThrow("Cannot locate current generation");
     });
 
     it("throws when readlink returns empty stdout", async () => {
-      mockExecuteBinary.mockResolvedValueOnce(
-        execResult(true, "")
-      );
+      mockExecuteBinary.mockResolvedValue(execResult(true, ""));
 
-      await expect(resolveCurrentGenDir()).rejects.toThrow(
-        "Cannot locate current generation"
-      );
+      await expect(resolveCurrentGenDir()).rejects.toThrow("Cannot locate current generation");
     });
   });
 
@@ -323,10 +331,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // write .gitignore (sh -c)
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // git write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // git write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection (always happens):
         .mockResolvedValueOnce(gitResult(true, "nojekyll000\n"))   // hash-object -w --stdin (.nojekyll)
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
@@ -336,6 +345,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // git push --force gh-pages only
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none found)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -364,10 +374,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -377,6 +388,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages only
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -384,7 +396,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify git init was called
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -412,7 +424,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify remote get-url origin was checked
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -433,7 +445,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Gitignore ownership for .moss/ lives in .moss/.gitignore (written by Rust).
       // Here we only strip stale .moss/* rules from the root .gitignore via sed.
@@ -452,7 +464,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
 
@@ -478,7 +490,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify tree extraction via write-tree --prefix on the resolved generation dir
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -512,10 +524,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
         .mockResolvedValueOnce(gitResult(true, "4b825dc\n"))       // write-tree --prefix (empty tree)
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, ""))                // ls-tree (empty tree — no entries)
@@ -525,11 +538,12 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(true));                   // git diff --cached --quiet (no changes)
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("");
       expect((result as DeployResult).orphanSha).toBe("orphan123");
@@ -544,7 +558,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks("abc1234");
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -566,10 +580,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111bbb222\n"))  // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -579,13 +594,14 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
         .mockResolvedValueOnce(gitResult(false));                  // rev-parse --short HEAD FAILS
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("");
     });
@@ -599,10 +615,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -614,7 +631,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow(expect.objectContaining({
         message: expect.not.stringContaining(TOKEN),
       }));
@@ -624,7 +641,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect(onProgress).toHaveBeenCalledWith(0, "Preparing deploy...");
       expect(onProgress).toHaveBeenCalledWith(5, "Staging site files...");
@@ -637,7 +654,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // All calls should use workingDir "." (project root)
       for (const call of mockExecuteBinary.mock.calls) {
@@ -654,15 +671,15 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
         .mockResolvedValueOnce(gitResult(false, "", "fatal: not a valid object name"));  // write-tree --prefix fails
 
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow("Failed to write site tree");
     });
 
@@ -675,10 +692,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -689,7 +707,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow("Failed to create gh-pages commit");
     });
 
@@ -707,7 +725,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow(expect.objectContaining({
         message: expect.stringContaining(foreignOrigin),
       }));
@@ -738,7 +756,7 @@ describe("github-deploy", () => {
       const onProgress = vi.fn();
 
       await expect(
-        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+        deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
       ).rejects.toThrow(expect.objectContaining({
         message: expect.stringContaining(`${OWNER}/${REPO}`),
       }));
@@ -761,10 +779,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -774,6 +793,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -781,7 +801,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -812,10 +832,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -825,6 +846,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -832,7 +854,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -861,10 +883,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -874,6 +897,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
         .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy site\n"))  // git commit
@@ -881,7 +905,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       expect((result as DeployResult).commitSha).toBe("abc1234");
 
@@ -910,7 +934,7 @@ describe("github-deploy", () => {
       setupFullDeployMocks();
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify rm -f .git/index.lock was called
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -934,10 +958,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         // .nojekyll injection:
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -947,12 +972,13 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none)
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (no changes)
         .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Returns empty commitSha (no source changes) but orphanSha populated
       expect((result as DeployResult).commitSha).toBe("");
@@ -993,7 +1019,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("assets/huge-video.mp4");
       });
 
@@ -1006,7 +1032,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("100");
       });
 
@@ -1021,7 +1047,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         try {
-          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
           expect.fail("Expected to throw");
         } catch (err: unknown) {
           const error = err as Error;
@@ -1041,7 +1067,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect((result as DeployResult).commitSha).toBe("abc1234");
       });
@@ -1055,7 +1081,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         try {
-          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+          await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
         } catch {
           // Expected
         }
@@ -1079,10 +1105,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                        // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                        // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))      // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1093,6 +1120,7 @@ describe("github-deploy", () => {
           // Deferred source backup — find returns large files:
           .mockResolvedValueOnce(gitResult(true, "big-model.bin\ndata/huge.csv\n"))  // find large files
           .mockResolvedValueOnce(gitResult(true))                        // append .gitignore (sh -c)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                        // git add --all
           .mockResolvedValueOnce(gitResult(false))                       // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1100,7 +1128,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                       // push main
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify a second sh -c call was made to append to .gitignore
         const shCalls = mockExecuteBinary.mock.calls.filter(
@@ -1122,10 +1150,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                        // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))        // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                        // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                        // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))            // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))      // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1136,6 +1165,7 @@ describe("github-deploy", () => {
           // Deferred source backup — find returns large files:
           .mockResolvedValueOnce(gitResult(true, "large-file.bin\n"))    // find large files
           .mockResolvedValueOnce(gitResult(true))                        // append .gitignore (sh -c)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                        // git add --all
           .mockResolvedValueOnce(gitResult(false))                       // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1143,7 +1173,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                       // push main
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // showToast should have been called with a warning
         expect(mockShowToast).toHaveBeenCalledWith(
@@ -1158,7 +1188,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Should only have one sh -c call (base .gitignore write)
         const shCalls = mockExecuteBinary.mock.calls.filter(
@@ -1174,7 +1204,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify find command was called with correct args
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1194,7 +1224,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // The deferred source backup uses git add --all (no -v)
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1209,7 +1239,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
         // First push: gh-pages only
@@ -1225,7 +1255,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find the gh-pages push call
         const pushCall = mockExecuteBinary.mock.calls.find(
@@ -1241,7 +1271,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find the gh-pages push call and invoke its onStderr
         const pushCall = mockExecuteBinary.mock.calls.find(
@@ -1278,10 +1308,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll + CNAME injection steps:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (.nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // git ls-tree
@@ -1292,6 +1323,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1300,7 +1332,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           domain: "example.com",
         });
 
@@ -1352,10 +1384,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (empty .nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // ls-tree
@@ -1368,6 +1401,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1376,7 +1410,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           domain: "example.com",
         });
 
@@ -1408,10 +1442,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (empty .nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // ls-tree
@@ -1421,6 +1456,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1429,7 +1465,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           // no domain — .nojekyll should still be injected
         });
 
@@ -1482,10 +1518,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, SITE_TREE + "\n"))  // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, NOJEKYLL_BLOB + "\n"))  // hash-object -w --stdin (.nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc123\tindex.html\n"))  // ls-tree
@@ -1498,6 +1535,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc1234] Deploy\n"))  // commit
@@ -1506,7 +1544,7 @@ describe("github-deploy", () => {
 
         const onProgress = vi.fn();
         await deployViaGitPush({
-          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git",
+          owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES,
           domain: "example.com",
         });
 
@@ -1536,7 +1574,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks("abc1234");
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Should return DeployResult object instead of string
         expect(result).toHaveProperty("commitSha");
@@ -1554,10 +1592,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1567,12 +1606,13 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (no changes)
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect((result as DeployResult).commitSha).toBe("");
         expect((result as DeployResult).orphanSha).toBe("bbb222");
@@ -1593,10 +1633,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
           .mockResolvedValueOnce(gitResult(true, "4b825dc\n"))       // write-tree --prefix (empty tree)
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, ""))                // ls-tree (empty)
@@ -1606,12 +1647,13 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet (no changes)
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count (no unpushed commits)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect((result as DeployResult).commitSha).toBe("");
         expect((result as DeployResult).orphanSha).toBe("orphan123");
@@ -1622,17 +1664,46 @@ describe("github-deploy", () => {
     // Regression: generation dir path (prevents .moss/build/site/ or .moss/site/ bug)
     // ========================================================================
     describe("path regression: current generation dir", () => {
-      it("uses .moss/build/generations/<id>/ for git add (not .moss/build/site/ or .moss/site/)", async () => {
+      it("takes the build back out of the index before the source backup commits to main", async () => {
+        setupFullDeployMocks();
+
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git", siteFiles: SITE_FILES });
+
+        const args = mockExecuteBinary.mock.calls.map((c) => (c[0].args ?? []).join(" "));
+        const unstage = args.indexOf("rm -r --cached -q --ignore-unmatch -- .moss/build.nosync/");
+        expect(unstage).toBeGreaterThan(args.indexOf(`write-tree --prefix=${GEN_DIR}/`));
+        expect(unstage).toBeLessThan(args.indexOf("add --all"));
+      });
+
+      it("stops before pushing when git refuses to stage the build", async () => {
+        mockExecuteBinary
+          .mockResolvedValueOnce(gitResult(true))                    // rev-parse --git-dir
+          .mockResolvedValueOnce(gitResult(true, REPO_MARKER + "\n"))  // remote get-url origin
+          .mockResolvedValueOnce(gitResult(true))                    // fetch
+          .mockResolvedValueOnce(gitResult(true))                    // write .gitignore
+          .mockResolvedValueOnce(gitResult(true))                    // rm index.lock
+          .mockResolvedValueOnce(gitResult(true))                    // rm shallow.lock
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink
+          .mockResolvedValueOnce(gitResult(false, "", "The following paths are ignored by one of your .gitignore files"));
+
+        await expect(
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress: vi.fn(), gitPath: "git", siteFiles: SITE_FILES })
+        ).rejects.toThrow(/Failed to stage the built site.*ignored/);
+        expect(mockExecuteBinary.mock.calls.some((c) => c[0].args?.[0] === "push")).toBe(false);
+      });
+
+      it("stages the resolved generation dir with -f (not .moss/build/site/ or .moss/site/)", async () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify git add uses the resolved generation dir, not the legacy .moss/build/site/
         expect(mockExecuteBinary).toHaveBeenCalledWith(
           expect.objectContaining({
             binaryPath: "git",
-            args: ["add", `${GEN_DIR}/`],
+            args: STAGE_ARGS,
+            stdin: `:(literal)${GEN_DIR}/index.html\0:(literal)${GEN_DIR}/notes/a [draft?].html\0`,
           })
         );
 
@@ -1650,11 +1721,11 @@ describe("github-deploy", () => {
         expect(oldPathCalls).toHaveLength(0);
       });
 
-      it("uses .moss/build/generations/<id>/ for write-tree --prefix (not .moss/build/site/ or .moss/site/)", async () => {
+      it("uses the resolved generation dir for write-tree --prefix (not .moss/build/site/ or .moss/site/)", async () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify write-tree uses the resolved generation dir prefix
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1669,7 +1740,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Gitignore ownership for .moss/ moved to .moss/.gitignore (Rust-managed).
         // The plugin only strips stale .moss/* and !.moss/* lines from the root
@@ -1700,10 +1771,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "newSiteTree\n"))   // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "newSiteTree\n"))   // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1715,6 +1787,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -1722,7 +1795,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // push main
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.treeChanged).toBe(true);
       });
@@ -1737,10 +1810,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1752,6 +1826,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -1759,7 +1834,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // push main
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.treeChanged).toBe(false);
       });
@@ -1768,7 +1843,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // First deploy: no previous gh-pages ref, so tree is always "changed"
         expect(result.treeChanged).toBe(true);
@@ -1783,7 +1858,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Verify rm -f .git/index.lock was called
         expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -1806,7 +1881,7 @@ describe("github-deploy", () => {
         setupFullDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find the indices of the lock removal and first git add
         const indexLockIdx = mockExecuteBinary.mock.calls.findIndex(
@@ -1839,10 +1914,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1852,6 +1928,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files (none)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (clean working tree)
           // But local has unpushed commits:
@@ -1859,7 +1936,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // git push main (pushes the 3 pending commits)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.commitSha).toBe("");  // No new commit (working tree was clean)
         expect(result.orphanSha).toBe("orphanSha");
@@ -1889,10 +1966,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -1902,12 +1980,13 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files (none)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(true))                    // git diff --cached --quiet SUCCESS (clean)
           .mockResolvedValueOnce(gitResult(true, "0\n"));            // rev-list --count → 0 (no unpushed)
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(result.commitSha).toBe("");
 
@@ -1937,10 +2016,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -1962,10 +2042,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging (retry):
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree2\n"))      // mktree
@@ -1974,6 +2055,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages SUCCEEDS
           // Deferred source backup (retry):
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
           .mockResolvedValueOnce(gitResult(true, "[main def] Deploy\n"))  // commit
@@ -1981,7 +2063,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true));                   // push main SUCCEEDS
 
         const onProgress = vi.fn();
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Should succeed on retry
         expect((result as DeployResult).commitSha).toBe("def5678");
@@ -2008,10 +2090,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2022,7 +2105,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("git push failed");
 
         // Should NOT have tried to rm -rf .git for recovery
@@ -2046,10 +2129,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2063,7 +2147,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow(expect.objectContaining({
           message: expect.stringContaining("Could not read"),
         }));
@@ -2092,10 +2176,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "aaa111\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2117,10 +2202,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging (retry):
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "bbb222\n"))        // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
           .mockResolvedValueOnce(gitResult(true, "modTree2\n"))      // mktree
@@ -2131,7 +2217,7 @@ describe("github-deploy", () => {
         const onProgress = vi.fn();
 
         await expect(
-          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" })
+          deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES })
         ).rejects.toThrow("git push failed");
       });
     });
@@ -2169,10 +2255,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2182,6 +2269,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // git commit
@@ -2189,7 +2277,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify git fetch was called
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -2219,10 +2307,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "treeSha\n"))       // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2231,6 +2320,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large source files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // git diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -2238,7 +2328,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Deploy should succeed despite fetch failure
       expect(result.commitSha).toBe("abc1234");
@@ -2253,10 +2343,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2266,6 +2357,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -2273,7 +2365,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify commit-tree uses -p with previous gh-pages tip
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -2293,10 +2385,11 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
         // Site-only staging:
-        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-        .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+        .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
         .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=.moss/build/generations/<id>/
+        .mockResolvedValueOnce(gitResult(true, "siteTree\n"))      // write-tree --prefix=<generation>/
+        .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
         .mockResolvedValueOnce(gitResult(true, "nojekyllblob\n"))  // hash-object .nojekyll
         .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
         .mockResolvedValueOnce(gitResult(true, "modTree\n"))       // mktree
@@ -2305,6 +2398,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true))                    // push gh-pages
         // Deferred source backup:
         .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+        .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
         .mockResolvedValueOnce(gitResult(true))                    // git add --all
         .mockResolvedValueOnce(gitResult(false))                   // diff (changes)
         .mockResolvedValueOnce(gitResult(true, "[main abc] Deploy\n"))  // commit
@@ -2312,7 +2406,7 @@ describe("github-deploy", () => {
         .mockResolvedValueOnce(gitResult(true));                   // push main
 
       const onProgress = vi.fn();
-      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+      await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
       // Verify commit-tree WITHOUT -p (orphan commit)
       expect(mockExecuteBinary).toHaveBeenCalledWith(
@@ -2365,10 +2459,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // git write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // git write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyll000\n"))   // hash-object -w --stdin (.nojekyll)
           .mockResolvedValueOnce(gitResult(true, "100644 blob siteblob\tindex.html\n"))  // ls-tree
@@ -2378,6 +2473,7 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // git push gh-pages ONLY
           // Deferred source backup:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large source files (none found)
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(true))                    // git add --all
           .mockResolvedValueOnce(gitResult(false))                   // git diff --cached --quiet (changes exist)
           .mockResolvedValueOnce(gitResult(true, `[main ${commitSha}] Deploy site\n`))  // git commit
@@ -2389,7 +2485,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // Find all git add calls
         const addCalls = mockExecuteBinary.mock.calls.filter(
@@ -2398,14 +2494,14 @@ describe("github-deploy", () => {
 
         // First add call should be the resolved generation dir only (NOT --all, NOT .moss/build/site/)
         expect(addCalls.length).toBeGreaterThanOrEqual(1);
-        expect(addCalls[0][0].args).toEqual(["add", `${GEN_DIR}/`]);
+        expect(addCalls[0][0].args).toEqual(STAGE_ARGS);
       });
 
       it("uses write-tree --prefix to get site tree SHA directly from index", async () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         expect(mockExecuteBinary).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -2427,7 +2523,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
 
@@ -2456,7 +2552,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         const pushUrl = `https://x-access-token:${TOKEN}@github.com/${OWNER}/${REPO}.git`;
 
@@ -2481,10 +2577,11 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/shallow.lock
           // Site-only staging:
-          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink .moss/build/current → abs gen path
-          .mockResolvedValueOnce(gitResult(true))                    // git add .moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, GEN_ABS + "\n"))    // readlink <build>/current → abs gen path
+          .mockResolvedValueOnce(gitResult(true))                    // git add -f <generation>/
           .mockResolvedValueOnce(gitResult(true))                    // rm -f .git/index.lock (iCloud race)
-          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // write-tree --prefix=.moss/build/generations/<id>/
+          .mockResolvedValueOnce(gitResult(true, "siteTree123\n"))   // write-tree --prefix=<generation>/
+          .mockResolvedValueOnce(gitResult(true))                    // rm --cached the build root
           // .nojekyll injection:
           .mockResolvedValueOnce(gitResult(true, "nojekyll000\n"))   // hash-object
           .mockResolvedValueOnce(gitResult(true, "100644 blob abc\tindex.html\n"))  // ls-tree
@@ -2494,11 +2591,12 @@ describe("github-deploy", () => {
           .mockResolvedValueOnce(gitResult(true))                    // push gh-pages (succeeds)
           // Deferred source backup FAILS:
           .mockResolvedValueOnce(gitResult(true, ""))                // find large files
+          .mockResolvedValueOnce(gitResult(false))                   // git grep draft sources (none)
           .mockResolvedValueOnce(gitResult(false, "", "fatal: error"));  // git add --all fails
 
         const onProgress = vi.fn();
         // Should NOT throw even though source backup failed
-        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        const result = await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
         expect(result.orphanSha).toBe("orphan999");
       });
 
@@ -2506,7 +2604,7 @@ describe("github-deploy", () => {
         setupIncrementalDeployMocks();
 
         const onProgress = vi.fn();
-        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git" });
+        await deployViaGitPush({ owner: OWNER, repo: REPO, token: TOKEN, onProgress, gitPath: "git", siteFiles: SITE_FILES });
 
         // "Deployed!" should be called
         expect(onProgress).toHaveBeenCalledWith(100, "Deployed!");

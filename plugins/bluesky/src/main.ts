@@ -20,7 +20,7 @@ export interface CopyJob {
   form?: "short" | "thread" | "teaser";
   parts?: Part[];
   teaser?: { title: string; description: string; url: string; cover?: string | null } | null;
-  previous?: { id: string; url: string; parts: { id: string; url: string }[] } | null;
+  previous?: { id: string; url: string; parts?: { id: string; url: string }[] } | null;
   config: Record<string, unknown>;
 }
 
@@ -33,6 +33,10 @@ export interface CopyResult {
     id?: string;
     url?: string;
     parts?: { id: string; url: string }[];
+    /** `find_copy`: no copy, or only part of a thread, is on the network. */
+    absent?: boolean;
+    /** `copy_account`: the signed-in account's DID. */
+    account?: string;
     refused?: { cause: Cause; message?: string };
   } | null;
 }
@@ -55,7 +59,7 @@ export function linkFacets(text: string, links: string[]): unknown[] {
   return facets;
 }
 
-async function session(job: CopyJob): Promise<Session> {
+async function session(job: { config: Record<string, unknown> }): Promise<Session> {
   const handle = String(job.config.handle ?? "");
   const service = String(job.config.service || "https://bsky.social");
   const password = await getSecret("app_password");
@@ -73,6 +77,17 @@ function refused(e: unknown): CopyResult {
     return { success: false, message: e.message, copy: { refused: { cause, message: e.message } } };
   }
   throw e;
+}
+
+/** The parts already on the network from part `from` on, by their keys: a copy may have had more parts when first sent. */
+async function postedFrom(s: Session, idempotencyKey: string, from: number): Promise<StrongRef[]> {
+  const refs: StrongRef[] = [];
+  for (let i = from; ; i++) {
+    const ref = await getPost(s, recordKey(idempotencyKey, i));
+    if (!ref) break;
+    refs.push(ref);
+  }
+  return refs;
 }
 
 export async function publish_copy(job: CopyJob): Promise<CopyResult> {
@@ -97,8 +112,10 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
       if (job.form === "teaser" && job.teaser) {
         record.embed = { $type: "app.bsky.embed.external", external: { uri: job.teaser.url, title: job.teaser.title, description: job.teaser.description } };
       }
-      refs.push(await putPost(s, recordKey(job.idempotency_key, job.post.date ?? undefined, i), record));
+      refs.push(await putPost(s, recordKey(job.idempotency_key, i), record));
     }
+    // A retry of a send whose post has since lost parts: the parts sent then are the copy's too.
+    refs.push(...(await postedFrom(s, job.idempotency_key, parts.length)));
   } catch (e) {
     // A thread that stopped part way is retried whole: the parts already sent
     // keep their record keys and are found again, not posted twice.
@@ -114,9 +131,13 @@ export async function publish_copy(job: CopyJob): Promise<CopyResult> {
 export async function find_copy(job: CopyJob): Promise<CopyResult> {
   try {
     const s = await session(job);
-    const first = await getPost(s, recordKey(job.idempotency_key, job.post.date ?? undefined, 0));
-    if (!first) return { success: true, copy: null };
-    return { success: true, copy: { id: first.uri, url: postUrl(s, first) } };
+    // Every part on the network, the planned count or not, so a later delete reaches them all.
+    const refs = await postedFrom(s, job.idempotency_key, 0);
+    // The record keys are the copy's own, so their absence is certain. A thread
+    // cut short is sent again whole: its parts keep their keys.
+    if (refs.length === 0 || refs.length < (job.parts ?? []).length) return { success: true, copy: { absent: true } };
+    const [first, ...rest] = refs;
+    return { success: true, copy: { id: first.uri, url: postUrl(s, first), parts: rest.map((r) => ({ id: r.uri, url: postUrl(s, r) })) } };
   } catch (e) {
     return refused(e);
   }
@@ -127,7 +148,7 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
     const s = await session(job);
     const previous = job.previous;
     if (!previous) return { success: true };
-    for (const part of [...previous.parts].reverse()) await deletePost(s, rkeyOf(part.id));
+    for (const part of [...(previous.parts ?? [])].reverse()) await deletePost(s, rkeyOf(part.id));
     await deletePost(s, rkeyOf(previous.id));
     return { success: true };
   } catch (e) {
@@ -135,8 +156,17 @@ export async function delete_copy(job: CopyJob): Promise<CopyResult> {
   }
 }
 
+/** The account moss keeps each copy with: the DID, which a new handle keeps. */
+export async function copy_account(query: { channel: string; config: Record<string, unknown> }): Promise<CopyResult> {
+  try {
+    return { success: true, copy: { account: (await session(query)).did } };
+  } catch (e) {
+    return refused(e);
+  }
+}
+
 // Bluesky cannot edit a post once made, so there is no update_copy: moss
 // reports such a copy as one that cannot be edited.
-const BlueskyPlugin = { publish_copy, find_copy, delete_copy };
+const BlueskyPlugin = { publish_copy, find_copy, delete_copy, copy_account };
 (globalThis as unknown as { BlueskyPlugin: typeof BlueskyPlugin }).BlueskyPlugin = BlueskyPlugin;
 export default BlueskyPlugin;

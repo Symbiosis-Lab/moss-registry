@@ -4,7 +4,7 @@
  * Publishes a moss site to a locally-running OnionPress receiver, which serves
  * it as a Tor onion service. The deploy hook:
  *   1. Discovers the receiver by probing loopback ports for `/status`.
- *   2. Tars the sealed generation (`.moss/build/current`).
+ *   2. Tars the sealed generation (`current` in moss's build directory).
  *   3. Uploads the tar to `POST /generation`.
  *   4. Commits it via `POST /commit` (atomic flip) and reads back the onion URL.
  *   5. Cleans up the temporary tar.
@@ -44,7 +44,7 @@ import { classifyLiveness } from "./liveness";
 /**
  * deploy hook — publish the current generation to a local OnionPress receiver.
  */
-async function deploy(_context: DeployContext): Promise<HookResult> {
+async function deploy(context: DeployContext): Promise<HookResult> {
   setCurrentHookName("deploy");
 
   console.log("OnionPress Deployer: Starting deployment...");
@@ -74,7 +74,7 @@ async function deploy(_context: DeployContext): Promise<HookResult> {
   try {
     // ── 2. Pack the sealed generation ─────────────────────────────────────
     await reportProgress("deploying", 3, 10, "Packing your site...");
-    tarPath = await packGeneration(genId);
+    tarPath = await packGeneration(genId, context.site_files);
 
     // ── 3. Upload (aborts before commit on any failure) ───────────────────
     await reportProgress("deploying", 6, 10, "Uploading to OnionPress...");

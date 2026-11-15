@@ -29,7 +29,7 @@ const nativeManifest = (...platforms) => ({
 test("each platform a native plugin declares is built once, on its own runner", () => {
   const m = nativeManifest("linux-x64", "darwin-arm64", "linux-arm64", "linux-x64");
   assert.deepEqual(nativeBuildMatrix([{ dir: "plugins/ocr", manifest: m }]), [
-    { plugin: "plugins/ocr", id: "ocr", platform: "darwin-arm64", runner: "macos-14" },
+    { plugin: "plugins/ocr", id: "ocr", platform: "darwin-arm64", runner: "macos-15" },
     { plugin: "plugins/ocr", id: "ocr", platform: "linux-arm64", runner: "ubuntu-22.04-arm" },
     { plugin: "plugins/ocr", id: "ocr", platform: "linux-x64", runner: "ubuntu-22.04" },
   ]);
