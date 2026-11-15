@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- A press that sends makes every control in the booking inert until its answer is drawn, and the pressed button turns; this covers Continue, the hours, Book, Pay, Move, Cancel and Decline, and a failed answer releases it. The move screen reads its times once.
+- Choosing a card, an option, an add-on, a date or a time draws the screen again with focus and the page where they were.
+- Every visitor word comes from one table, in English and Simplified Chinese by the page's `lang`; the offer's `words` table replaces any of them. Money and dates follow the page's `lang`, and amounts use the currency's own minor unit.
+- `quoted` in the offer lists services the desk prices itself, shown as cards that email the desk. The trip request screen is gone.
+- A deposit is offered by the booking service's own rule (whole days by the clock before the start), checked against the shared vectors; Pay says so when the service's figure differs from the Book screen's.
+- The stylesheet takes its colours, faces and case from the site's tokens, with `--booking-heading-*` and `--booking-label-*` for a site's own heading and label style.
+
 ## 0.3.0
 
 - A service can be priced by a choice and add-ons: `choice` is one required pick among options that each carry a price, `add_ons` are extras with a quantity range, and each is charged `per = "hour"` (the default) or once per booking. A service with `hours` and a `choice` needs no `per_hour`. `note` is a line shown with the service on Choose and Book and in the confirmation mail. The tab edits all three. The total is the rate, plus the choice, plus each add-on's quantity times its unit price; the booking service computes the same sum and its answer is the one that charges.

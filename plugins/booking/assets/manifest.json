@@ -248,7 +248,7 @@
                 "key": "note",
                 "type": "string",
                 "label": "Note",
-                "placeholder": "Up to 4 hours and 100 miles."
+                "placeholder": "Meet at the north pier."
               },
               {
                 "key": "choice",
@@ -270,7 +270,7 @@
                     "type": "map",
                     "label": "Options",
                     "add_label": "Add option",
-                    "placeholder": "sedan",
+                    "placeholder": "coast",
                     "key_pattern": "^[a-z0-9-]{1,40}$",
                     "items": {
                       "type": "object",
@@ -312,7 +312,7 @@
                 "type": "map",
                 "label": "Add-ons",
                 "add_label": "Add add-on",
-                "placeholder": "guards",
+                "placeholder": "photographer",
                 "key_pattern": "^[a-z0-9-]{1,40}$",
                 "when": {
                   "charge": "hourly"

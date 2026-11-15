@@ -21,7 +21,9 @@ function depositOf(total, percent) {
 
 // A deposit is offered only when the start is at least `days` whole days after `now` (both in ms),
 // so the balance can be charged before it. The booking service decides by the same rule.
-const depositAllowed = (start, now, days) => start - now >= days * 864e5;
+function depositAllowed(start, now, days) {
+  return start - now >= days * 864e5;
+}
 
 // What a booking costs: the service's rate, plus the choice, plus each add-on's quantity times its
 // unit price (per hour booked, or once). null where the service refuses the selection. The service

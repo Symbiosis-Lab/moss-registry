@@ -75,6 +75,13 @@ test("a published offer in a format other than schema 1 leaves the page's own co
   assert.notEqual(await open("desk"), "");
 });
 
+test("the plugin speaks for no one client: none of its files carries a word of one client's offer or theme", () => {
+  for (const name of ["moss-booking.js", "moss-booking.css", "manifest.json"]) {
+    const text = readFileSync(new URL(`../assets/${name}`, import.meta.url), "utf8");
+    assert.doesNotMatch(text, /meta ?force|protection|bodyguard|\bguards?\b|patrol|secured ride|vehicle|sedan|\bSUV\b|armou?red|by phone|\btrip\b|--orange|--tan\b|--ink\b/i, name);
+  }
+});
+
 const MANIFEST = JSON.parse(readFileSync(new URL("../assets/manifest.json", import.meta.url), "utf8"));
 
 /** What moss publishes of `table`: only the manifest's `public_data.keys`, `*` standing for any one key. */
@@ -127,11 +134,24 @@ for (const v of VECTORS.cases) {
   });
 }
 
-test("the page shows the deposit the booking service holds, rounded down", () => {
+/** The page's own deposit rules, taken out of the script. */
+function deposits() {
   const context = { HTMLElement: class {}, customElements: { define() {} } };
   vm.runInNewContext(SOURCE, context);
-  assert.equal(context.depositOf(333, 50), 166);
-});
+  return context;
+}
+
+for (const v of VECTORS.deposits) {
+  test(`the page holds the deposit the booking service holds: ${v.name}`, () => {
+    assert.equal(deposits().depositOf(v.total, v.percent), v.deposit);
+  });
+}
+
+for (const v of VECTORS.deposit_starts) {
+  test(`the page ${v.allowed ? "offers" : "does not offer"} a deposit as the booking service does: ${v.name}`, () => {
+    assert.equal(deposits().depositAllowed(Date.parse(v.start), Date.parse(v.now), v.balance_days_before), v.allowed);
+  });
+}
 
 test("the manifest publishes every key of the services the vectors price", () => {
   assert.deepEqual(projected({ services: VECTORS.services }).services, VECTORS.services);
@@ -149,7 +169,7 @@ test("the manifest publishes every key the booking service reads from an offer",
 
 // Commerce's copy of the vectors is the source. This is a copy, pinned: when commerce's file changes,
 // its own test fails until its checksum is updated there, and the new file is copied here with the new checksum.
-const VECTORS_SHA256 = "7bd63da79a825f0455250d837f68ddb00be5ee15321e2d5041f174aac468214d";
+const VECTORS_SHA256 = "ea4e76c04a39b96c24255f7efa7470c3cb2623763a930dee1b5adf1d357a667b";
 test("the vectors are the copy of commerce's file that the checksum names", () => {
   assert.equal(createHash("sha256").update(readFileSync(new URL("./price-vectors.json", import.meta.url))).digest("hex"), VECTORS_SHA256);
 });

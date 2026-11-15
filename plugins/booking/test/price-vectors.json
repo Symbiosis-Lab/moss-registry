@@ -1,5 +1,5 @@
 {
- "about": "Price vectors: commerce's copy (src/__tests__/commerce) is the source; the booking plugin's test pins it by checksum. Prices in cents; total null means the selection is refused.",
+ "about": "Price vectors: commerce's copy (src/__tests__/commerce) is the source; the booking plugin's test pins it by checksum. Prices in cents; total null means the selection is refused. `deposits` are what a deposit holds of a total (percent, rounded down); `deposit_starts` say whether a start (with the site's offset) is far enough from now to take a deposit.",
  "services": {
   "pickup": {
    "name": "Pickup and drop-off",
@@ -409,6 +409,76 @@
    "service": "charter",
    "hours": 20,
    "total": null
+  }
+ ],
+ "deposits": [
+  {
+   "name": "half of a whole number of cents",
+   "total": 60000,
+   "percent": 50,
+   "deposit": 30000
+  },
+  {
+   "name": "half of an odd total, rounded down",
+   "total": 333,
+   "percent": 50,
+   "deposit": 166
+  },
+  {
+   "name": "a third, rounded down",
+   "total": 10000,
+   "percent": 33,
+   "deposit": 3300
+  },
+  {
+   "name": "the largest share of the largest charge",
+   "total": 99999999,
+   "percent": 99,
+   "deposit": 98999999
+  }
+ ],
+ "deposit_starts": [
+  {
+   "name": "exactly the days ahead",
+   "start": "2026-12-08T10:00:00-08:00",
+   "now": "2026-12-01T18:00:00Z",
+   "balance_days_before": 7,
+   "allowed": true
+  },
+  {
+   "name": "one second short of the days ahead",
+   "start": "2026-12-08T09:59:59-08:00",
+   "now": "2026-12-01T18:00:00Z",
+   "balance_days_before": 7,
+   "allowed": false
+  },
+  {
+   "name": "more than the days ahead, though now is already the next day in UTC",
+   "start": "2026-12-08T20:00:00-08:00",
+   "now": "2026-12-01T18:00:00-08:00",
+   "balance_days_before": 7,
+   "allowed": true
+  },
+  {
+   "name": "the same calendar day a week on, but earlier in it",
+   "start": "2026-12-08T08:00:00-08:00",
+   "now": "2026-12-01T10:00:00-08:00",
+   "balance_days_before": 7,
+   "allowed": false
+  },
+  {
+   "name": "a start late in the site's day that is already the next day in UTC",
+   "start": "2026-12-08T23:00:00-08:00",
+   "now": "2026-12-01T23:30:00-08:00",
+   "balance_days_before": 7,
+   "allowed": false
+  },
+  {
+   "name": "well ahead",
+   "start": "2027-01-15T12:00:00+09:00",
+   "now": "2026-12-01T00:00:00Z",
+   "balance_days_before": 30,
+   "allowed": true
   }
  ]
 }
