@@ -548,6 +548,8 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       // Presses `selector` twice while the answer to `path` is held; then lets the answer come.
       const twice = async (page, sent, path, selector, what) => {
         const count = () => sent.filter((r) => r.path === path).length;
+        // The screen's own reads must be answered before the gate shuts, or the button never draws.
+        await page.waitForSelector(selector);
         const before = count();
         shut = true;
         await page.click(selector);
