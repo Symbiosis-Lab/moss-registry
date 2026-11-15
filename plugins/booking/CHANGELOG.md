@@ -6,6 +6,7 @@
 - One booking screen replaces When and Who: options, time, details and the total, then Pay. The total shows on that screen and on Pay and nowhere else, and the button says what it charges.
 - The published offer carries every key the booking service reads, including the opening hours and booking window, so the service takes the offer from `/_moss/extensions/booking.json`.
 - The desk and manage pages, and the booking's confirmation, list what was picked, and the desk page words each question as the offer does.
+- A pressed button answers at once: Continue, the hours stepper, the Book screen's button and Pay turn a ring until the screen they asked for is drawn, and a second press while waiting does nothing. The hours show the new length before the times arrive.
 - The deposit shown on Book and Pay is rounded down to the cent, as the booking service holds it; it was rounded to the nearest cent and could show one cent more.
 
 ## 0.2.0

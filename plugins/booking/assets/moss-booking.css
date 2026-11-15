@@ -72,12 +72,18 @@ moss-booking {
   .btns { display: flex; gap: 10px; flex-wrap: wrap; }
   .btn { border-radius: var(--radius); padding: 16px 20px; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; cursor: pointer; border: 1px solid var(--line-2); background: transparent; color: var(--text); }
   .btn.go { background: var(--orange); border-color: var(--orange); color: var(--ink); }
-  .btn.go::after { content: "→"; margin-inline-start: .8em; }
+  .btn.go::after { margin-inline-start: .8em; }
+  .btn.go:not([aria-busy="true"])::after { content: "→"; }
   .btn.go:hover { background: var(--orange-hover); }
   .btn.wide { width: 100%; }
   .btn.quiet { color: var(--text-2); }
-  .btn.go[aria-busy="true"]::after { content: none; }
   .btn:disabled { cursor: default; }
+  /* A pressed button still waiting for its answer: a ring turns where the arrow or the sign was. */
+  [aria-busy="true"] { cursor: progress; }
+  [aria-busy="true"]::after { content: ""; flex: none; display: inline-block; inline-size: 1em; block-size: 1em; border: 2px solid; border-inline-end-color: transparent; border-radius: 50%; animation: moss-booking-turn .7s linear infinite; }
+  .stepper [aria-busy="true"] { font-size: 0; }
+  .stepper [aria-busy="true"]::after { font-size: 16px; }
+  @media (prefers-reduced-motion: reduce) { [aria-busy="true"]::after { animation: none; } }
 
   .state { display: inline-flex; align-items: center; gap: 10px; font: 500 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--ok); }
   .state i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px color-mix(in oklch, currentColor 25%, transparent); }
@@ -104,3 +110,4 @@ moss-booking {
   .pick .card:has(input:checked) { border-color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); }
   .pick .card:has(input:focus-visible) { outline: 2px solid var(--orange); outline-offset: 2px; }
 }
+@keyframes moss-booking-turn { to { rotate: 1turn; } }

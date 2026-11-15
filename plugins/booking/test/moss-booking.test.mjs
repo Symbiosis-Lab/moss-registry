@@ -70,7 +70,7 @@ test("the hour stepper stops at the longest booking the published offer allows",
     services: { guard: { name: "Guard", per_hour: 10000, hours: { min: 4, max: 4 } } },
   };
   const handlers = {};
-  const stub = (selector) => ({ addEventListener: (_type, fn) => (handlers[selector] = fn), focus() {} });
+  const stub = (selector) => ({ addEventListener: (_type, fn) => (handlers[selector] = fn), focus() {}, getAttribute: () => null, setAttribute() {} });
   let Element;
   const context = {
     HTMLElement: class { getAttribute(name) { return this.attrs[name] ?? null; } },

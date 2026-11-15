@@ -61,7 +61,8 @@ const FAKE_STRIPE = `window.Stripe = (key, options) => ({ initCheckout: async (i
   };
 } });`;
 
-async function open(browser, { stripeDelay = 0, released = "expired", held = {}, kind = "book", extra = {} } = {}) {
+// `wait` maps a path of the booking service to a function whose promise the answer waits for.
+async function open(browser, { stripeDelay = 0, released = "expired", held = {}, kind = "book", extra = {}, wait = {} } = {}) {
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
   const sent = [];
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type" };
@@ -74,11 +75,12 @@ async function open(browser, { stripeDelay = 0, released = "expired", held = {},
     const file = files[path];
     return file ? route.fulfill({ body: file[0], contentType: file[1] }) : route.fulfill({ status: 404 });
   });
-  await page.route(`${ENDPOINT}/**`, (route) => {
+  await page.route(`${ENDPOINT}/**`, async (route) => {
     const req = route.request();
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
     const path = new URL(req.url()).pathname.replace(new URL(ENDPOINT).pathname, "");
     sent.push({ path, body: req.postDataJSON?.() ?? null });
+    await wait[path]?.();
     const answers = {
       "/slots": [200, SLOTS],
       "/holds": held.status ? [held.status, held.body] : [201, { booking: "bk_1", status: "holding", amount: 60000, due_now: 30000, currency: "usd", checkout: CHECKOUT, ...held }],
@@ -118,6 +120,11 @@ const near = (hex, want, what) => assert.ok(rgb(hex).every((v, i) => Math.abs(v 
 const SUV_FOUR_TWO = VECTORS.cases.find((c) => c.name === "an SUV for 4 hours with 2 guards");
 const dollars = (cents) => `$${(cents / 100).toLocaleString("en-US")}`;
 const stepAt = (page) => page.locator(".steps .on").textContent();
+// A button that shows it is waiting: marked busy, with the ring drawn in the arrow's place and turning.
+const turning = (button) => button.evaluate((b) => {
+  const ring = getComputedStyle(b, "::after");
+  return b.getAttribute("aria-busy") === "true" && ring.content === '""' && ring.animationName === "moss-booking-turn" && parseFloat(ring.inlineSize) > 0;
+});
 
 async function fillPickup(page) {
   await page.fill("#f-name", "Ada Client");
@@ -232,6 +239,50 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
     }
   });
 
+  test(`${name}: Continue, the hours and the Book screen's button turn while the service answers`, async () => {
+    const browser = await engine.launch();
+    try {
+      let holding = false, release = () => {};
+      const gate = () => holding && new Promise((ok) => (release = ok));
+      const { page, sent } = await open(browser, { wait: { "/slots": gate, "/holds": gate } });
+      const answer = async () => { holding = false; release(); await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]')); };
+      await page.goto(`${SITE}/book/`);
+      await page.click('[data-id="protection"]');
+
+      holding = true;
+      await page.click("[data-go]");
+      assert.ok(await turning(page.locator("[data-go]")), "Continue while the times load");
+      await page.click("[data-go]");
+      await answer();
+      assert.equal(sent.filter((r) => r.path === "/slots").length, 1, "a second press of Continue asks nothing");
+
+      // One hour up from the shortest length, so the other sign can be pressed too.
+      const more = page.locator('[aria-label="One hour more"]');
+      await more.click();
+      await page.waitForFunction(() => !document.querySelector('[aria-label="One hour fewer"]').disabled);
+      holding = true;
+      await more.click();
+      assert.ok(await turning(more), "One hour more while the times load");
+      assert.equal(await page.locator(".stepper output").first().textContent(), "7", "the new length shows at once");
+      await page.click('[aria-label="One hour fewer"]');
+      await answer();
+      assert.equal(await page.locator(".stepper output").first().textContent(), "7", "a press on the other sign while waiting changes nothing");
+      assert.equal(sent.filter((r) => r.path === "/slots").length, 3, "and asks nothing");
+
+      await page.click("[data-start]");
+      await page.fill("#f-name", "Ada Client");
+      await page.fill("#f-email", "ada@example.com");
+      await page.fill("#f-mobile", "+15555550100");
+      holding = true;
+      await page.click("[type=submit]");
+      assert.ok(await turning(page.locator("form [type=submit]")), "the Book screen's button while the time is held");
+      holding = false; release();
+      await page.waitForSelector('h1:has-text("Pay")');
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`${name}: Stripe's fields open on the site's account in the site's colours, face and corners`, async () => {
     const browser = await engine.launch();
     try {
@@ -279,7 +330,7 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
     }
   });
 
-  test(`${name}: Pay waits for the fields, says it is paying, and shows Stripe's refusal in the page`, async () => {
+  test(`${name}: Pay waits for the fields, turns while it is paying, and shows Stripe's refusal in the page`, async () => {
     const browser = await engine.launch();
     try {
       const { page } = await open(browser);
@@ -292,8 +343,8 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       await page.evaluate(() => window.change({ complete: true }));
       await page.evaluate(() => { window.answer = () => new Promise((ok) => (window.refuse = () => ok({ type: "error", error: { message: "Your card was declined.", code: "paymentFailed" } }))); });
       await pay.click();
-      assert.equal(await pay.textContent(), "Paying…");
-      assert.equal(await pay.getAttribute("aria-busy"), "true");
+      assert.equal(await pay.textContent(), "Pay");
+      assert.ok(await turning(pay), "Pay while Stripe answers");
       assert.ok(await pay.isDisabled());
       assert.ok(await page.locator("[data-back]").isDisabled(), "Back while paying");
       await page.evaluate(() => window.refuse());

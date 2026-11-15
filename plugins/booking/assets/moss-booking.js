@@ -8,6 +8,10 @@ const qtyOf = (add) => add.qty ?? { min: 0, max: 1 };
 // Stripe's largest single charge, in cents.
 const MAX_CHARGE = 99_999_999;
 
+// A press answers at once: the pressed button turns a ring (moss-booking.css) until the screen it asked for is drawn.
+// False when the button is already waiting, so a second press does nothing.
+const pressed = (button) => button.getAttribute("aria-busy") !== "true" && (button.setAttribute("aria-busy", "true"), true);
+
 // A choice's options, cheapest first: moss publishes a table's keys sorted, so the order they were written in is lost.
 const optionsOf = (s) => Object.entries(s.choice.options).sort(([, a], [, b]) => a.price - b.price);
 
@@ -274,7 +278,8 @@ async function mount(view, page, DESK, ENDPOINT) {
   <a class="card" href="mailto:${esc(DESK)}?subject=Secured%20ride%2C%20guards%20or%20patrol"><b>Secured ride · Guards · Patrol</b><span>Call, text or email the desk</span></a></div>
   <button class="btn go wide" data-go>Continue</button></div>`);
       view.querySelectorAll("[data-id]").forEach((b) => b.addEventListener("click", () => { state.id = b.dataset.id; choose(); }));
-      view.querySelector("[data-go]").addEventListener("click", () => { begin(state.id); load(); });
+      const go = view.querySelector("[data-go]");
+      go.addEventListener("click", () => { if (pressed(go)) { begin(state.id); load(); } });
     }
 
     // The total, and how to pay it where the start leaves a choice.
@@ -318,14 +323,20 @@ async function mount(view, page, DESK, ENDPOINT) {
       view.querySelectorAll("[data-addon]").forEach((b) => b.addEventListener("click", again((x) => { state.addOns[x.dataset.addon] += Number(x.dataset.step); })));
       view.querySelectorAll("input[name=choice], input[name=pay]").forEach((r) => r.addEventListener("change", again((x) => { state[x.name === "choice" ? "choice" : "pay"] = x.value; })));
       // The start times depend on the hours, so a new length asks the service again.
-      view.querySelectorAll("[data-hours]").forEach((b) => b.addEventListener("click", () => { keep(); state.hours += Number(b.dataset.step); load(); }));
+      view.querySelectorAll("[data-hours]").forEach((b) => b.addEventListener("click", () => {
+        if (view.querySelector('[data-hours][aria-busy="true"]') || !pressed(b)) return;
+        keep();
+        state.hours += Number(b.dataset.step);
+        b.parentNode.querySelector("output").textContent = state.hours;
+        load();
+      }));
       view.querySelector("[data-back]").addEventListener("click", () => choose());
       // One hold per press: a second press while the first is in flight would be refused as a taken time.
       view.querySelector("form").addEventListener("submit", (event) => {
         event.preventDefault();
         const go = event.target.querySelector("[type=submit]");
         if (go.disabled) return;
-        go.disabled = true;
+        go.disabled = pressed(go);
         keep();
         hold();
       });
@@ -409,8 +420,7 @@ async function mount(view, page, DESK, ENDPOINT) {
       const failed = () => leave(() => show(unavailable(`The payment form did not load. Nothing was paid. Please try again, or email the desk at ${desk}.`)));
       const busy = (on) => {
         go.disabled = back.disabled = on;
-        go.textContent = on ? "Paying…" : "Pay";
-        if (on) go.setAttribute("aria-busy", "true");
+        if (on) pressed(go);
         else go.removeAttribute("aria-busy");
       };
       back.addEventListener("click", () => leave(() => book(notice(FREED))));
