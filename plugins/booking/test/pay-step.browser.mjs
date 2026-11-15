@@ -343,7 +343,7 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
   test(`${name}: Pay waits for the fields, turns while it is paying, and shows Stripe's refusal in the page`, async () => {
     const browser = await engine.launch();
     try {
-      const { page } = await open(browser);
+      const { page, sent } = await open(browser);
       await toPay(page);
       const pay = page.locator("form [type=submit]");
       await page.waitForFunction(() => window.mounted);
@@ -355,13 +355,14 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
       await pay.click();
       assert.equal(await pay.textContent(), "Pay");
       assert.ok(await turning(pay), "Pay while Stripe answers");
-      assert.ok(await pay.isDisabled());
-      assert.ok(await page.locator("[data-back]").isDisabled(), "Back while paying");
+      await page.click("[data-back]");
+      await page.waitForTimeout(150);
+      assert.ok(!sent.some((r) => r.path === "/holds/release"), "Back while paying frees nothing");
+      assert.match(await page.locator("h1").textContent(), /Pay \$300/, "Back while paying stays on Pay");
       await page.evaluate(() => window.refuse());
       await page.waitForSelector("[role=alert] >> text=Your card was declined.");
       assert.equal(await pay.textContent(), "Pay");
-      assert.ok(!(await pay.isDisabled()));
-      assert.ok(!(await page.locator("[data-back]").isDisabled()));
+      assert.equal(await page.locator('[aria-busy="true"]').count(), 0, "nothing waits once Stripe has answered");
 
       // Said once: Stripe's copy under the card number is hidden, the site's look kept, until the next try.
       const { appearances, seen } = await page.evaluate(() => ({ appearances: window.appearances, seen: window.seen }));
