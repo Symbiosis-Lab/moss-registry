@@ -9,23 +9,40 @@ const SOURCE = readFileSync(new URL("../assets/moss-booking.js", import.meta.url
 
 const PUBLISHED = { schema: 1, data: { endpoint: "https://booking.example" } };
 
-/** Mounts `<moss-booking page=…>` at an address with no fragment and returns what it drew. */
-async function open(page, published = PUBLISHED) {
+/** A `<moss-booking>` as the script sees it: markup drawn into it is kept as text; listeners on `selector` land in `handlers`. */
+function element(Element, page, handlers = {}) {
+  const view = new Element();
+  let html = "";
+  Object.defineProperty(view, "innerHTML", { get: () => html, set: (v) => (html = String(v)) });
+  Object.assign(view, {
+    attrs: { page },
+    addEventListener() {},
+    querySelector: (selector) => ({ addEventListener: (_type, fn) => (handlers[selector] = fn), focus() {}, setAttribute() {}, removeAttribute() {} }),
+    querySelectorAll: () => [],
+    getBoundingClientRect: () => ({ top: 0 }),
+  });
+  return view;
+}
+
+/** Runs the script with `fetch` answering as given; returns the element class it defines. */
+function load(fetch, extra = {}) {
   let Element;
-  const context = {
+  vm.runInNewContext(SOURCE, {
     HTMLElement: class { getAttribute(name) { return this.attrs[name] ?? null; } },
     customElements: { define: (_name, cls) => (Element = cls) },
-    location: { hash: "" },
+    location: { hash: "", search: "" },
+    URLSearchParams,
     document: { documentElement: {} },
     getComputedStyle: () => ({ scrollPaddingTop: "0px" }),
-    fetch: async () => ({ ok: true, status: 200, json: async () => published }),
-  };
-  vm.runInNewContext(SOURCE, context);
-  const view = new Element();
-  view.attrs = { page };
-  view.innerHTML = "";
-  view.querySelector = () => null;
-  view.getBoundingClientRect = () => ({ top: 0 });
+    fetch,
+    ...extra,
+  });
+  return Element;
+}
+
+/** Mounts `<moss-booking page=…>` at an address with no fragment and returns what it drew. */
+async function open(page, published = PUBLISHED, documentElement = {}) {
+  const view = element(load(async () => ({ ok: true, status: 200, json: async () => published }), { document: { documentElement } }), page);
   view.connectedCallback();
   for (let i = 0; i < 10 && !view.innerHTML; i++) await new Promise((r) => setTimeout(r, 0));
   return view.innerHTML;
@@ -38,6 +55,19 @@ for (const [page, email] of [["desk", "booking notification email"], ["manage", 
     assert.doesNotMatch(html, /unavailable/i);
   });
 }
+
+test("a page in Simplified Chinese reads the visitor words in Chinese; any other Chinese page reads English", async () => {
+  assert.match(await open("manage", PUBLISHED, { lang: "zh" }), /确认邮件/);
+  assert.match(await open("manage", PUBLISHED, { lang: "zh-Hans-CN" }), /确认邮件/);
+  assert.match(await open("manage", PUBLISHED, { lang: "zh-Hant" }), /confirmation email/);
+  assert.match(await open("manage", PUBLISHED, { lang: "en" }), /confirmation email/);
+});
+
+test("the offer's words replace the page's, as text", async () => {
+  const html = await open("manage", { schema: 1, data: { ...PUBLISHED.data, words: { manage_title: "<b>Your trip</b>", confirmation_email: 7 } } });
+  assert.match(html, /&lt;b&gt;Your trip&lt;\/b&gt;/);
+  assert.match(html, /confirmation email/);
+});
 
 test("a published offer in a format other than schema 1 leaves the page's own content", async () => {
   assert.equal(await open("desk", { schema: 2, data: PUBLISHED.data }), "");
@@ -70,26 +100,10 @@ test("the hour stepper stops at the longest booking the published offer allows",
     services: { guard: { name: "Guard", per_hour: 10000, hours: { min: 4, max: 4 } } },
   };
   const handlers = {};
-  const stub = (selector) => ({ addEventListener: (_type, fn) => (handlers[selector] = fn), focus() {}, getAttribute: () => null, setAttribute() {} });
-  let Element;
-  const context = {
-    HTMLElement: class { getAttribute(name) { return this.attrs[name] ?? null; } },
-    customElements: { define: (_name, cls) => (Element = cls) },
-    location: { hash: "", search: "" },
-    URLSearchParams,
-    document: { documentElement: {} },
-    getComputedStyle: () => ({ scrollPaddingTop: "0px" }),
-    fetch: async (url) => ({ ok: true, status: 200, json: async () => (String(url).includes("/slots")
-      ? { fresh: true, days: [{ date: "2026-12-01", slots: [{ start: "2026-12-01T10:00:00-08:00", open: true }] }] }
-      : { schema: 1, data: projected(offer) }) }),
-  };
-  vm.runInNewContext(SOURCE, context);
-  const view = new Element();
-  view.attrs = { page: "book" };
-  view.innerHTML = "";
-  view.querySelector = stub;
-  view.querySelectorAll = () => [];
-  view.getBoundingClientRect = () => ({ top: 0 });
+  const Element = load(async (url) => ({ ok: true, status: 200, json: async () => (String(url).includes("/slots")
+    ? { fresh: true, days: [{ date: "2026-12-01", slots: [{ start: "2026-12-01T10:00:00-08:00", open: true }] }] }
+    : { schema: 1, data: projected(offer) }) }));
+  const view = element(Element, "book", handlers);
   view.connectedCallback();
   for (let i = 0; i < 10 && !handlers["[data-go]"]; i++) await new Promise((r) => setTimeout(r, 0));
   handlers["[data-go]"]();

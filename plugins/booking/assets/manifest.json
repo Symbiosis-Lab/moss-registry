@@ -1,6 +1,6 @@
 {
   "name": "booking",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "display_name": "Booking",
   "description": "Let people choose a time, pay and manage a booking on your site",
   "author": "Symbiosis Lab",
@@ -65,6 +65,9 @@
         "services.*.add_ons.*.qty.max",
         "services.*.fields.*",
         "services.*.labels.*",
+        "quoted.*.name",
+        "quoted.*.note",
+        "words.*",
         "cancel.full_before_hours",
         "cancel.late_percent",
         "pages.book",
@@ -260,7 +263,7 @@
                     "key": "label",
                     "type": "string",
                     "label": "Label",
-                    "default": "Vehicle"
+                    "placeholder": "Route"
                   },
                   {
                     "key": "options",
@@ -365,6 +368,29 @@
                     }
                   ]
                 }
+              }
+            ]
+          }
+        },
+        {
+          "key": "quoted",
+          "type": "map",
+          "label": "Quoted by the desk",
+          "add_label": "Add quoted service",
+          "placeholder": "group-tour",
+          "key_pattern": "^[a-z0-9-]{1,40}$",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "key": "name",
+                "type": "string",
+                "label": "Name"
+              },
+              {
+                "key": "note",
+                "type": "string",
+                "label": "Note"
               }
             ]
           }
@@ -495,6 +521,17 @@
               "unit": "%"
             }
           ]
+        },
+        {
+          "key": "words",
+          "type": "map",
+          "label": "Visitor wording",
+          "add_label": "Add wording",
+          "placeholder": "continue",
+          "key_pattern": "^[a-z_]{1,40}$",
+          "items": {
+            "type": "string"
+          }
         }
       ],
       "actions": [
@@ -573,7 +610,11 @@
       "Add add-on": "添加附加项",
       "Quantity": "数量",
       "Fewest": "最少",
-      "Most": "最多"
+      "Most": "最多",
+      "Route": "路线",
+      "Quoted by the desk": "由前台报价",
+      "Add quoted service": "添加报价服务",
+      "Visitor wording": "访客措辞"
     }
   }
 }
