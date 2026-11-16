@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import {
   ID_RE,
   SEMVER_RE,
+  MOSS_VERSION_RE,
   RESERVED_IDS,
   cmpSemver,
   parseReleaseTag,
@@ -80,6 +81,11 @@ if (manifest) {
   }
   if (manifest.version && !SEMVER_RE.test(manifest.version)) {
     fail(`${id}: manifest.version "${manifest.version}" is not valid semver`);
+  }
+  if (manifest.min_moss_version !== undefined && !MOSS_VERSION_RE.test(String(manifest.min_moss_version))) {
+    fail(
+      `${id}: manifest.min_moss_version ${JSON.stringify(manifest.min_moss_version)} is not a version moss can read (write it like "0.15.20"); moss refuses to run a plugin whose floor it cannot read`,
+    );
   }
 
   // Validation is not additionalProperties:false, so a misspelled optional

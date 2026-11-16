@@ -77,6 +77,27 @@ test("a built JavaScript plugin passes", () => {
   }
 });
 
+test("min_moss_version must be a version moss can read", () => {
+  for (const floor of ["whenever", "0.15", ">=0.15.0", "v0.15.0", "0.015.0", " 0.15.0", 15]) {
+    const p = jsPlugin(({ manifest }) => (manifest.min_moss_version = floor));
+    try {
+      const r = validate(p.dir);
+      assert.equal(r.ok, false, `${JSON.stringify(floor)} must be refused:\n${r.out}`);
+      assert.match(r.out, /min_moss_version .* is not a version moss can read/);
+    } finally {
+      p.cleanup();
+    }
+  }
+  for (const floor of ["0.15.20", "1.0.0-beta.1", "0.0.0"]) {
+    const p = jsPlugin(({ manifest }) => (manifest.min_moss_version = floor));
+    try {
+      assert.equal(validate(p.dir).ok, true, `${floor} must pass`);
+    } finally {
+      p.cleanup();
+    }
+  }
+});
+
 test("a JavaScript plugin still needs entry, package.json, a lockfile and its bundle", () => {
   const cases = [
     [({ manifest }) => delete manifest.entry, /no "entry" and no contributes\.derivations/],
