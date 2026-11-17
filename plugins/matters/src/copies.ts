@@ -1,11 +1,11 @@
 /** Matters' copy lifecycle. A stored attempt survives a lost mutation response. */
-import type { CopyJob, CopyOutcome } from "@symbiosis-lab/moss-api";
+import type { AccountQuery, CopyJob, CopyOutcome } from "@symbiosis-lab/moss-api";
 import { pluginFileExists, readPluginFile, writePluginFile } from "@symbiosis-lab/moss-api";
 import { sha256, toUtf8Bytes } from "ethers";
 import type { HookResult, MattersDraftWithArticle, PutDraftInput } from "./types";
 import {
   createDraft, fetchDraft, fetchAllArticles, fetchRemoteCopy, publishArticle, editArticle,
-  deleteMoment, putMoment, fetchUserProfile, MattersAuthError, MattersRefusal,
+  putMoment, fetchUserProfile, MattersAuthError, MattersRefusal,
   type PublishedArticle, type RemoteCopy,
 } from "./api";
 import { clearTokenCache, getSessionState } from "./credential";
@@ -187,13 +187,14 @@ async function previousNode(job: CopyJob): Promise<RemoteCopy | null> {
   }
   return fetchRemoteCopy(id);
 }
+const ABSENT: HookResult = { success: true, copy: { absent: true } };
 async function nodeResult(node: RemoteCopy | null): Promise<HookResult> {
-  if (!node) return { success: true, copy: null };
+  if (!node) return ABSENT;
   if (node.__typename === "Draft") {
     if (!published(node)) throw new Error("Matters draft publication is unconfirmed");
     return { success: true, copy: copyOf(node.article!, await viewerName()) };
   }
-  if (node.state === "archived") return { success: true, copy: null };
+  if (node.state === "archived") return ABSENT;
   if (node.state !== "active") throw new Error(`Matters copy is ${node.state}; publication is unconfirmed`);
   if (node.__typename === "Moment") {
     if (!node.id || !node.shortHash) throw new Error("Matters moment identity is unconfirmed");
@@ -209,12 +210,12 @@ export async function find_copy(job: CopyJob): Promise<HookResult> {
     if (job.previous?.id) return await nodeResult(await previousNode(job));
     const file = await attemptFile(job);
     const attempt = await readAttempt(file);
-    if (attempt?.phase === "absent") return { success: true, copy: null };
+    if (attempt?.phase === "absent") return ABSENT;
     if (attempt?.phase === "published") return await nodeResult(await fetchRemoteCopy(attempt.articleId));
     if (attempt?.phase === "prepared" || attempt?.phase === "publishing") {
       const draft = await fetchDraft(attempt.draftId);
       if (published(draft)) return await rememberPublished(file, draft!);
-      if (attempt.phase === "prepared" && draft?.publishState === "unpublished") return { success: true, copy: null };
+      if (attempt.phase === "prepared" && draft?.publishState === "unpublished") return ABSENT;
       throw new Error("Matters publication is unconfirmed; recovery must check this draft again");
     }
     if (attempt) throw new Error("Matters draft creation is unconfirmed");
@@ -225,6 +226,20 @@ export async function find_copy(job: CopyJob): Promise<HookResult> {
       if (matches.length === 1) return { success: true, copy: copyOf(matches[0], userName) };
     }
     throw new Error("No Matters recovery record; cannot establish whether a copy was published");
+  } catch (error) { return { success: false, message: errorText(error) }; }
+}
+
+/**
+ * The signed-in account, asked of Matters: the name in the folder's settings may be another account's.
+ * Under `MATTERS_QUERY_MODE=user` (tests only) the profile read is the test user's, not the viewer's.
+ */
+export async function copy_account(_query: AccountQuery): Promise<HookResult> {
+  try {
+    const blocked = await initialize("copy_account");
+    if (blocked) return blocked;
+    const { id } = await fetchUserProfile();
+    if (!id) throw new Error("Matters did not say which account is signed in");
+    return { success: true, copy: { account: `${getDomain()}:${id}` } };
   } catch (error) { return { success: false, message: errorText(error) }; }
 }
 
@@ -246,29 +261,6 @@ export async function update_copy(job: CopyJob): Promise<HookResult> {
     }
     return refusedOrThrow(error);
   }
-}
-
-export async function delete_copy(job: CopyJob): Promise<HookResult> {
-  const blocked = await initialize("delete_copy");
-  if (blocked) return blocked;
-  try {
-    const node = await previousNode(job);
-    let message = "Matters copy deleted";
-    if (node?.__typename === "Moment") {
-      const deleted = await deleteMoment(node.id);
-      if (deleted.id !== node.id || deleted.state !== "archived") throw new Error("Matters has not confirmed the moment deletion");
-    } else if (node?.__typename === "Article") {
-      if (node.state !== "archived") {
-        const archived = await editArticle({ id: node.id, state: "archived" });
-        if (archived.id !== node.id || archived.state !== "archived") throw new Error("Matters has not confirmed the article archive");
-      }
-      message = "Matters copy archived. Matters retains the archive; this is not permanent erasure";
-    } else if (node) {
-      return refusal("content", "The Matters copy is still a draft; its publication must be resolved first");
-    }
-    await saveAttempt(await attemptFile(job), { phase: "absent" });
-    return { success: true, copy: null, message };
-  } catch (error) { return refusedOrThrow(error); }
 }
 
 function escapeHtml(text: string): string {

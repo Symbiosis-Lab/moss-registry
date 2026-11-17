@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.1]
+
+### Removed
+
+- `delete_copy`: deleting a post now leaves its copies on Matters, so moss no longer asks the plugin to delete or archive one.
+
+### Changed
+
+- `find_copy` answers `absent: true` when Matters has no such copy (a missing or archived article, a deleted copy, a draft never published), so moss posts an interrupted copy again only on that answer.
+
+### Added
+
+- `copy_account` answers the signed-in Matters account. moss keeps it on each copy and leaves a copy posted from another account alone until that account is signed in again.
+
 ## [1.7.0]
 
 ### Changed

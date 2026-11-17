@@ -1001,4 +1001,4 @@ export async function process(context: ProcessContext): Promise<HookResult> {
   }
 }
 
-export { publish_copy, find_copy, update_copy, delete_copy } from "./copies";
+export { publish_copy, find_copy, update_copy, copy_account } from "./copies";

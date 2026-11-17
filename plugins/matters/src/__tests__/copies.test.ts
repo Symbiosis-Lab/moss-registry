@@ -21,14 +21,14 @@ vi.mock("../utils", () => ({ sleep: vi.fn(), setCurrentHookName: vi.fn() }));
 vi.mock("../api", async (original) => ({
   ...await original<typeof import("../api")>(),
   createDraft: vi.fn(), fetchDraft: vi.fn(), fetchAllArticles: vi.fn(), fetchRemoteCopy: vi.fn(),
-  publishArticle: vi.fn(), editArticle: vi.fn(), deleteMoment: vi.fn(), putMoment: vi.fn(), fetchUserProfile: vi.fn(),
+  publishArticle: vi.fn(), editArticle: vi.fn(), putMoment: vi.fn(), fetchUserProfile: vi.fn(),
   uploadAssetMultipart: vi.fn(), uploadAssetByUrl: vi.fn(),
 }));
 import * as api from "../api";
 import { getSessionState } from "../credential";
 import { initializeDomain } from "../domain";
 import { readSiteFile, writePluginFile, readPluginFile } from "@symbiosis-lab/moss-api";
-import { publish_copy, find_copy, update_copy, delete_copy, momentHtml } from "../copies";
+import { publish_copy, find_copy, update_copy, copy_account, momentHtml } from "../copies";
 import { normalizeHtmlForMatters, uploadAndReplaceLocalImages } from "../content";
 
 const article = { __typename: "Article" as const, id: "QXJ0aWNsZTox", shortHash: "hash", slug: "title", state: "active" };
@@ -60,7 +60,6 @@ beforeEach(() => {
   vi.mocked(api.fetchRemoteCopy).mockReset().mockResolvedValue(article);
   vi.mocked(api.fetchAllArticles).mockReset().mockResolvedValue({ userName: "alice", articles: [] });
   vi.mocked(api.editArticle).mockReset().mockResolvedValue(article);
-  vi.mocked(api.deleteMoment).mockReset().mockResolvedValue({ id: "moment-id", state: "archived" });
   vi.mocked(api.putMoment).mockReset().mockResolvedValue({ id: "moment-id", shortHash: "mhash" });
   vi.mocked(api.uploadAssetMultipart).mockReset().mockResolvedValue({ id: "asset", path: "https://assets.matters.news/image.png" });
   vi.mocked(api.uploadAssetByUrl).mockReset().mockResolvedValue({ id: "external", path: "https://assets.matters.news/external.png" });
@@ -124,7 +123,7 @@ describe("direct article lifecycle", () => {
     vi.mocked(api.publishArticle).mockRejectedValueOnce(new api.MattersRefusal("too long", 200, "BAD_USER_INPUT"));
     expect(await publish_copy(job())).toMatchObject({ success: false, copy: { refused: { cause: "content", message: "too long" } } });
     expect(record().phase).toBe("prepared");
-    expect(await find_copy(job())).toMatchObject({ success: true, copy: null });
+    expect(await find_copy(job())).toMatchObject({ success: true, copy: { absent: true } });
     expect(await publish_copy(job())).toMatchObject({ success: true, copy: previous });
     expect(api.createDraft.mock.calls.filter(([input]) => !input.id)).toHaveLength(1);
   });
@@ -351,6 +350,22 @@ describe("article preparation integration", () => {
   });
 });
 
+describe("copy_account", () => {
+  const query = { channel: "matters", config: {} };
+  it("answers the signed-in viewer's ID, not the name the folder remembers", async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({ id: "VXNlcjox", userName: "bob", displayName: "Bob" });
+    expect(await copy_account(query)).toEqual({ success: true, copy: { account: "matters.town:VXNlcjox" } });
+  });
+  it("cannot answer when signed out or when Matters names no viewer", async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({ userName: "bob", displayName: "Bob" });
+    expect(await copy_account(query)).toMatchObject({ success: false });
+    vi.mocked(api.fetchUserProfile).mockRejectedValue(new Error("offline"));
+    expect(await copy_account(query)).toMatchObject({ success: false, message: "offline" });
+    vi.mocked(getSessionState).mockResolvedValue("missing" as never);
+    expect(await copy_account(query)).toMatchObject({ success: false, copy: { refused: { cause: "auth" } } });
+  });
+});
+
 describe("lookup, edits and removal", () => {
   it("resolves article IDs directly even after the source becomes short", async () => {
     expect(await find_copy({ ...existing(), form: "short", article: null })).toMatchObject({ success: true, copy: previous });
@@ -381,9 +396,9 @@ describe("lookup, edits and removal", () => {
     vi.mocked(api.fetchRemoteCopy).mockResolvedValue({ ...article, state: "pending" });
     expect(await find_copy(existing())).toMatchObject({ success: false });
     vi.mocked(api.fetchRemoteCopy).mockResolvedValue({ ...article, state: "archived" });
-    expect(await find_copy(existing())).toMatchObject({ success: true, copy: null });
+    expect(await find_copy(existing())).toMatchObject({ success: true, copy: { absent: true } });
     vi.mocked(api.fetchRemoteCopy).mockResolvedValue(null);
-    expect(await find_copy(existing())).toMatchObject({ success: true, copy: null });
+    expect(await find_copy(existing())).toMatchObject({ success: true, copy: { absent: true } });
   });
   it("updates the same article using editArticle and article assets", async () => {
     const input = existing(); input.article!.html = '<img src="/new.png">';
@@ -430,31 +445,7 @@ describe("lookup, edits and removal", () => {
     expect(await update_copy(existing())).toMatchObject({ copy: { refused: { cause: "content" } } });
     expect(api.editArticle).not.toHaveBeenCalled();
   });
-  it("delete without a form uses deleteMoment for moments", async () => {
-    vi.mocked(api.fetchRemoteCopy).mockResolvedValue({ __typename: "Moment", id: "moment-id", shortHash: "mhash", state: "active" });
-    const input = { ...existing(), form: undefined, article: null };
-    expect(await delete_copy(input)).toMatchObject({ success: true, copy: null });
-    expect(api.deleteMoment).toHaveBeenCalledExactlyOnceWith("moment-id"); expect(api.editArticle).not.toHaveBeenCalled();
-    expect(record().phase).toBe("absent");
-  });
-  it("unconfirmed deletion throws", async () => {
-    vi.mocked(api.fetchRemoteCopy).mockResolvedValue({ __typename: "Moment", id: "moment-id", shortHash: "mhash", state: "active" });
-    vi.mocked(api.deleteMoment).mockResolvedValue({ id: "moment-id", state: "active" });
-    await expect(delete_copy(existing())).rejects.toThrow("moment deletion");
-  });
-  it("archives long copies and explains retention", async () => {
-    vi.mocked(api.editArticle).mockResolvedValue({ ...article, state: "archived" });
-    expect(await delete_copy({ ...existing(), form: undefined })).toMatchObject({ success: true, message: expect.stringContaining("Matters retains the archive") });
-    expect(api.editArticle).toHaveBeenCalledExactlyOnceWith({ id: article.id, state: "archived" });
-    expect(await find_copy(job())).toMatchObject({ success: true, copy: null });
-  });
-  it("unconfirmed archival throws and unresolved drafts cannot be deleted", async () => {
-    await expect(delete_copy(existing())).rejects.toThrow("article archive");
-    vi.mocked(api.fetchRemoteCopy).mockResolvedValue({ ...draft, __typename: "Draft" });
-    expect(await delete_copy(existing())).toMatchObject({ copy: { refused: { cause: "content" } } });
-  });
-  it("requires a previous ID for update or deletion", async () => {
-    await expect(delete_copy(job())).rejects.toThrow("ID is missing");
+  it("requires a previous ID for an update", async () => {
     await expect(update_copy(job())).rejects.toThrow("ID is missing");
   });
   it("short and teaser copies are confirmed moments", async () => {
