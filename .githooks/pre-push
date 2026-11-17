@@ -17,7 +17,8 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
 done
 status=0
 for dir in $(printf '%s' "$plugins" | sort -u); do
-  [ -f "$dir/assets/manifest.json" ] || continue
+  # Only a directory the push deleted is skipped; one missing its manifest is the validator's to refuse.
+  [ -d "$dir" ] || continue
   echo "pre-push: checking $dir"
   scripts/check-plugin "$dir" || { echo "pre-push: $dir fails the registry's checks" >&2; status=1; }
 done

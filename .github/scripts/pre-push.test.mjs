@@ -39,6 +39,12 @@ test("a push that breaks a plugin's manifest is refused with the validator's rea
   assert.match(r.stdout + r.stderr, /pre-push: plugins\/pdf-ocr fails the registry's checks/);
 });
 
+test("a push that deletes a plugin's manifest is refused", () => {
+  const r = pushOf((clone) => git(clone, "rm", "-q", "plugins/pdf-ocr/assets/manifest.json"));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /pre-push: plugins\/pdf-ocr fails the registry's checks/);
+});
+
 test("a push that touches no plugin checks nothing", () => {
   const r = pushOf((clone) => writeFileSync(join(clone, "README.md"), "changed\n"));
   assert.equal(r.status, 0, r.stdout + r.stderr);

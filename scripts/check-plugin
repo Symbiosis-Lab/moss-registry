@@ -7,7 +7,8 @@
 set -euo pipefail
 dir=${1:?usage: scripts/check-plugin plugins/<id>}
 root=$(cd "$(dirname "$0")/.." && pwd)
-if jq -e '(.entry // "") != ""' "$dir/assets/manifest.json" >/dev/null; then
+# An unreadable or missing manifest skips the build and leaves the reason to the validator.
+if node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).entry ? 0 : 1)' "$dir/assets/manifest.json" 2>/dev/null; then
   ( cd "$dir"
     npm ci --ignore-scripts --no-audit --no-fund
     npm run build

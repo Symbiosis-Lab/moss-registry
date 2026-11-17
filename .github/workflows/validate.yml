@@ -58,7 +58,8 @@ jobs:
           selected=$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA" \
             | awk -F/ '$1 == "plugins" && NF >= 2 { print $1 "/" $2 }' | sort -u \
             | while IFS= read -r dir; do
-                if [ -f "$dir/assets/manifest.json" ]; then
+                # A directory missing its manifest is selected too: the validator refuses it.
+                if [ -d "$dir" ]; then
                   printf '%s\n' "$dir"
                 fi
               done)
