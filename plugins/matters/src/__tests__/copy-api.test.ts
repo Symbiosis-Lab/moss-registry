@@ -4,7 +4,7 @@ vi.mock("@symbiosis-lab/moss-api", () => ({ httpPost: vi.fn(), httpPostMultipart
 vi.mock("../credential", () => ({ authHeaderToken: vi.fn(async () => "token"), markSessionInvalidated: vi.fn() }));
 import { httpPost, httpPostMultipart } from "@symbiosis-lab/moss-api";
 import { authHeaderToken, markSessionInvalidated } from "../credential";
-import { publishArticle, editArticle, deleteMoment, fetchRemoteCopy, uploadAssetByUrl, uploadAssetMultipart, MattersRefusal, MattersAuthError } from "../api";
+import { publishArticle, editArticle, fetchRemoteCopy, uploadAssetByUrl, uploadAssetMultipart, MattersRefusal, MattersAuthError } from "../api";
 function response(body: unknown, status = 200) { return { ok: status < 400, status, text: () => JSON.stringify(body) } as any; }
 const published = { id: "draft-id", publishState: "published", article: { id: "article-id", shortHash: "hash", slug: "slug", state: "active" } };
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(authHeaderToken).mockResolvedValue("token"); });
@@ -17,12 +17,10 @@ describe("copy API boundary", () => {
     expect(request.variables).toEqual({ input: { id: "draft-id" } });
     expect(request.query).toContain("article { id shortHash slug state }");
   });
-  it("uses editArticle and deleteMoment with the existing global ID", async () => {
-    vi.mocked(httpPost).mockResolvedValueOnce(response({ data: { editArticle: published.article } })).mockResolvedValueOnce(response({ data: { deleteMoment: { id: "moment-id", state: "archived" } } }));
+  it("uses editArticle with the existing global ID", async () => {
+    vi.mocked(httpPost).mockResolvedValueOnce(response({ data: { editArticle: published.article } }));
     expect(await editArticle({ id: "article-id", title: "New title" })).toEqual(published.article);
-    expect(await deleteMoment("moment-id")).toEqual({ id: "moment-id", state: "archived" });
     expect((vi.mocked(httpPost).mock.calls[0][1] as any).variables).toEqual({ input: { id: "article-id", title: "New title" } });
-    expect((vi.mocked(httpPost).mock.calls[1][1] as any).variables).toEqual({ input: { id: "moment-id" } });
   });
   it("sends an explicit null cover when removing an article cover", async () => {
     vi.mocked(httpPost).mockResolvedValue(response({ data: { editArticle: published.article } }));

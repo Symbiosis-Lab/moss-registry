@@ -935,6 +935,7 @@ async function fetchViewerProfile(): Promise<MattersUserProfile> {
   }
 
   const profile: MattersUserProfile = {
+    id: data.viewer.id,
     userName: data.viewer.userName,
     displayName: data.viewer.displayName,
     description: data.viewer.info?.description,
@@ -985,6 +986,7 @@ async function fetchUserProfilePublic(userName: string): Promise<MattersUserProf
   };
 
   const profile: MattersUserProfile = {
+    id: userData.id,
     userName: userData.userName ?? userName,
     displayName: userData.displayName ?? userName,
     description: userData.info?.description ?? undefined,
@@ -1457,14 +1459,6 @@ export async function editArticle(input: EditArticleInput): Promise<PublishedArt
       editArticle(input: $input) { id shortHash slug state }
     }`, { input });
   return data.editArticle;
-}
-
-export async function deleteMoment(id: string): Promise<{ id: string; state: string }> {
-  const data = await graphqlQuery<{ deleteMoment: { id: string; state: string } }>(`
-    mutation DeleteMoment($input: DeleteMomentInput!) {
-      deleteMoment(input: $input) { id state }
-    }`, { input: { id } });
-  return data.deleteMoment;
 }
 
 export async function uploadAssetByUrl(

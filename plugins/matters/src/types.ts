@@ -78,6 +78,8 @@ export interface MattersPinnedWork {
 }
 
 export interface MattersUserProfile {
+  /** Matters' global ID for the account; it outlives a renamed handle. */
+  id?: string;
   userName: string;
   displayName: string;
   description?: string;
