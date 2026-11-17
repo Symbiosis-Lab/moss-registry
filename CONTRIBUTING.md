@@ -129,9 +129,10 @@ Because a native program runs on users' machines with whatever access they have,
 1. Bump `version` in **both** `package.json` and `assets/manifest.json` (CI
    rejects a mismatch), and add a `CHANGELOG.md` entry. A native plugin bumps
    `native/Cargo.toml` and `assets/manifest.json` instead.
-2. Run `npm run build` and `npm run test:unit` locally (CI runs the unit
-   scope — keep those tests free of browser, network, and moss-binary
-   dependencies). Don't commit `dist/` — it is
+2. Run `scripts/check-plugin plugins/<id>`, the same install, build, unit
+   tests and validation CI runs (keep the unit tests free of browser, network,
+   and moss-binary dependencies). `git config core.hooksPath .githooks` makes
+   every push run it on the plugins the push touches. Don't commit `dist/` — it is
    gitignored, and CI rebuilds it from your source so that what reviewers read
    is what ships.
 3. Open a PR touching only your plugin's directory.

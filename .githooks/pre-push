@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Runs scripts/check-plugin on every plugin the pushed commits touch, so the registry's own
+# rules hold before a branch leaves this machine, not first on its pull request.
+# Wire it once per clone: git config core.hooksPath .githooks
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)"
+zero=0000000000000000000000000000000000000000
+plugins=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "$local_sha~1")..$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  plugins+=$(git diff --name-only "$range" | awk -F/ '$1 == "plugins" && NF >= 2 { print $1 "/" $2 }')$'\n'
+done
+status=0
+for dir in $(printf '%s' "$plugins" | sort -u); do
+  [ -f "$dir/assets/manifest.json" ] || continue
+  echo "pre-push: checking $dir"
+  scripts/check-plugin "$dir" || { echo "pre-push: $dir fails the registry's checks" >&2; status=1; }
+done
+exit $status
