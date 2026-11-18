@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Shows the Threads mark in moss instead of a letter.
+
 ## 0.1.1
 
 - Tells moss which account it is signed in to, so copies posted from one account are left alone while another is signed in.

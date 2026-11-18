@@ -102,7 +102,7 @@ A native plugin is a manifest plus a program moss downloads and runs, with no Ja
 plugins/<id>/
   assets/
     manifest.json        source manifest: artifacts have no url or sha256
-    icon.svg             optional
+    icon.svg             a channel needs one; drawn only with what moss keeps
   native/
     Cargo.toml           [package] version must equal the manifest version
     src/ ...             the program's source, with its lockfile
@@ -124,14 +124,19 @@ You can try the pipeline locally: `scripts/pack-native-plugin plugins/<id> --pla
 
 Because a native program runs on users' machines with whatever access they have, review means reading the source under `native/` and every dependency in its lockfile, and the build script itself. The PR validator flags native plugins for that reason. Your build script runs in PR CI too, in a job with a read-only token and no secrets.
 
+## Building a declared plugin
+
+A declared plugin has no `entry` and no derivations: its manifest says what moss reads under `contributes` (`blocks`, `public_data`, `site_settings`), and the files it names sit in `assets/`. Nothing is built: no `package.json`, no lockfile, no `native/`. The release zip is `assets/` as it stands, so every `script`, `stylesheet` and `icon` the manifest names must exist there. CI runs `node --test` on `test/*.test.mjs` and the validator; `*.browser.mjs` files are not run. The first use is `booking`.
+
 ## Submitting
 
 1. Bump `version` in **both** `package.json` and `assets/manifest.json` (CI
    rejects a mismatch), and add a `CHANGELOG.md` entry. A native plugin bumps
    `native/Cargo.toml` and `assets/manifest.json` instead.
-2. Run `npm run build` and `npm run test:unit` locally (CI runs the unit
-   scope — keep those tests free of browser, network, and moss-binary
-   dependencies). Don't commit `dist/` — it is
+2. Run `scripts/check-plugin plugins/<id>`, the same install, build, unit
+   tests and validation CI runs (keep the unit tests free of browser, network,
+   and moss-binary dependencies). `git config core.hooksPath .githooks` makes
+   every push run it on the plugins the push touches. Don't commit `dist/` — it is
    gitignored, and CI rebuilds it from your source so that what reviewers read
    is what ships.
 3. Open a PR touching only your plugin's directory.
