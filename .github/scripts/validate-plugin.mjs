@@ -27,15 +27,8 @@ import {
   derivationArtifacts,
   pluginKind,
 } from "./registry-rules.mjs";
+import { ICON_ATTRS, ICON_TAGS } from "./icon-allowlist.mjs";
 
-// What moss keeps of a published icon (moss-build registry_client/icon.rs,
-// ALLOWED_TAGS and ALLOWED_ATTRS); anything else is stripped before drawing.
-const ICON_TAGS = new Set(["svg", "g", "path", "circle", "ellipse", "line", "polyline", "polygon", "rect", "title",
-  "defs", "linearGradient", "radialGradient", "stop", "clipPath", "mask"]);
-const ICON_ATTRS = new Set(["viewBox", "xmlns", "width", "height", "fill", "stroke", "stroke-width", "stroke-linecap",
-  "stroke-linejoin", "stroke-dasharray", "stroke-opacity", "fill-opacity", "fill-rule", "clip-rule", "opacity", "d",
-  "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2", "points", "transform", "offset", "stop-color",
-  "stop-opacity", "gradientUnits", "id", "clip-path", "mask"]);
 
 const failures = [];
 const notes = [];
@@ -149,7 +142,8 @@ if (manifest) {
 
 /**
  * moss draws a plugin's icon in the catalog and, for a channel, in the channel
- * rail, falling back to a letter without one; markup moss strips draws wrong.
+ * rail, falling back to a letter without one; markup moss strips draws wrong
+ * (icon-allowlist.mjs).
  * The file defaults to icon.svg, as publish.yml reads it.
  */
 function validateIcon() {
