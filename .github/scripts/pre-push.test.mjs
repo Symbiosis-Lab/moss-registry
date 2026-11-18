@@ -21,7 +21,7 @@ function pushOf(change) {
   git(clone, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qam", "change");
   const sha = git(clone, "rev-parse", "HEAD");
   return spawnSync("bash", [join(clone, ".githooks/pre-push"), "origin", "x"], {
-    cwd: clone, encoding: "utf8", input: `refs/heads/b ${sha} refs/heads/b ${"0".repeat(40)}\n`,
+    cwd: clone, encoding: "utf8", env: { ...process.env, NODE_TEST_CONTEXT: undefined }, input: `refs/heads/b ${sha} refs/heads/b ${"0".repeat(40)}\n`,
   });
 }
 
@@ -49,4 +49,18 @@ test("a push that touches no plugin checks nothing", () => {
   const r = pushOf((clone) => writeFileSync(join(clone, "README.md"), "changed\n"));
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.doesNotMatch(r.stdout, /checking/);
+});
+
+test("a push of a declared plugin runs its unit tests", () => {
+  const r = pushOf((clone) => {
+    const dir = join(clone, "plugins/declared-demo");
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    mkdirSync(join(dir, "test"));
+    writeFileSync(join(dir, "README.md"), "# demo\n\n## Network access\n\nNone.\n");
+    writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify({ name: "declared-demo", version: "0.1.0", contributes: { public_data: { keys: ["a"] } } }));
+    writeFileSync(join(dir, "test/demo.test.mjs"), 'import assert from "node:assert"; assert.equal(1, 2, "declared test ran");\n');
+    git(clone, "add", "plugins/declared-demo");
+  });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /declared test ran/);
 });
