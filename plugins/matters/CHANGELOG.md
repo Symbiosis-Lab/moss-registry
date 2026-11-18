@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.2]
+
+### Fixed
+
+- moss draws the Matters mark with its colours; its icon used markup moss strips from an icon.
+
 ## [1.7.1]
 
 ### Removed
