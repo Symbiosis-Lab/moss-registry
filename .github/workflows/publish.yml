@@ -81,12 +81,14 @@ jobs:
             manifest="$dir/assets/manifest.json"
             [ -f "$manifest" ] || { echo "$id: no assets/manifest.json, skipping"; continue; }
 
-            # No entry means a program-only plugin, which the `native-*`
-            # jobs build; there is no bundle for this job to make.
-            if ! jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then
+            # A native plugin is built by the `native-*` jobs. A declared one
+            # has nothing to build: its zip is assets/ as it stands.
+            kind="$(node .github/scripts/plugin-kind.mjs "$dir")"
+            if [ "$kind" = native ]; then
               echo "$id: native plugin, released by the native job"
               continue
             fi
+            if [ "$kind" = declared ]; then built="$dir/assets"; else built="$dir/dist"; fi
 
             version="$(jq -r '.version' "$manifest")"
             tag="${id}-v${version}"
@@ -99,25 +101,27 @@ jobs:
             fi
 
             echo "::group::$id -> $tag"
-            ( cd "$dir" && npm ci --ignore-scripts --no-audit --no-fund && npm run build )
+            if [ "$kind" = js ]; then
+              ( cd "$dir" && npm ci --ignore-scripts --no-audit --no-fund && npm run build )
+            fi
 
-            # The artifact is the flat contents of dist/ — manifest.json,
+            # The artifact is the flat contents of dist/ (assets/ for a declared plugin): manifest.json,
             # the bundle, and the icon — because that is what moss extracts
             # into .moss/plugins/<id>/.
             zip_name="${id}-${version}.zip"
-            ( cd "$dir/dist" && zip -qr "$GITHUB_WORKSPACE/$zip_name" . )
+            ( cd "$built" && zip -qr "$GITHUB_WORKSPACE/$zip_name" . )
 
             files=("$zip_name")
 
             # The icon rides along as its own asset so the catalog can show it
             # before anything is installed, without reaching for a second origin.
             icon="$(jq -r '.icon // "icon.svg"' "$manifest")"
-            if [ -f "$dir/dist/$icon" ]; then
+            if [ -f "$built/$icon" ]; then
               icon_asset="${id}-${version}-icon.${icon##*.}"
-              cp "$dir/dist/$icon" "$icon_asset"
+              cp "$built/$icon" "$icon_asset"
               files+=("$icon_asset")
             else
-              echo "::warning::$id declares icon \"$icon\" but dist/ has no such file; publishing without one"
+              echo "::warning::$id declares icon \"$icon\" but ${built##*/}/ has no such file; publishing without one"
             fi
 
             gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
@@ -257,7 +261,7 @@ jobs:
             dir="${dir%/}"
             manifest="$dir/assets/manifest.json"
             [ -f "$manifest" ] || continue
-            if jq -e '(.entry // "") != ""' "$manifest" >/dev/null; then continue; fi
+            [ "$(node .github/scripts/plugin-kind.mjs "$dir")" = native ] || continue
             tag="$(basename "$dir")-v$(jq -r '.version' "$manifest")"
             if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "$dir: $tag already released"

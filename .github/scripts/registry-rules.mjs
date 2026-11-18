@@ -75,6 +75,19 @@ export function parseReleaseTag(tag) {
   return { id, version };
 }
 
+// -------------------------------------------------------------------- kind --
+/**
+ * What a manifest is, by shape alone: `js` has an `entry`; `native` has none
+ * and at least one derivation; `declared` has neither and only says what moss
+ * reads from `contributes`. The workflows and the validator all ask here.
+ */
+export function pluginKind(manifest) {
+  if (manifest?.entry !== undefined) return "js";
+  const d = manifest?.contributes?.derivations;
+  const hasDerivations = d && typeof d === "object" && !Array.isArray(d) && Object.keys(d).length > 0;
+  return hasDerivations ? "native" : "declared";
+}
+
 // ----------------------------------------------------------------- native --
 // A plugin can be only a manifest plus a native program moss downloads and
 // runs: no `entry`, one or more `contributes.derivations`, each naming

@@ -100,7 +100,7 @@ test("min_moss_version must be a version moss can read", () => {
 
 test("a JavaScript plugin still needs entry, package.json, a lockfile and its bundle", () => {
   const cases = [
-    [({ manifest }) => delete manifest.entry, /no "entry" and no contributes\.derivations/],
+    [({ manifest }) => delete manifest.entry, /global_name belongs to a JavaScript bundle/],
     [({ files }) => (files["package.json"] = null), /missing package\.json/],
     [({ files }) => (files["package-lock.json"] = null), /missing package-lock\.json/],
     [({ files }) => (files["package.json"].version = "2.0.0"), /package\.json version "2\.0\.0" != manifest version/],
@@ -172,9 +172,84 @@ test("Cargo.toml's version must equal the manifest's", () => {
   expectFail(({ dir }) => writeFileSync(join(dir, "native", "Cargo.toml"), '[dependencies]\nversion = "0.1.0"\n'), /no literal \[package\] version/);
 });
 
-test("no entry and no derivations is not a plugin", () => {
-  expectFail(({ manifest }) => delete manifest.contributes, /no "entry" and no contributes\.derivations/);
-  expectFail(({ manifest }) => (manifest.contributes = { derivations: {} }), /no "entry" and no contributes\.derivations/);
+// -------------------------------------------------------------- declared --
+// No entry and no derivations: the manifest declares what moss reads, and the
+// zip is assets/ as it stands.
+
+/** A declared plugin shaped like booking: a block with a script and a stylesheet, public data, a settings form. */
+function declaredPlugin(edit = () => {}) {
+  const root = mkdtempSync(join(tmpdir(), "validate-test-"));
+  const dir = join(root, "declared-fixture");
+  mkdirSync(join(dir, "assets"), { recursive: true });
+  const manifest = {
+    name: "declared-fixture",
+    version: "0.1.0",
+    contributes: {
+      blocks: { thing: { element: "moss-thing", script: "moss-thing.js", stylesheet: "moss-thing.css" } },
+      public_data: { keys: ["endpoint"] },
+      site_settings: { settings: [{ key: "endpoint", type: "string", label: "Endpoint" }] },
+    },
+  };
+  writeFileSync(join(dir, "README.md"), "# declared\n\n## Network access\n\nNone.\n");
+  writeFileSync(join(dir, "assets", "moss-thing.js"), "customElements.define('moss-thing', class extends HTMLElement {});");
+  writeFileSync(join(dir, "assets", "moss-thing.css"), "moss-thing { display: block; }");
+  edit({ dir, manifest });
+  writeFileSync(join(dir, "assets", "manifest.json"), JSON.stringify(manifest));
+  return { dir, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+function expectDeclaredFail(edit, pattern) {
+  const p = declaredPlugin(edit);
+  try {
+    const r = validate(p.dir);
+    assert.equal(r.ok, false, `expected a failure matching ${pattern}, got:\n${r.out}`);
+    assert.match(r.out, pattern);
+  } finally {
+    p.cleanup();
+  }
+}
+
+test("a plugin that only declares its components passes, with no build and no package.json", () => {
+  const p = declaredPlugin();
+  try {
+    const r = validate(p.dir);
+    assert.equal(r.ok, true, r.out);
+  } finally {
+    p.cleanup();
+  }
+});
+
+test("a declared plugin names name and version, and the shared checks apply", () => {
+  expectDeclaredFail(({ manifest }) => delete manifest.version, /manifest\.version is required/);
+  expectDeclaredFail(({ manifest }) => (manifest.name = "other"), /manifest\.name is "other" but the directory/);
+});
+
+test("a declared plugin needs at least one contributes key", () => {
+  expectDeclaredFail(({ manifest }) => delete manifest.contributes, /declares nothing/);
+  expectDeclaredFail(({ manifest }) => (manifest.contributes = {}), /declares nothing/);
+});
+
+test("a declared plugin has nothing that builds, and no derivations", () => {
+  expectDeclaredFail(({ dir }) => mkdirSync(join(dir, "native")), /native\/ directory/);
+  expectDeclaredFail(({ dir }) => writeFileSync(join(dir, "package.json"), "{}"), /package\.json/);
+  expectDeclaredFail(({ dir }) => writeFileSync(join(dir, "package-lock.json"), "{}"), /package-lock\.json/);
+  expectDeclaredFail(({ manifest }) => (manifest.global_name = "X"), /global_name belongs to a JavaScript bundle/);
+  expectDeclaredFail(({ manifest }) => (manifest.contributes.derivations = {}), /contributes\.derivations must be absent/);
+});
+
+test("an entry that is present but empty is a JavaScript plugin missing its entry", () => {
+  expectDeclaredFail(({ manifest }) => (manifest.entry = ""), /manifest\.entry is required/);
+});
+
+test("every file a block or the icon names exists inside assets/", () => {
+  expectDeclaredFail(({ dir }) => rmSync(join(dir, "assets", "moss-thing.js")), /block "thing" script "moss-thing\.js" is not in assets\//);
+  expectDeclaredFail(({ dir }) => rmSync(join(dir, "assets", "moss-thing.css")), /block "thing" stylesheet "moss-thing\.css" is not in assets\//);
+  expectDeclaredFail(({ manifest }) => (manifest.contributes.blocks.thing.script = "../README.md"), /script "\.\.\/README\.md" is not in assets\//);
+  expectDeclaredFail(({ manifest }) => (manifest.icon = "icon.svg"), /icon "icon\.svg" is not in assets\//);
+});
+
+test("a native-shaped plugin that loses its derivations declares nothing", () => {
+  expectFail(({ manifest }) => delete manifest.contributes.derivations, /declares nothing/);
 });
 
 test("a native plugin may not carry JavaScript-only fields", () => {
