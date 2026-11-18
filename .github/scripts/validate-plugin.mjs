@@ -28,6 +28,15 @@ import {
   pluginKind,
 } from "./registry-rules.mjs";
 
+// What moss keeps of a published icon (moss-build registry_client/icon.rs,
+// ALLOWED_TAGS and ALLOWED_ATTRS); anything else is stripped before drawing.
+const ICON_TAGS = new Set(["svg", "g", "path", "circle", "ellipse", "line", "polyline", "polygon", "rect", "title",
+  "defs", "linearGradient", "radialGradient", "stop", "clipPath", "mask"]);
+const ICON_ATTRS = new Set(["viewBox", "xmlns", "width", "height", "fill", "stroke", "stroke-width", "stroke-linecap",
+  "stroke-linejoin", "stroke-dasharray", "stroke-opacity", "fill-opacity", "fill-rule", "clip-rule", "opacity", "d",
+  "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2", "points", "transform", "offset", "stop-color",
+  "stop-opacity", "gradientUnits", "id", "clip-path", "mask"]);
+
 const failures = [];
 const notes = [];
 const fail = (m) => failures.push(m);
@@ -110,6 +119,8 @@ if (manifest) {
   else if (kind === "declared") validateDeclared();
   else validateJsPackage();
 
+  validateIcon();
+
   // Version must move forward relative to what has already been released.
   let tags = [];
   try {
@@ -132,6 +143,27 @@ if (manifest) {
       // Not an error: publish.yml is idempotent and skips an existing tag, so a
       // docs-only change can merge without cutting a release.
       note(`${id}: version ${manifest.version} matches the latest release — merging will NOT publish a new version. Bump it if you intended to ship a change.`);
+    }
+  }
+}
+
+/**
+ * moss draws a plugin's icon in the catalog and, for a channel, in the channel
+ * rail, falling back to a letter without one; markup moss strips draws wrong.
+ * The file defaults to icon.svg, as publish.yml reads it.
+ */
+function validateIcon() {
+  const file = manifest.icon ?? "icon.svg";
+  if (typeof file !== "string" || !isRelativeInside(file) || !existsSync(join(dir, "assets", file))) {
+    if (manifest.contributes?.channel) fail(`${id}: a channel needs its mark: put icon.svg in assets/, or name another file there in manifest.icon`);
+    else if (manifest.icon !== undefined) fail(`${id}: icon "${file}" is not in assets/ — the zip is assets/, so every file a manifest names must be there`);
+    return;
+  }
+  const svg = readFileSync(join(dir, "assets", file), "utf8");
+  for (const [, tag, attrs] of svg.matchAll(/<([A-Za-z][\w:-]*)([^>]*)>/g)) {
+    if (!ICON_TAGS.has(tag)) fail(`${id}: ${file} uses <${tag}>, which moss strips from an icon`);
+    for (const [, attr] of attrs.matchAll(/([A-Za-z_:][\w:.-]*)\s*=/g)) {
+      if (!ICON_ATTRS.has(attr)) fail(`${id}: ${file} uses ${attr}=, which moss strips from an icon`);
     }
   }
 }
@@ -195,7 +227,6 @@ function validateDeclared() {
       if (block?.[field] !== undefined) named.push([`block "${name}" ${field}`, block[field]]);
     }
   }
-  if (manifest.icon !== undefined) named.push(["icon", manifest.icon]);
   for (const [what, file] of named) {
     if (!isRelativeInside(file) || !existsSync(join(dir, "assets", file))) {
       fail(`${id}: ${what} "${file}" is not in assets/ — the zip is assets/, so every file a manifest names must be there`);

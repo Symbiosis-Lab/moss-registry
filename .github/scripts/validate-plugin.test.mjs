@@ -119,6 +119,38 @@ test("a JavaScript plugin still needs entry, package.json, a lockfile and its bu
   }
 });
 
+test("an icon is one moss draws as it is, and a channel must ship one", () => {
+  const plugin = (icon, { channel = true, named = true } = {}) => jsPlugin(({ dir, manifest }) => {
+    if (channel) manifest.contributes = { channel: { display_name: "Js" } };
+    if (icon === undefined) return;
+    if (named) manifest.icon = "icon.svg";
+    writeFileSync(join(dir, "assets", "icon.svg"), icon);
+  });
+  const check = (icon, pattern, opts) => {
+    const p = plugin(icon, opts);
+    try {
+      const r = validate(p.dir);
+      if (pattern) {
+        assert.equal(r.ok, false, r.out);
+        assert.match(r.out, pattern);
+      } else {
+        assert.equal(r.ok, true, r.out);
+      }
+    } finally {
+      p.cleanup();
+    }
+  };
+  const good = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z"/></svg>';
+  const styled = '<svg viewBox="0 0 24 24"><style>.a{fill:red}</style><path class="a" d="M0 0"/></svg>';
+  check(good, null);
+  check(good, null, { named: false });
+  check(undefined, /a channel needs its mark/);
+  check(styled, /<style>.*strips/);
+  check('<svg viewBox="0 0 24 24"><path class="a" d="M0 0"/></svg>', /class=.*strips/);
+  check(styled, /<style>.*strips/, { channel: false, named: false });
+  check(undefined, null, { channel: false });
+});
+
 test("a JavaScript plugin may not also carry a native program", () => {
   const withArtifact = ({ manifest }) => {
     manifest.contributes = { derivations: { d: { run: { artifact: [{ kind: "download", platform: "darwin-arm64", archive_format: "zip", executable: "x" }] } } } };

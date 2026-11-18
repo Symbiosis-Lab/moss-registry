@@ -1,6 +1,6 @@
 {
   "name": "@symbiosis-lab/moss-plugin-threads",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Post copies of your site to Threads",
   "main": "dist/main.bundle.js",
   "scripts": {

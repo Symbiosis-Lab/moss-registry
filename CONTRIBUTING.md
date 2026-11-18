@@ -102,7 +102,7 @@ A native plugin is a manifest plus a program moss downloads and runs, with no Ja
 plugins/<id>/
   assets/
     manifest.json        source manifest: artifacts have no url or sha256
-    icon.svg             optional
+    icon.svg             a channel needs one; drawn only with what moss keeps
   native/
     Cargo.toml           [package] version must equal the manifest version
     src/ ...             the program's source, with its lockfile
