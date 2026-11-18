@@ -9,6 +9,7 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MOSS_ICON_RS, allowlistDrift } from "./icon-allowlist.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const validator = join(here, "validate-plugin.mjs");
@@ -149,6 +150,22 @@ test("an icon is one moss draws as it is, and a channel must ship one", () => {
   check('<svg viewBox="0 0 24 24"><path class="a" d="M0 0"/></svg>', /class=.*strips/);
   check(styled, /<style>.*strips/, { channel: false, named: false });
   check(undefined, null, { channel: false });
+});
+
+test("the icon allowlists equal moss's own", async (t) => {
+  let source;
+  try {
+    const res = await fetch(MOSS_ICON_RS, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    source = await res.text();
+  } catch (err) {
+    if (process.env.CI) throw new Error(`could not read moss's icon.rs: ${err.message}`);
+    t.skip(`offline: ${err.message}`);
+    return;
+  }
+  assert.deepEqual(allowlistDrift(source), []);
+  const withoutMask = source.replace(/"clipPath", "mask",/, '"clipPath",');
+  assert.deepEqual(allowlistDrift(withoutMask), ['ALLOWED_TAGS: moss strips "mask", the registry allows it']);
 });
 
 test("a JavaScript plugin may not also carry a native program", () => {
