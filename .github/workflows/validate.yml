@@ -147,10 +147,8 @@ jobs:
       - name: Install, build, unit-test and validate against registry rules
         run: scripts/check-plugin "${{ matrix.plugin }}"
 
-  # A plugin that only declares what moss reads has nothing to install or
-  # build: its unit tests run on Node itself, and the validator checks every
-  # file the manifest names. Browser tests (*.browser.mjs) stay out, like any
-  # test here that needs more than this powerless gate has.
+  # A declared plugin has nothing to install or build: its unit tests run on
+  # Node itself. Browser tests (*.browser.mjs) stay out of this powerless gate.
   validate-declared:
     name: ${{ matrix.plugin }} (declared)
     needs: detect
@@ -419,7 +417,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, native-build, native, revocations, scripts, generated, starters]
+    needs: [detect, validate, validate-declared, native-build, native, revocations, scripts, generated, starters]
     if: always()
     runs-on: ubuntu-latest
     steps:

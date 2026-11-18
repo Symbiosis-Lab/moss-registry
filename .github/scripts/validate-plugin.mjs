@@ -179,7 +179,7 @@ function validateDeclared() {
   if (!contributes || typeof contributes !== "object" || Array.isArray(contributes) || Object.keys(contributes).length === 0) {
     fail(`${id}: no "entry", no derivations and nothing under contributes — it declares nothing`);
   } else if (contributes.derivations !== undefined) {
-    fail(`${id}: contributes.derivations is empty — drop it, or declare the program it runs`);
+    fail(`${id}: contributes.derivations must be absent, or declare the program it runs`);
   }
   if (manifest.global_name !== undefined) {
     fail(`${id}: manifest.global_name belongs to a JavaScript bundle, but this plugin has no "entry"`);

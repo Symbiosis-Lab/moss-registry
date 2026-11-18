@@ -82,7 +82,7 @@ export function parseReleaseTag(tag) {
  * reads from `contributes`. The workflows and the validator all ask here.
  */
 export function pluginKind(manifest) {
-  if (manifest?.entry) return "js";
+  if (manifest?.entry !== undefined) return "js";
   const d = manifest?.contributes?.derivations;
   const hasDerivations = d && typeof d === "object" && !Array.isArray(d) && Object.keys(d).length > 0;
   return hasDerivations ? "native" : "declared";

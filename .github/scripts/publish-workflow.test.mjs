@@ -171,3 +171,19 @@ test("native-plan picks the native plugin and leaves a declared one to the plugi
   assert.equal(r.status, 0, r.stdout);
   assert.match(r.stdout, /^plugins=plugins\/program$/m);
 });
+
+test("a declared plugin is released from assets/ with no install or build", () => {
+  const setup = [
+    `export GITHUB_WORKSPACE="$PWD"`,
+    `mkdir -p .github plugins/declared/assets`,
+    `ln -s "${import.meta.dirname}" .github/scripts`,
+    `echo '{"name":"declared","version":"1.0.0","contributes":{"blocks":{}}}' > plugins/declared/assets/manifest.json`,
+    `echo '<svg/>' > plugins/declared/assets/icon.svg`,
+  ].join("\n");
+  const stubs = { gh: '[ "$1 $2" = "release view" ] && exit 1; exit 0', npm: "exit 0" };
+  const r = runStep(`${setup}\n${script("release", "Build and release every plugin whose tag is missing")}\nunzip -l declared-1.0.0.zip`, stubs, { GITHUB_REPOSITORY: "o/r", GITHUB_SHA: "abc" });
+  assert.equal(r.status, 0, r.stdout);
+  assert.ok(r.calls.some((c) => c.startsWith("gh release create declared-v1.0.0 declared-1.0.0.zip declared-1.0.0-icon.svg")), r.calls.join("\n"));
+  assert.ok(!r.calls.some((c) => c.startsWith("npm")), "a declared plugin is not built");
+  assert.match(r.stdout, /\bmanifest\.json\n/);
+});

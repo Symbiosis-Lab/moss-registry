@@ -234,7 +234,11 @@ test("a declared plugin has nothing that builds, and no derivations", () => {
   expectDeclaredFail(({ dir }) => writeFileSync(join(dir, "package.json"), "{}"), /package\.json/);
   expectDeclaredFail(({ dir }) => writeFileSync(join(dir, "package-lock.json"), "{}"), /package-lock\.json/);
   expectDeclaredFail(({ manifest }) => (manifest.global_name = "X"), /global_name belongs to a JavaScript bundle/);
-  expectDeclaredFail(({ manifest }) => (manifest.contributes.derivations = {}), /contributes\.derivations is empty/);
+  expectDeclaredFail(({ manifest }) => (manifest.contributes.derivations = {}), /contributes\.derivations must be absent/);
+});
+
+test("an entry that is present but empty is a JavaScript plugin missing its entry", () => {
+  expectDeclaredFail(({ manifest }) => (manifest.entry = ""), /manifest\.entry is required/);
 });
 
 test("every file a block or the icon names exists inside assets/", () => {

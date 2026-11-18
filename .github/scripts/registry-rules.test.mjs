@@ -42,6 +42,7 @@ test("a platform with no runner gets no build job, so the validator is what repo
 test("the shape of a manifest decides its kind", () => {
   assert.equal(pluginKind({ entry: "main.js" }), "js");
   assert.equal(pluginKind({ entry: "main.js", contributes: { derivations: { a: {} } } }), "js");
+  assert.equal(pluginKind({ entry: "" }), "js");
   assert.equal(pluginKind({ contributes: { derivations: { a: {} } } }), "native");
   assert.equal(pluginKind({ contributes: { blocks: {} } }), "declared");
   assert.equal(pluginKind({ contributes: { derivations: {} } }), "declared");
