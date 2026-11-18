@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.4]
+
+### Added
+
+- The manifest lists the hosts the plugin contacts (`network`), so moss can refuse a request to any other host.
+
 ## [Unreleased]
 
 ### Fixed

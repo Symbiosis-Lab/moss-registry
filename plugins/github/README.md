@@ -15,6 +15,8 @@ A moss publishing plugin for GitHub Pages. See [moss.pub](https://mosspub.com) a
   GitHub Pages, sets a custom domain when you configure one, and reads back
   deployment status so moss can tell you when the site is live. Also used for
   the device-code sign-in that obtains your token.
+- **`<you>.github.io`, or your site's own domain** — after a deploy, loads your
+  published site to confirm it is live.
 
 Nothing else is contacted. The plugin sends your site's built files and the
 repository settings you configure; it does not send analytics.

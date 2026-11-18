@@ -27,6 +27,7 @@ import {
   buildScriptFor,
   derivationArtifacts,
   pluginKind,
+  networkProblems,
 } from "./registry-rules.mjs";
 import { ICON_ATTRS, ICON_EXEMPT, ICON_TAGS } from "./icon-allowlist.mjs";
 
@@ -339,8 +340,11 @@ if (!existsSync(readmePath)) {
   fail(`${id}: missing README.md`);
 } else {
   const readme = readFileSync(readmePath, "utf8");
-  if (!/^##\s+Network access\s*$/im.test(readme)) {
+  const section = readme.match(/^##\s+Network access\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/im);
+  if (!section) {
     fail(`${id}: README.md needs a "## Network access" section listing every domain the plugin contacts (write "None" if it makes no requests)`);
+  } else if (manifest?.entry) {
+    for (const problem of networkProblems(manifest, section[1])) fail(`${id}: ${problem}`);
   }
 }
 

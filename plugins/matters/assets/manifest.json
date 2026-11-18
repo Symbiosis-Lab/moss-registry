@@ -1,12 +1,22 @@
 {
   "name": "matters",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "display_name": "Matters",
   "description": "Publish copies of your posts to Matters.town: short posts as moments and long posts as articles",
   "author": "moss team",
   "min_moss_version": "0.15.19",
   "preview": true,
   "entry": "main.bundle.js",
+  "network": {
+    "hosts": [
+      "matters.town",
+      "server.matters.town",
+      "matters.icu",
+      "server.matters.icu",
+      "assets.matters.news",
+      "imagedelivery.net"
+    ]
+  },
   "capabilities": [
     "process"
   ],

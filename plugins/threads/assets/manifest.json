@@ -1,12 +1,17 @@
 {
   "name": "threads",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "display_name": "Threads",
   "description": "Post copies of your site to Threads, linked back to the original",
   "author": "Symbiosis Lab",
   "min_moss_version": "0.15.19",
   "preview": true,
   "entry": "main.bundle.js",
+  "network": {
+    "hosts": [
+      "graph.threads.net"
+    ]
+  },
   "icon": "icon.svg",
   "global_name": "ThreadsPlugin",
   "domains": [

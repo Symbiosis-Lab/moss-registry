@@ -1,6 +1,6 @@
 {
   "name": "github",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "display_name": "GitHub",
   "description": "Deploy to GitHub Pages via GitHub Actions",
   "author": "moss team",
@@ -25,6 +25,14 @@
     "execute_binary:sh",
     "execute_binary:find"
   ],
+  "network": {
+    "hosts": [
+      "api.github.com",
+      "github.com",
+      "*.github.io"
+    ],
+    "site": true
+  },
   "contributes": {
     "deploy_target": {
       "display_name": "GitHub Pages",

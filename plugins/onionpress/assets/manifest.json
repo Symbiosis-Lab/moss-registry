@@ -1,5 +1,6 @@
 {
   "name": "onionpress",
+  "network": { "hosts": [] },
   "version": "0.4.2",
   "description": "Publish moss sites to a self-hosted OnionPress (.onion) receiver",
   "author": "moss team",

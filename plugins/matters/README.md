@@ -11,10 +11,12 @@ A moss publishing plugin for matters.town. See [moss.pub](https://mosspub.com) a
 - **`matters.town`** — the GraphQL API: signing in, publishing articles, and
   reading back your own posts and collections when importing.
 - **`server.matters.town`** — the API host some deployments resolve to.
-- **`matters.icu`** — the staging environment, used only when a project is
-  pointed at it for testing.
+- **`matters.icu`** and **`server.matters.icu`** — the staging environment,
+  used only when a project is pointed at it for testing.
 - **`assets.matters.news`** — downloads the images belonging to posts you
   import, so they land in your project as local files.
+- **`imagedelivery.net`** — the image host newer Matters posts use, downloaded
+  the same way.
 
 External image URLs in outgoing posts are also submitted to Matters for asset upload. The plugin sends only the posts whose `syndicate:` names Matters, a short post as a moment and an article published directly after every picture has uploaded; it does not send analytics.
 
