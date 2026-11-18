@@ -275,7 +275,7 @@ export function networkProblems(manifest, readmeSection) {
   for (const key of Array.isArray(settingHosts) ? settingHosts : []) {
     const setting = settings.get(key);
     if (!setting) problems.push(`"network.setting_hosts" names "${key}", which is not a setting the manifest declares`);
-    else if (setting.type !== "string" || setting.hidden) problems.push(`"network.setting_hosts" names "${key}", but only a visible text setting the person types may name a host (it is ${setting.hidden ? "hidden" : setting.type})`);
+    else if (setting.type !== "string" || setting.hidden) problems.push(`"network.setting_hosts" names "${key}", but only a declared string setting that is neither hidden nor secret, one the person types (in settings or at sign-in), may name a host (it is ${setting.hidden ? "hidden" : setting.type})`);
     else if (!text.includes(key.toLowerCase())) problems.push(`README's "Network access" section does not mention the "${key}" setting, whose host the plugin contacts`);
   }
   return problems;
