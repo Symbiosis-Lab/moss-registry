@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyRequirement, nativeBuildMatrix } from "./registry-rules.mjs";
+import { classifyRequirement, nativeBuildMatrix, pluginKind } from "./registry-rules.mjs";
 
 test("a named grant carries the binary it grants", () => {
   assert.deepEqual(classifyRequirement("execute_binary:git"), { kind: "named", binary: "git" });
@@ -37,4 +37,13 @@ test("each platform a native plugin declares is built once, on its own runner", 
 
 test("a platform with no runner gets no build job, so the validator is what reports it", () => {
   assert.deepEqual(nativeBuildMatrix([{ dir: "plugins/ocr", manifest: nativeManifest("future-os") }]), []);
+});
+
+test("the shape of a manifest decides its kind", () => {
+  assert.equal(pluginKind({ entry: "main.js" }), "js");
+  assert.equal(pluginKind({ entry: "main.js", contributes: { derivations: { a: {} } } }), "js");
+  assert.equal(pluginKind({ contributes: { derivations: { a: {} } } }), "native");
+  assert.equal(pluginKind({ contributes: { blocks: {} } }), "declared");
+  assert.equal(pluginKind({ contributes: { derivations: {} } }), "declared");
+  assert.equal(pluginKind({}), "declared");
 });

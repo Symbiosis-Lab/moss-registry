@@ -153,3 +153,21 @@ test("a signature check that never passes fails after five tries", () => {
   assert.equal(r.status, 1);
   assert.equal(r.calls.filter((c) => c.startsWith("node ")).length, 5);
 });
+
+test("native-plan picks the native plugin and leaves a declared one to the plugins job", () => {
+  const scripts = join(import.meta.dirname);
+  const setup = [
+    `mkdir -p .github plugins/declared/assets plugins/program/assets plugins/bundle/assets`,
+    `ln -s "${scripts}" .github/scripts`,
+    `echo '{"name":"declared","version":"1.0.0","contributes":{"blocks":{}}}' > plugins/declared/assets/manifest.json`,
+    `echo '{"name":"program","version":"1.0.0","contributes":{"derivations":{"p":{"run":{"artifact":[{"kind":"download","platform":"linux-x64"}]}}}}}' > plugins/program/assets/manifest.json`,
+    `echo '{"name":"bundle","version":"1.0.0","entry":"main.js"}' > plugins/bundle/assets/manifest.json`,
+  ].join("\n");
+  // This step opens with `- id: plan`, so `script` cannot find it by name.
+  const lines = job("native-plan");
+  const run = lines.indexOf("        run: |", lines.indexOf("        name: List native plugins whose release tag is missing"));
+  const plan = block(lines, run, 8).map((l) => l.slice(10)).join("\n");
+  const r = runStep(`${setup}\n${plan}\ncat "$GITHUB_OUTPUT"`, { gh: "exit 1" }, { GITHUB_OUTPUT: "out", GITHUB_REPOSITORY: "o/r" });
+  assert.equal(r.status, 0, r.stdout);
+  assert.match(r.stdout, /^plugins=plugins\/program$/m);
+});

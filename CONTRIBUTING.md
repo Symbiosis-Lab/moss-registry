@@ -124,6 +124,10 @@ You can try the pipeline locally: `scripts/pack-native-plugin plugins/<id> --pla
 
 Because a native program runs on users' machines with whatever access they have, review means reading the source under `native/` and every dependency in its lockfile, and the build script itself. The PR validator flags native plugins for that reason. Your build script runs in PR CI too, in a job with a read-only token and no secrets.
 
+## Building a declared plugin
+
+A declared plugin has no `entry` and no derivations: its manifest says what moss reads under `contributes` (`blocks`, `public_data`, `site_settings`), and the files it names sit in `assets/`. Nothing is built: no `package.json`, no lockfile, no `native/`. The release zip is `assets/` as it stands, so every `script`, `stylesheet` and `icon` the manifest names must exist there. CI runs `node --test` on `test/*.test.mjs` and the validator; `*.browser.mjs` files are not run. The first use is `booking`.
+
 ## Submitting
 
 1. Bump `version` in **both** `package.json` and `assets/manifest.json` (CI

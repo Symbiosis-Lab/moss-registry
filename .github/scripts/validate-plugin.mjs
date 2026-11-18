@@ -25,6 +25,7 @@ import {
   ARCHIVE_FORMATS,
   buildScriptFor,
   derivationArtifacts,
+  pluginKind,
 } from "./registry-rules.mjs";
 
 const failures = [];
@@ -56,12 +57,11 @@ if (!existsSync(manifestPath)) {
 }
 const manifest = existsSync(manifestPath) ? readJson(manifestPath) : null;
 
-// A plugin is native exactly when its manifest has no `entry`: moss then has
-// no JavaScript to load and runs what `contributes.derivations` declares.
-const native = manifest !== null && manifest.entry === undefined;
+// The shape decides the kind (registry-rules.mjs `pluginKind`).
+const kind = manifest === null ? "js" : pluginKind(manifest);
 
 if (manifest) {
-  for (const field of native ? ["name", "version"] : ["name", "version", "entry"]) {
+  for (const field of kind === "js" ? ["name", "version", "entry"] : ["name", "version"]) {
     if (typeof manifest[field] !== "string" || !manifest[field]) {
       fail(`${id}: manifest.${field} is required and must be a non-empty string`);
     }
@@ -106,11 +106,9 @@ if (manifest) {
     );
   }
 
-  if (native) {
-    validateNative();
-  } else {
-    validateJsPackage();
-  }
+  if (kind === "native") validateNative();
+  else if (kind === "declared") validateDeclared();
+  else validateJsPackage();
 
   // Version must move forward relative to what has already been released.
   let tags = [];
@@ -175,6 +173,36 @@ function validateJsPackage() {
   }
 }
 
+/** The declared half: no code of its own, so nothing builds and every named file ships as it stands. */
+function validateDeclared() {
+  const contributes = manifest.contributes;
+  if (!contributes || typeof contributes !== "object" || Array.isArray(contributes) || Object.keys(contributes).length === 0) {
+    fail(`${id}: no "entry", no derivations and nothing under contributes — it declares nothing`);
+  } else if (contributes.derivations !== undefined) {
+    fail(`${id}: contributes.derivations is empty — drop it, or declare the program it runs`);
+  }
+  if (manifest.global_name !== undefined) {
+    fail(`${id}: manifest.global_name belongs to a JavaScript bundle, but this plugin has no "entry"`);
+  }
+  for (const stray of ["native", "package.json", "package-lock.json"]) {
+    if (existsSync(join(dir, stray))) {
+      fail(`${id}: has ${stray === "native" ? "a native/ directory" : stray} but declares no entry or program — nothing builds a declared plugin; it ships assets/ as it is`);
+    }
+  }
+  const named = [];
+  for (const [name, block] of Object.entries(contributes?.blocks ?? {})) {
+    for (const field of ["script", "stylesheet"]) {
+      if (block?.[field] !== undefined) named.push([`block "${name}" ${field}`, block[field]]);
+    }
+  }
+  if (manifest.icon !== undefined) named.push(["icon", manifest.icon]);
+  for (const [what, file] of named) {
+    if (!isRelativeInside(file) || !existsSync(join(dir, "assets", file))) {
+      fail(`${id}: ${what} "${file}" is not in assets/ — the zip is assets/, so every file a manifest names must be there`);
+    }
+  }
+}
+
 /** The text of `version = "x"` in Cargo.toml's [package] table, or null. */
 function cargoPackageVersion(text) {
   const table = text.split(/^\[/m).find((t) => t.startsWith("package]"));
@@ -199,12 +227,6 @@ function validateNative() {
     fail(`${id}: manifest.global_name belongs to a JavaScript bundle, but this plugin has no "entry"`);
   }
 
-  const derivations = manifest.contributes?.derivations;
-  if (!derivations || typeof derivations !== "object" || Array.isArray(derivations) || Object.keys(derivations).length === 0) {
-    fail(`${id}: no "entry" and no contributes.derivations — a plugin needs JavaScript to load or a program to run`);
-    return;
-  }
-
   const nativeDir = join(dir, "native");
   if (!existsSync(nativeDir)) {
     fail(`${id}: contributes.derivations but no native/ directory — the registry builds the program from source under native/`);
@@ -223,7 +245,7 @@ function validateNative() {
   }
 
   const formatByPlatform = new Map();
-  for (const [name, d] of Object.entries(derivations)) {
+  for (const [name, d] of Object.entries(manifest.contributes.derivations)) {
     const where = `${id}: derivation "${name}"`;
     const artifacts = d?.run?.artifact;
     if (!Array.isArray(artifacts) || artifacts.length === 0) {
