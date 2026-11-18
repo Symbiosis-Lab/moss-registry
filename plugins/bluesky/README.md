@@ -22,6 +22,13 @@ A post that fits in 300 characters is posted whole. A post written in parts, wit
 
 A copy cannot be edited once posted, because Bluesky has no edit; moss says so when a post changes after its copy went out. Each copy has a record key derived from the post's note id and the channel, nothing an author edits, so a send that is interrupted and tried again lands on the same record rather than making a second post.
 
+Your site's domain can be your Bluesky handle. Copy your account ID from Bluesky (Settings, Account, Handle, I have my own domain) into the site's settings, publish, then choose your domain as your handle there. Every build writes the ID to `/.well-known/atproto-did`:
+
+```toml
+[services.bluesky]
+did = "did:plc:…"
+```
+
 ## Network access
 
 - Your Bluesky server (`https://bsky.social` unless the `service` setting names another): `com.atproto.server.createSession` with your handle and app password, then `com.atproto.repo.createRecord`, `getRecord` and `deleteRecord` on your own repository.

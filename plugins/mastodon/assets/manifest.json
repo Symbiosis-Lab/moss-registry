@@ -1,10 +1,10 @@
 {
   "name": "mastodon",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "display_name": "Mastodon",
   "description": "Post a copy of each new post to your Mastodon account, linked back to your site",
   "author": "Symbiosis Lab",
-  "min_moss_version": "0.15.19",
+  "min_moss_version": "0.15.27",
   "preview": true,
   "entry": "main.bundle.js",
   "global_name": "MastodonPlugin",
@@ -25,6 +25,15 @@
         "link_chars": 23,
         "host_setting": "server"
       }
-    }
+    },
+    "site_settings": {
+      "settings": [
+        { "key": "account", "type": "acct", "label": "Account", "placeholder": "@name@server" }
+      ]
+    },
+    "identity": [
+      { "link": "me", "href": "https://{account.host}/@{account.user}" },
+      { "meta": "fediverse:creator", "content": "@{account.user}@{account.host}" }
+    ]
   }
 }

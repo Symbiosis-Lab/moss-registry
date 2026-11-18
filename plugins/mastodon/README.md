@@ -22,6 +22,13 @@ A post that fits in 500 characters is posted whole, with every link counted as 2
 
 When a post changes, each status of its copy is edited in place. A thread can change its words but not its number of parts; moss says so if it does. A send that is interrupted is looked up among your recent statuses before anything is posted again: by its text, or a teaser by its link to the post. If no single status matches, or a thread is only partly there or goes on past the post's last part, moss asks you rather than risk a second copy.
 
+Set your account in the site's settings, and every page links to your Mastodon profile with `rel="me"` and names you as its author with `fediverse:creator`. Add your site's address to a field on your profile to get the verified mark, and your domain to your profile's author attribution so link previews credit you:
+
+```toml
+[services.mastodon]
+account = "@name@mastodon.social"
+```
+
 ## Network access
 
 - Your server, at the address in the `server` setting: `GET`, `POST`, `PUT` and `DELETE` on `/api/v1/statuses`, and, to look a copy up, `/api/v1/accounts/verify_credentials` and your own account's statuses.

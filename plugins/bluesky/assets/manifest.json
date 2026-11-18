@@ -1,10 +1,10 @@
 {
   "name": "bluesky",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "display_name": "Bluesky",
   "description": "Post a copy of each new post to your Bluesky account, linked back to your site",
   "author": "Symbiosis Lab",
-  "min_moss_version": "0.15.19",
+  "min_moss_version": "0.15.27",
   "preview": true,
   "entry": "main.bundle.js",
   "global_name": "BlueskyPlugin",
@@ -26,6 +26,14 @@
         "counting": "graphemes",
         "idempotent": true
       }
-    }
+    },
+    "site_settings": {
+      "settings": [
+        { "key": "did", "type": "string", "label": "Account ID", "placeholder": "did:plc:…", "pattern": "^did:(plc|web):\\S+$", "pattern_message": "Starts with did:plc: or did:web:", "description": "Shown in Bluesky under Settings, Account, Handle, I have my own domain." }
+      ]
+    },
+    "identity": [
+      { "file": ".well-known/atproto-did", "body": "{did}" }
+    ]
   }
 }
