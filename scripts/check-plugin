@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Check one plugin directory as the registry's validate workflow does: a JavaScript plugin is
+# installed without lifecycle scripts, built, unit-tested and validated; a native plugin is
+# validated (its programs are built per platform only on CI).
+#
+#   scripts/check-plugin plugins/<id>
+set -euo pipefail
+dir=${1:?usage: scripts/check-plugin plugins/<id>}
+root=$(cd "$(dirname "$0")/.." && pwd)
+# An unreadable or missing manifest skips the build and leaves the reason to the validator.
+if node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).entry ? 0 : 1)' "$dir/assets/manifest.json" 2>/dev/null; then
+  ( cd "$dir"
+    npm ci --ignore-scripts --no-audit --no-fund
+    npm run build
+    # The unit scope only: a full suite may need a live service, a browser or the moss binary.
+    if node -e "process.exit(require('./package.json').scripts?.['test:unit'] ? 0 : 1)"; then
+      npm run test:unit
+    elif node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+      echo "::warning::$dir has no test:unit script; running full test — it must not depend on a browser, network, or the moss binary"
+      npm test
+    else
+      echo "No test script; skipping."
+    fi )
+fi
+node "$root/.github/scripts/validate-plugin.mjs" "$dir"
