@@ -76,6 +76,7 @@ const WORDS = {
     pay: "Pay", pay_amount: "Pay {amount}", confirm: "Confirm", price_changed: "The total is now {amount}.",
     terms: "Cancelling more than {hours} hours before: full refund. Within {hours} hours: {percent}%. No-show: nothing.",
     taken: "That time was just booked by someone else. Please choose another.",
+    move_taken: "That time is no longer open.",
     full_required: "This time can only be paid in full.", check_fields: "Please check the fields marked below.",
     check_choices: "Please check your choices.",
     too_many: "Too many bookings were started from here. Please try again later, or email the desk at {desk}.",
@@ -125,6 +126,7 @@ const WORDS = {
     pay: "付款", pay_amount: "付款 {amount}", confirm: "确认", price_changed: "合计现为 {amount}。",
     terms: "开始前 {hours} 小时以上取消：全额退款。{hours} 小时内取消：退 {percent}%。未到场：不退款。",
     taken: "这个时间刚被别人约走了。请另选一个。",
+    move_taken: "这个时间已不再开放。",
     full_required: "这个时间只能全额付款。", check_fields: "请检查下面标出的项。",
     check_choices: "请检查你的选择。",
     too_many: "从这里发起的预约过多。请稍后再试，或发邮件至 {desk}。",
@@ -735,7 +737,7 @@ async function mount(view, page, DESK, ENDPOINT) {
         go.addEventListener("click", () => send(go, async () => {
           const moved = await call(booking, "/manage/move", { token, start: pick.start });
           if (moved.status === 200) { data = moved.data; return overview(notice(say("moved", { when: whenLabel(data.start) }))); }
-          if (moved.status === 409 && moved.data.error === "slot_taken") return move(problem(say("taken")));
+          if (moved.status === 409 && moved.data.error === "slot_taken") return move(problem(say("move_taken")));
           if (moved.status === 409) return overview(problem(say("no_move")));
           return draw(problem(say("failed", { desk })), true);
         }));

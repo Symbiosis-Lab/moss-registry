@@ -677,6 +677,29 @@ for (const [name, engine] of [["chromium", chromium], ["webkit", webkit]]) {
     }
   });
 
+  test(`${name}: a move the service refuses says the time is no longer open, on the move screen`, async () => {
+    const browser = await engine.launch();
+    try {
+      const booking = {
+        booking: "bk_1", status: "confirmed", service: "studio", service_name: "Studio hire", start: `${day(10)}T18:00:00-08:00`, hours: 5,
+        amount: 60000, currency: "usd", deposit: null, balance: null, email: "ada@example.com", name: "Ada Client", mobile: "+15555550100", fields: {},
+        cancel: { allowed: true, refund: 60000, rule: "full", full_until: `${day(9)}T18:00:00-08:00` },
+        move: { allowed: true, until: `${day(9)}T18:00:00-08:00` },
+      };
+      const slots = { fresh: true, days: [{ date: day(11), slots: [{ start: `${day(11)}T18:00:00-08:00`, time: "18:00", open: true }] }] };
+      const { page } = await open(browser, { kind: "manage", extra: { "/manage": [200, booking], "/manage/slots": [200, slots], "/manage/move": [409, { error: "slot_taken" }] } });
+      await page.goto(`${SITE}/book/#tokentokentokentokentoken`);
+      await page.click("[data-move]");
+      await page.click("[data-start]");
+      await page.click("[data-go]");
+      await page.locator(".flow", { hasText: "That time is no longer open." }).waitFor();
+      assert.equal(await page.locator("[data-date]").count() > 0, true, "the move screen stays open to choose another time");
+      await page.close();
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`${name}: the hosted checkout is followed to Stripe's address only`, async () => {
     const browser = await engine.launch();
     try {
