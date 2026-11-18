@@ -95,6 +95,15 @@ test("a code plugin declares its network hosts, each named in the README", () =>
     readme("api")(ctx);
   });
   assert.match(hidden.out, /it is hidden/);
+  const askedAtSignIn = passes((ctx) => {
+    ctx.manifest.network = { hosts: [], setting_hosts: ["server"] };
+    ctx.manifest.contributes = { deploy_target: { setup: { settings: [
+      { key: "server", type: "string", label: "Your server", default: "mastodon.social", at_sign_in: true },
+      { key: "access_token", type: "secret", hidden: true },
+    ] } } };
+    readme("Your server setting.")(ctx);
+  });
+  assert.equal(askedAtSignIn.ok, true, askedAtSignIn.out);
 });
 
 test("a built JavaScript plugin passes", () => {
