@@ -27,8 +27,6 @@ jobs:
       js: ${{ steps.detect.outputs.js }}
       native_plugins: ${{ steps.detect.outputs.native_plugins }}
       native: ${{ steps.detect.outputs.native }}
-      declared_plugins: ${{ steps.detect.outputs.declared_plugins }}
-      declared: ${{ steps.detect.outputs.declared }}
       native_matrix: ${{ steps.detect.outputs.native_matrix }}
       revocations: ${{ steps.detect.outputs.revocations }}
       starters: ${{ steps.detect.outputs.starters }}
@@ -77,21 +75,19 @@ jobs:
           fi
 
           # The manifest's shape decides the kind (registry-rules.mjs
-          # `pluginKind`): an `entry` is JavaScript; derivations make it a
-          # native program; neither is a declared plugin, which has nothing to
-          # build. A manifest that will not parse lands on the JavaScript side,
-          # where the validator reports it.
+          # `pluginKind`). Derivations make a native program, which builds per
+          # platform; JavaScript and declared plugins both go through
+          # scripts/check-plugin, which knows what each needs. A manifest that
+          # will not parse lands there too, where the validator reports it.
           js_list=""
           native_list=""
-          declared_list=""
           for dir in $selected; do
             case "$(node .github/scripts/plugin-kind.mjs "$dir")" in
               native) native_list="${native_list}${dir}"$'\n' ;;
-              declared) declared_list="${declared_list}${dir}"$'\n' ;;
               *) js_list="${js_list}${dir}"$'\n' ;;
             esac
           done
-          for kind in js native declared; do
+          for kind in js native; do
             list="${kind}_list"
             if [ -z "${!list}" ]; then
               echo "${kind}=false" >> "$GITHUB_OUTPUT"
@@ -146,35 +142,6 @@ jobs:
       # under review. The same script is the pre-push hook's (.githooks/pre-push).
       - name: Install, build, unit-test and validate against registry rules
         run: scripts/check-plugin "${{ matrix.plugin }}"
-
-  # A declared plugin has nothing to install or build: its unit tests run on
-  # Node itself. Browser tests (*.browser.mjs) stay out of this powerless gate.
-  validate-declared:
-    name: ${{ matrix.plugin }} (declared)
-    needs: detect
-    if: needs.detect.outputs.declared == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        plugin: ${{ fromJSON(needs.detect.outputs.declared_plugins) }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # tags: the validator compares against released versions
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Test (unit scope only)
-        run: |
-          shopt -s nullglob
-          tests=("${{ matrix.plugin }}"/test/*.test.mjs)
-          if [ ${#tests[@]} -gt 0 ]; then node --test "${tests[@]}"; else echo "No tests; skipping."; fi
-
-      - name: Validate against registry rules
-        run: node .github/scripts/validate-plugin.mjs "${{ matrix.plugin }}"
 
   # A plugin that is only a manifest plus a native program has nothing to npm
   # install. The registry builds it by running the plugin's own
@@ -417,7 +384,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, validate-declared, native-build, native, revocations, scripts, generated, starters]
+    needs: [detect, validate, native-build, native, revocations, scripts, generated, starters]
     if: always()
     runs-on: ubuntu-latest
     steps:
