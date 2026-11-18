@@ -9,6 +9,7 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MOSS_ICON_RS, allowlistDrift } from "./icon-allowlist.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const validator = join(here, "validate-plugin.mjs");
@@ -117,6 +118,77 @@ test("a JavaScript plugin still needs entry, package.json, a lockfile and its bu
       p.cleanup();
     }
   }
+});
+
+test("an icon is one moss draws as it is, and a channel must ship one", () => {
+  const plugin = (icon, { channel = true, named = true } = {}) => jsPlugin(({ dir, manifest }) => {
+    if (channel) manifest.contributes = { channel: { display_name: "Js" } };
+    if (icon === undefined) return;
+    if (named) manifest.icon = "icon.svg";
+    writeFileSync(join(dir, "assets", "icon.svg"), icon);
+  });
+  const check = (icon, pattern, opts) => {
+    const p = plugin(icon, opts);
+    try {
+      const r = validate(p.dir);
+      if (pattern) {
+        assert.equal(r.ok, false, r.out);
+        assert.match(r.out, pattern);
+      } else {
+        assert.equal(r.ok, true, r.out);
+      }
+    } finally {
+      p.cleanup();
+    }
+  };
+  const good = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h24v24H0z"/></svg>';
+  const styled = '<svg viewBox="0 0 24 24"><style>.a{fill:red}</style><path class="a" d="M0 0"/></svg>';
+  check(good, null);
+  check(good, null, { named: false });
+  check(undefined, /a channel needs its mark/);
+  check(styled, /<style>.*strips/);
+  check('<svg viewBox="0 0 24 24"><path class="a" d="M0 0"/></svg>', /class=.*strips/);
+  check(styled, /<style>.*strips/, { channel: false, named: false });
+  check(undefined, null, { channel: false });
+});
+
+test("an exempt plugin's icon is a note, and the exemption fails once its icon draws", () => {
+  const withIcon = (icon) => nativePlugin(({ dir, manifest }) => {
+    manifest.icon = "icon.svg";
+    writeFileSync(join(dir, "assets", "icon.svg"), icon);
+  }, "onionpress");
+  const png = withIcon('<svg viewBox="0 0 64 64"><image href="data:image/png;base64,AA"/></svg>');
+  try {
+    const r = validate(png.dir);
+    assert.equal(r.ok, true, r.out);
+    assert.match(r.out, /onionpress: icon exempt/);
+  } finally {
+    png.cleanup();
+  }
+  const vector = withIcon('<svg viewBox="0 0 64 64"><path d="M0 0h64v64H0z"/></svg>');
+  try {
+    const r = validate(vector.dir);
+    assert.equal(r.ok, false, r.out);
+    assert.match(r.out, /remove onionpress from ICON_EXEMPT/);
+  } finally {
+    vector.cleanup();
+  }
+});
+
+test("the icon allowlists equal moss's own", async (t) => {
+  let source;
+  try {
+    const res = await fetch(MOSS_ICON_RS, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    source = await res.text();
+  } catch (err) {
+    if (process.env.CI) throw new Error(`could not read moss's icon.rs: ${err.message}`);
+    t.skip(`offline: ${err.message}`);
+    return;
+  }
+  assert.deepEqual(allowlistDrift(source), []);
+  const withoutMask = source.replace(/"clipPath", "mask",/, '"clipPath",');
+  assert.deepEqual(allowlistDrift(withoutMask), ['ALLOWED_TAGS: moss strips "mask", the registry allows it']);
 });
 
 test("a JavaScript plugin may not also carry a native program", () => {
