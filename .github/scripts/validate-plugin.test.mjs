@@ -152,6 +152,29 @@ test("an icon is one moss draws as it is, and a channel must ship one", () => {
   check(undefined, null, { channel: false });
 });
 
+test("an exempt plugin's icon is a note, and the exemption fails once its icon draws", () => {
+  const withIcon = (icon) => nativePlugin(({ dir, manifest }) => {
+    manifest.icon = "icon.svg";
+    writeFileSync(join(dir, "assets", "icon.svg"), icon);
+  }, "onionpress");
+  const png = withIcon('<svg viewBox="0 0 64 64"><image href="data:image/png;base64,AA"/></svg>');
+  try {
+    const r = validate(png.dir);
+    assert.equal(r.ok, true, r.out);
+    assert.match(r.out, /onionpress: icon exempt/);
+  } finally {
+    png.cleanup();
+  }
+  const vector = withIcon('<svg viewBox="0 0 64 64"><path d="M0 0h64v64H0z"/></svg>');
+  try {
+    const r = validate(vector.dir);
+    assert.equal(r.ok, false, r.out);
+    assert.match(r.out, /remove onionpress from ICON_EXEMPT/);
+  } finally {
+    vector.cleanup();
+  }
+});
+
 test("the icon allowlists equal moss's own", async (t) => {
   let source;
   try {

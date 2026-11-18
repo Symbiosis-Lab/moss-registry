@@ -27,7 +27,7 @@ import {
   derivationArtifacts,
   pluginKind,
 } from "./registry-rules.mjs";
-import { ICON_ATTRS, ICON_TAGS } from "./icon-allowlist.mjs";
+import { ICON_ATTRS, ICON_EXEMPT, ICON_TAGS } from "./icon-allowlist.mjs";
 
 
 const failures = [];
@@ -154,11 +154,20 @@ function validateIcon() {
     return;
   }
   const svg = readFileSync(join(dir, "assets", file), "utf8");
+  const stripped = [];
   for (const [, tag, attrs] of svg.matchAll(/<([A-Za-z][\w:-]*)([^>]*)>/g)) {
-    if (!ICON_TAGS.has(tag)) fail(`${id}: ${file} uses <${tag}>, which moss strips from an icon`);
+    if (!ICON_TAGS.has(tag)) stripped.push(`<${tag}>`);
     for (const [, attr] of attrs.matchAll(/([A-Za-z_:][\w:.-]*)\s*=/g)) {
-      if (!ICON_ATTRS.has(attr)) fail(`${id}: ${file} uses ${attr}=, which moss strips from an icon`);
+      if (!ICON_ATTRS.has(attr)) stripped.push(`${attr}=`);
     }
+  }
+  const exempt = ICON_EXEMPT.get(id);
+  if (exempt === undefined) {
+    for (const what of stripped) fail(`${id}: ${file} uses ${what}, which moss strips from an icon`);
+  } else if (stripped.length) {
+    note(`${id}: icon exempt from the icon check: ${exempt}`);
+  } else {
+    fail(`${id}: ${file} is now an icon moss draws: remove ${id} from ICON_EXEMPT in icon-allowlist.mjs`);
   }
 }
 

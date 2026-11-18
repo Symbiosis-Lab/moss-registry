@@ -11,6 +11,13 @@ export const ICON_ATTRS = new Set(["viewBox", "xmlns", "width", "height", "fill"
   "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2", "points", "transform", "offset", "stop-color",
   "stop-opacity", "gradientUnits", "id", "clip-path", "mask"]);
 
+// Plugins whose icon moss cannot draw yet, each with what it waits on. Their icon
+// problems are notes, not failures, so a sync from moss never blocks on them; an
+// entry whose icon has become drawable fails until it is removed.
+export const ICON_EXEMPT = new Map([
+  ["onionpress", "its only mark is a PNG in <image>, which moss draws blank, until a vector mark replaces it"],
+]);
+
 /** How these lists differ from the ones in `source` (icon.rs), one line each; empty when equal. */
 export function allowlistDrift(source) {
   const read = (name) => {
