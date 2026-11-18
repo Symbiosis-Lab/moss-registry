@@ -15,3 +15,13 @@ The offer is edited in the plugin's tab in moss, or by hand in the same table; b
 A service with `hours` may also carry `choice = { label = "Route", options = { coast = { name = "Coast", per = "hour", price = 11000 }, … } }` and `[services.booking.services.<id>.add_ons.<id>]` tables (`name`, `price`, `per`, `qty = { min, max }`); prices are cents. The page and the booking service sum them with one formula, and `test/price-vectors.json` is a copy, pinned by checksum, of the cases the booking service is tested against; the service's copy is the source. A total over 999,999.99 is refused.
 
 The words a visitor reads are English, or Simplified Chinese on a page whose `lang` is `zh` (`zh-CN`, `zh-Hans`); money and dates follow the page's `lang`. Any word can be replaced in the offer's `words` table, by the key the script names it with, for example `words = { continue = "Next" }`. Services the desk prices itself go in `[services.booking.quoted.<id>]` (`name`, and a `note` in place of "Ask the desk"): each shows on the Choose screen as a card that emails the desk.
+
+## Network access
+
+The page it draws on a visitor's browser contacts:
+
+- The site's own `/_moss/extensions/booking.json`, to read the offer.
+- The booking service at the offer's `endpoint` (https only), to check times, hold a booking and read its state.
+- `js.stripe.com`, loaded when a visitor reaches the pay step, and Stripe's own frames and `checkout.stripe.com` for the payment itself.
+
+The plugin has no code that runs in moss itself and makes no requests from it.
