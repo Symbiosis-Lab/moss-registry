@@ -12,7 +12,12 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 dest="${1:-$root/dist/moss}"
 version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/starters/moss.json")"
 want="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$root/starters/moss.json")"
-url="https://github.com/Symbiosis-Lab/moss/releases/download/v${version}/moss-linux-x86_64"
+# From 0.15.28 a release names its Linux binary moss-cli-linux-x86_64.
+asset=moss-cli-linux-x86_64
+if [ "$(printf '%s\n' 0.15.28 "$version" | sort -V | head -1)" != 0.15.28 ]; then
+  asset=moss-linux-x86_64
+fi
+url="https://github.com/Symbiosis-Lab/moss/releases/download/v${version}/${asset}"
 
 mkdir -p "$(dirname "$dest")"
 curl -fsSL --retry 3 -o "$dest" "$url" >&2
