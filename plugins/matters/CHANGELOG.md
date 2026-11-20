@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.2]
+
+### Fixed
+
+- The Matters icon keeps its two gradients in moss: it no longer relies on a stylesheet, classes or a gradient transform, which moss strips from an icon.
+
 ## [1.7.1]
 
 ### Removed
