@@ -1,0 +1,620 @@
+{
+  "name": "booking",
+  "version": "0.4.0",
+  "display_name": "Booking",
+  "description": "Let people choose a time, pay and manage a booking on your site",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.23",
+  "preview": true,
+  "contributes": {
+    "blocks": {
+      "booking": {
+        "element": "moss-booking",
+        "script": "moss-booking.js",
+        "stylesheet": "moss-booking.css",
+        "attributes": [
+          {
+            "key": "page",
+            "options": [
+              "book",
+              "done",
+              "manage",
+              "desk"
+            ]
+          },
+          {
+            "key": "desk"
+          },
+          {
+            "key": "endpoint",
+            "pattern": "^https://",
+            "pattern_message": "Use an https address."
+          }
+        ]
+      }
+    },
+    "public_data": {
+      "keys": [
+        "endpoint",
+        "enabled",
+        "timezone",
+        "currency",
+        "open.*",
+        "start_every",
+        "notice_hours",
+        "horizon_days",
+        "services.*.name",
+        "services.*.per_hour",
+        "services.*.hours.min",
+        "services.*.hours.max",
+        "services.*.minutes",
+        "services.*.price",
+        "services.*.deposit.percent",
+        "services.*.deposit.hold_hours",
+        "services.*.deposit.balance_days_before",
+        "services.*.charge",
+        "services.*.note",
+        "services.*.choice.label",
+        "services.*.choice.options.*.name",
+        "services.*.choice.options.*.per",
+        "services.*.choice.options.*.price",
+        "services.*.add_ons.*.name",
+        "services.*.add_ons.*.per",
+        "services.*.add_ons.*.price",
+        "services.*.add_ons.*.qty.min",
+        "services.*.add_ons.*.qty.max",
+        "services.*.fields.*",
+        "services.*.labels.*",
+        "quoted.*.name",
+        "quoted.*.note",
+        "words.*",
+        "cancel.full_before_hours",
+        "cancel.late_percent",
+        "pages.book",
+        "pages.done",
+        "pages.manage",
+        "pages.desk"
+      ],
+      "fill": {
+        "endpoint": {
+          "service": "commerce",
+          "path": "/sites/{site}/booking"
+        }
+      }
+    },
+    "site_settings": {
+      "settings": [
+        {
+          "key": "timezone",
+          "type": "string",
+          "label": "Time zone",
+          "placeholder": "America/Los_Angeles"
+        },
+        {
+          "key": "currency",
+          "type": "string",
+          "label": "Currency",
+          "placeholder": "usd",
+          "pattern": "^[a-z]{3}$",
+          "pattern_message": "Three lowercase letters, such as usd."
+        },
+        {
+          "key": "services",
+          "type": "map",
+          "label": "Services",
+          "add_label": "Add service",
+          "placeholder": "guided-walk",
+          "key_pattern": "^[a-z0-9-]{1,40}$",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "key": "name",
+                "type": "string",
+                "label": "Name"
+              },
+              {
+                "key": "charge",
+                "type": "string",
+                "label": "Charge",
+                "default": "hourly",
+                "options": [
+                  {
+                    "value": "hourly",
+                    "label": "By the hour"
+                  },
+                  {
+                    "value": "fixed",
+                    "label": "Fixed price"
+                  }
+                ]
+              },
+              {
+                "key": "per_hour",
+                "type": "number",
+                "label": "Rate per hour",
+                "scale": 100,
+                "when": {
+                  "charge": "hourly"
+                }
+              },
+              {
+                "key": "hours",
+                "type": "object",
+                "label": "Hours",
+                "when": {
+                  "charge": "hourly"
+                },
+                "fields": [
+                  {
+                    "key": "min",
+                    "type": "number",
+                    "label": "From",
+                    "unit": "hours",
+                    "default": 1
+                  },
+                  {
+                    "key": "max",
+                    "type": "number",
+                    "label": "To",
+                    "unit": "hours",
+                    "default": 4
+                  }
+                ]
+              },
+              {
+                "key": "minutes",
+                "type": "number",
+                "label": "Length",
+                "unit": "minutes",
+                "default": 60,
+                "when": {
+                  "charge": "fixed"
+                }
+              },
+              {
+                "key": "price",
+                "type": "number",
+                "label": "Price",
+                "scale": 100,
+                "default": 0,
+                "when": {
+                  "charge": "fixed"
+                }
+              },
+              {
+                "key": "deposit",
+                "type": "object",
+                "label": "Deposit",
+                "optional": true,
+                "fields": [
+                  {
+                    "key": "percent",
+                    "type": "number",
+                    "label": "Deposit share",
+                    "unit": "%",
+                    "default": 50
+                  },
+                  {
+                    "key": "hold_hours",
+                    "type": "number",
+                    "label": "Hold for",
+                    "unit": "hours",
+                    "default": 12
+                  },
+                  {
+                    "key": "balance_days_before",
+                    "type": "number",
+                    "label": "Balance due",
+                    "unit": "days before",
+                    "default": 7
+                  }
+                ]
+              },
+              {
+                "key": "fields",
+                "type": "map",
+                "label": "Questions",
+                "add_label": "Add question",
+                "placeholder": "meeting_point",
+                "key_pattern": "^[a-z][a-z0-9_]{0,39}$",
+                "items": {
+                  "type": "string",
+                  "default": "optional",
+                  "options": [
+                    {
+                      "value": "required",
+                      "label": "Required"
+                    },
+                    {
+                      "value": "optional",
+                      "label": "Optional"
+                    }
+                  ]
+                }
+              },
+              {
+                "key": "labels",
+                "type": "map",
+                "label": "Question wording",
+                "add_label": "Add wording",
+                "placeholder": "meeting_point",
+                "key_pattern": "^[a-z][a-z0-9_]{0,39}$",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "key": "note",
+                "type": "string",
+                "label": "Note",
+                "placeholder": "Meet at the north pier."
+              },
+              {
+                "key": "choice",
+                "type": "object",
+                "label": "Choice",
+                "optional": true,
+                "when": {
+                  "charge": "hourly"
+                },
+                "fields": [
+                  {
+                    "key": "label",
+                    "type": "string",
+                    "label": "Label",
+                    "placeholder": "Route"
+                  },
+                  {
+                    "key": "options",
+                    "type": "map",
+                    "label": "Options",
+                    "add_label": "Add option",
+                    "placeholder": "coast",
+                    "key_pattern": "^[a-z0-9-]{1,40}$",
+                    "items": {
+                      "type": "object",
+                      "fields": [
+                        {
+                          "key": "name",
+                          "type": "string",
+                          "label": "Name"
+                        },
+                        {
+                          "key": "price",
+                          "type": "number",
+                          "label": "Price",
+                          "scale": 100
+                        },
+                        {
+                          "key": "per",
+                          "type": "string",
+                          "label": "Charged",
+                          "default": "hour",
+                          "options": [
+                            {
+                              "value": "hour",
+                              "label": "Per hour"
+                            },
+                            {
+                              "value": "booking",
+                              "label": "Once per booking"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "key": "add_ons",
+                "type": "map",
+                "label": "Add-ons",
+                "add_label": "Add add-on",
+                "placeholder": "photographer",
+                "key_pattern": "^[a-z0-9-]{1,40}$",
+                "when": {
+                  "charge": "hourly"
+                },
+                "items": {
+                  "type": "object",
+                  "fields": [
+                    {
+                      "key": "name",
+                      "type": "string",
+                      "label": "Name"
+                    },
+                    {
+                      "key": "price",
+                      "type": "number",
+                      "label": "Price",
+                      "scale": 100
+                    },
+                    {
+                      "key": "per",
+                      "type": "string",
+                      "label": "Charged",
+                      "default": "hour",
+                      "options": [
+                        {
+                          "value": "hour",
+                          "label": "Per hour"
+                        },
+                        {
+                          "value": "booking",
+                          "label": "Once per booking"
+                        }
+                      ]
+                    },
+                    {
+                      "key": "qty",
+                      "type": "object",
+                      "label": "Quantity",
+                      "fields": [
+                        {
+                          "key": "min",
+                          "type": "number",
+                          "label": "Fewest",
+                          "default": 0
+                        },
+                        {
+                          "key": "max",
+                          "type": "number",
+                          "label": "Most",
+                          "default": 1
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "key": "quoted",
+          "type": "map",
+          "label": "Quoted by the desk",
+          "add_label": "Add quoted service",
+          "placeholder": "group-tour",
+          "key_pattern": "^[a-z0-9-]{1,40}$",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "key": "name",
+                "type": "string",
+                "label": "Name"
+              },
+              {
+                "key": "note",
+                "type": "string",
+                "label": "Note"
+              }
+            ]
+          }
+        },
+        {
+          "key": "open",
+          "type": "object",
+          "label": "Opening hours",
+          "fields": [
+            {
+              "key": "mon",
+              "type": "array",
+              "label": "Monday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            },
+            {
+              "key": "tue",
+              "type": "array",
+              "label": "Tuesday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            },
+            {
+              "key": "wed",
+              "type": "array",
+              "label": "Wednesday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            },
+            {
+              "key": "thu",
+              "type": "array",
+              "label": "Thursday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            },
+            {
+              "key": "fri",
+              "type": "array",
+              "label": "Friday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            },
+            {
+              "key": "sat",
+              "type": "array",
+              "label": "Saturday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            },
+            {
+              "key": "sun",
+              "type": "array",
+              "label": "Sunday",
+              "placeholder": "09:00-17:00",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d\\d:\\d\\d-\\d\\d:\\d\\d$",
+                "pattern_message": "Write each time as 09:00-17:00."
+              }
+            }
+          ]
+        },
+        {
+          "key": "start_every",
+          "type": "number",
+          "label": "Start times every",
+          "group": "Booking rules",
+          "unit": "minutes",
+          "placeholder": "60"
+        },
+        {
+          "key": "notice_hours",
+          "type": "number",
+          "label": "Earliest",
+          "group": "Booking rules",
+          "unit": "hours ahead",
+          "placeholder": "12"
+        },
+        {
+          "key": "horizon_days",
+          "type": "number",
+          "label": "Latest",
+          "group": "Booking rules",
+          "unit": "days ahead",
+          "placeholder": "60"
+        },
+        {
+          "key": "cancel",
+          "type": "object",
+          "label": "Cancellation",
+          "fields": [
+            {
+              "key": "full_before_hours",
+              "type": "number",
+              "label": "Full refund until",
+              "unit": "hours before"
+            },
+            {
+              "key": "late_percent",
+              "type": "number",
+              "label": "Late cancellation fee",
+              "unit": "%"
+            }
+          ]
+        },
+        {
+          "key": "words",
+          "type": "map",
+          "label": "Visitor wording",
+          "add_label": "Add wording",
+          "placeholder": "continue",
+          "key_pattern": "^[a-z_]{1,40}$",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "id": "stripe",
+          "label": "Connect Stripe",
+          "group": "Payments",
+          "service": "commerce",
+          "method": "POST",
+          "path": "/sites/{site}/stripe/onboarding"
+        }
+      ]
+    }
+  },
+  "translations": {
+    "zh": {
+      "Booking": "预约",
+      "Time zone": "时区",
+      "Currency": "币种",
+      "Three lowercase letters, such as usd.": "三个小写字母，例如 usd。",
+      "Services": "服务",
+      "Add service": "添加服务",
+      "Name": "名称",
+      "Charge": "计费",
+      "By the hour": "按小时",
+      "Fixed price": "固定价格",
+      "Rate per hour": "每小时费用",
+      "Hours": "时长",
+      "From": "最少",
+      "To": "最多",
+      "hours": "小时",
+      "Length": "时长",
+      "minutes": "分钟",
+      "Price": "价格",
+      "Deposit": "定金",
+      "Deposit share": "定金比例",
+      "Hold for": "保留",
+      "Balance due": "尾款期限",
+      "days before": "天前",
+      "Questions": "问题",
+      "Add question": "添加问题",
+      "Required": "必填",
+      "Optional": "选填",
+      "Question wording": "问题措辞",
+      "Add wording": "添加措辞",
+      "Opening hours": "营业时间",
+      "Monday": "星期一",
+      "Tuesday": "星期二",
+      "Wednesday": "星期三",
+      "Thursday": "星期四",
+      "Friday": "星期五",
+      "Saturday": "星期六",
+      "Sunday": "星期日",
+      "Write each time as 09:00-17:00.": "时间写成 09:00-17:00。",
+      "Booking rules": "预约规则",
+      "Start times every": "开始时间间隔",
+      "Earliest": "至少提前",
+      "hours ahead": "小时",
+      "Latest": "最多提前",
+      "days ahead": "天",
+      "Cancellation": "取消",
+      "Full refund until": "全额退款截止",
+      "hours before": "小时前",
+      "Late cancellation fee": "逾期取消费",
+      "Payments": "付款",
+      "Connect Stripe": "连接 Stripe",
+      "Note": "备注",
+      "Choice": "选择",
+      "Label": "标签",
+      "Options": "选项",
+      "Add option": "添加选项",
+      "Charged": "计费方式",
+      "Per hour": "每小时",
+      "Once per booking": "每次预约一次",
+      "Add-ons": "附加项",
+      "Add add-on": "添加附加项",
+      "Quantity": "数量",
+      "Fewest": "最少",
+      "Most": "最多",
+      "Route": "路线",
+      "Quoted by the desk": "由前台报价",
+      "Add quoted service": "添加报价服务",
+      "Visitor wording": "访客措辞"
+    }
+  }
+}

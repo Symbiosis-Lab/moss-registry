@@ -1,0 +1,484 @@
+{
+ "about": "Price vectors: commerce's copy (src/__tests__/commerce) is the source; the booking plugin's test pins it by checksum. Prices in cents; total null means the selection is refused. `deposits` are what a deposit holds of a total (percent, rounded down); `deposit_starts` say whether a start (with the site's offset) is far enough from now to take a deposit.",
+ "services": {
+  "pickup": {
+   "name": "Pickup and drop-off",
+   "hours": {
+    "min": 1,
+    "max": 4
+   },
+   "fields": {
+    "where": "required",
+    "where_to": "required",
+    "where_to_note": "optional"
+   },
+   "labels": {
+    "where": "Pickup address",
+    "where_to": "Drop-off address",
+    "where_to_note": "Anything the driver should know"
+   },
+   "choice": {
+    "label": "Vehicle",
+    "options": {
+     "sedan": {
+      "name": "Sedan",
+      "per": "hour",
+      "price": 11000
+     },
+     "suv": {
+      "name": "SUV",
+      "per": "hour",
+      "price": 13500
+     },
+     "van": {
+      "name": "Sprinter van",
+      "per": "hour",
+      "price": 16000
+     },
+     "armored": {
+      "name": "Armored SUV",
+      "per": "hour",
+      "price": 30000
+     }
+    }
+   },
+   "add_ons": {
+    "guards": {
+     "name": "Bodyguard",
+     "per": "hour",
+     "price": 12000,
+     "qty": {
+      "min": 0,
+      "max": 4
+     }
+    }
+   },
+   "note": "Up to 4 hours and 100 miles."
+  },
+  "tour": {
+   "name": "Tour",
+   "per_hour": 10000,
+   "hours": {
+    "min": 2,
+    "max": 6
+   },
+   "choice": {
+    "label": "Route",
+    "options": {
+     "a": {
+      "name": "Coast",
+      "per": "booking",
+      "price": 5000
+     },
+     "b": {
+      "name": "Hills",
+      "per": "hour",
+      "price": 2000
+     },
+     "c": {
+      "name": "Inland",
+      "per": "booking",
+      "price": 0
+     }
+    }
+   },
+   "add_ons": {
+    "photo": {
+     "name": "Photographer",
+     "per": "booking",
+     "price": 3000,
+     "qty": {
+      "min": 0,
+      "max": 2
+     }
+    },
+    "water": {
+     "name": "Water",
+     "price": 500,
+     "qty": {
+      "min": 1,
+      "max": 3
+     }
+    }
+   }
+  },
+  "protection": {
+   "name": "Executive protection",
+   "per_hour": 12000,
+   "hours": {
+    "min": 5,
+    "max": 12
+   }
+  },
+  "consultation": {
+   "name": "Consultation",
+   "minutes": 30,
+   "price": 0
+  },
+  "workshop": {
+   "name": "Workshop",
+   "minutes": 90,
+   "price": 5000
+  },
+  "charter": {
+   "name": "Charter",
+   "per_hour": 5000000,
+   "hours": {
+    "min": 1,
+    "max": 24
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "a sedan for an hour, no guard",
+   "service": "pickup",
+   "hours": 1,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": 11000
+  },
+  {
+   "name": "an SUV for 4 hours with 2 guards",
+   "service": "pickup",
+   "hours": 4,
+   "choice": "suv",
+   "add_ons": {
+    "guards": 2
+   },
+   "total": 150000
+  },
+  {
+   "name": "a van for 3 hours with 1 guard",
+   "service": "pickup",
+   "hours": 3,
+   "choice": "van",
+   "add_ons": {
+    "guards": 1
+   },
+   "total": 84000
+  },
+  {
+   "name": "the armored SUV for 4 hours with 4 guards",
+   "service": "pickup",
+   "hours": 4,
+   "choice": "armored",
+   "add_ons": {
+    "guards": 4
+   },
+   "total": 312000
+  },
+  {
+   "name": "guards left out take the fewest",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "suv",
+   "total": 27000
+  },
+  {
+   "name": "more hours than the cap",
+   "service": "pickup",
+   "hours": 5,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "no hours",
+   "service": "pickup",
+   "hours": null,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "zero hours",
+   "service": "pickup",
+   "hours": 0,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "a fractional hour",
+   "service": "pickup",
+   "hours": 1.5,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "no vehicle",
+   "service": "pickup",
+   "hours": 2,
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "an unknown vehicle",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "limo",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "a vehicle named after an object property",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "constructor",
+   "add_ons": {
+    "guards": 0
+   },
+   "total": null
+  },
+  {
+   "name": "five guards",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 5
+   },
+   "total": null
+  },
+  {
+   "name": "negative guards",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": -1
+   },
+   "total": null
+  },
+  {
+   "name": "half a guard",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": 1.5
+   },
+   "total": null
+  },
+  {
+   "name": "guards as text",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "sedan",
+   "add_ons": {
+    "guards": "2"
+   },
+   "total": null
+  },
+  {
+   "name": "an add-on the service does not have",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "sedan",
+   "add_ons": {
+    "champagne": 1
+   },
+   "total": null
+  },
+  {
+   "name": "add-ons that are not an object",
+   "service": "pickup",
+   "hours": 2,
+   "choice": "sedan",
+   "add_ons": [
+    1
+   ],
+   "total": null
+  },
+  {
+   "name": "per-booking and per-hour pricing together, route a",
+   "service": "tour",
+   "hours": 3,
+   "choice": "a",
+   "add_ons": {
+    "photo": 2,
+    "water": 1
+   },
+   "total": 42500
+  },
+  {
+   "name": "route b, no photographer",
+   "service": "tour",
+   "hours": 3,
+   "choice": "b",
+   "add_ons": {
+    "photo": 0,
+    "water": 1
+   },
+   "total": 37500
+  },
+  {
+   "name": "an add-on with a fewest of 1 is taken when left out",
+   "service": "tour",
+   "hours": 2,
+   "choice": "a",
+   "total": 26000
+  },
+  {
+   "name": "a choice on a service that has none",
+   "service": "protection",
+   "hours": 5,
+   "choice": "sedan",
+   "total": null
+  },
+  {
+   "name": "add-ons on a service that has none",
+   "service": "protection",
+   "hours": 5,
+   "add_ons": {
+    "guards": 1
+   },
+   "total": null
+  },
+  {
+   "name": "Executive protection, 5 hours",
+   "service": "protection",
+   "hours": 5,
+   "total": 60000
+  },
+  {
+   "name": "Executive protection, 12 hours",
+   "service": "protection",
+   "hours": 12,
+   "total": 144000
+  },
+  {
+   "name": "Executive protection, 4 hours",
+   "service": "protection",
+   "hours": 4,
+   "total": null
+  },
+  {
+   "name": "a free consultation",
+   "service": "consultation",
+   "hours": null,
+   "total": 0
+  },
+  {
+   "name": "a free consultation ignores hours",
+   "service": "consultation",
+   "hours": 3,
+   "total": 0
+  },
+  {
+   "name": "a fixed price",
+   "service": "workshop",
+   "hours": null,
+   "total": 5000
+  },
+  {
+   "name": "a free option on a service with its own rate",
+   "service": "tour",
+   "hours": 2,
+   "choice": "c",
+   "add_ons": {
+    "photo": 0,
+    "water": 1
+   },
+   "total": 21000
+  },
+  {
+   "name": "the largest charge Stripe takes",
+   "service": "charter",
+   "hours": 19,
+   "total": 95000000
+  },
+  {
+   "name": "a booking over Stripe's per-charge cap",
+   "service": "charter",
+   "hours": 20,
+   "total": null
+  }
+ ],
+ "deposits": [
+  {
+   "name": "half of a whole number of cents",
+   "total": 60000,
+   "percent": 50,
+   "deposit": 30000
+  },
+  {
+   "name": "half of an odd total, rounded down",
+   "total": 333,
+   "percent": 50,
+   "deposit": 166
+  },
+  {
+   "name": "a third, rounded down",
+   "total": 10000,
+   "percent": 33,
+   "deposit": 3300
+  },
+  {
+   "name": "the largest share of the largest charge",
+   "total": 99999999,
+   "percent": 99,
+   "deposit": 98999999
+  }
+ ],
+ "deposit_starts": [
+  {
+   "name": "exactly the days ahead",
+   "start": "2026-12-08T10:00:00-08:00",
+   "now": "2026-12-01T18:00:00Z",
+   "balance_days_before": 7,
+   "allowed": true
+  },
+  {
+   "name": "one second short of the days ahead",
+   "start": "2026-12-08T09:59:59-08:00",
+   "now": "2026-12-01T18:00:00Z",
+   "balance_days_before": 7,
+   "allowed": false
+  },
+  {
+   "name": "more than the days ahead, though now is already the next day in UTC",
+   "start": "2026-12-08T20:00:00-08:00",
+   "now": "2026-12-01T18:00:00-08:00",
+   "balance_days_before": 7,
+   "allowed": true
+  },
+  {
+   "name": "the same calendar day a week on, but earlier in it",
+   "start": "2026-12-08T08:00:00-08:00",
+   "now": "2026-12-01T10:00:00-08:00",
+   "balance_days_before": 7,
+   "allowed": false
+  },
+  {
+   "name": "a start late in the site's day that is already the next day in UTC",
+   "start": "2026-12-08T23:00:00-08:00",
+   "now": "2026-12-01T23:30:00-08:00",
+   "balance_days_before": 7,
+   "allowed": false
+  },
+  {
+   "name": "well ahead",
+   "start": "2027-01-15T12:00:00+09:00",
+   "now": "2026-12-01T00:00:00Z",
+   "balance_days_before": 30,
+   "allowed": true
+  }
+ ]
+}
