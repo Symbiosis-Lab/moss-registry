@@ -78,6 +78,50 @@ test("a built JavaScript plugin passes", () => {
   }
 });
 
+test("a channel that declares a sign-in must export logout", () => {
+  const channel = (login, bundle) =>
+    jsPlugin(({ dir, manifest }) => {
+      manifest.capabilities = ["syndicate"];
+      manifest.contributes = { channel: { login } };
+      writeFileSync(join(dir, "assets", "icon.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      writeFileSync(join(dir, "dist", "main.bundle.js"), bundle);
+    });
+  const iife = (hooks) => `var JsPlugin = (() => ({ ${hooks} }))();`;
+  for (const login of [true, "https://example.com/sign-in"]) {
+    const without = channel(login, iife("async login() {}"));
+    const with_ = channel(login, iife("async login() {}, async logout() {}"));
+    try {
+      const r = validate(without.dir);
+      assert.equal(r.ok, false, r.out);
+      assert.match(r.out, /declares a sign-in, but the bundle exports no logout/);
+      assert.equal(validate(with_.dir).ok, true, validate(with_.dir).out);
+    } finally {
+      without.cleanup();
+      with_.cleanup();
+    }
+  }
+  const unnamed = jsPlugin(({ dir, manifest }) => {
+    manifest.capabilities = ["syndicate"];
+    manifest.contributes = { channel: { login: true } };
+    delete manifest.global_name;
+    writeFileSync(join(dir, "assets", "icon.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  });
+  try {
+    assert.match(validate(unnamed.dir).out, /names its bundle's global in manifest.global_name/);
+  } finally {
+    unnamed.cleanup();
+  }
+  const tokenOnly = channel(undefined, iife("async publish_copy() {}"));
+  const throws = channel(true, "throw new Error('boom');");
+  try {
+    assert.equal(validate(tokenOnly.dir).ok, true, validate(tokenOnly.dir).out);
+    assert.match(validate(throws.dir).out, /throws when loaded, so its logout cannot be checked: boom/);
+  } finally {
+    tokenOnly.cleanup();
+    throws.cleanup();
+  }
+});
+
 test("min_moss_version must be a version moss can read", () => {
   for (const floor of ["whenever", "0.15", ">=0.15.0", "v0.15.0", "0.015.0", " 0.15.0", 15]) {
     const p = jsPlugin(({ manifest }) => (manifest.min_moss_version = floor));
