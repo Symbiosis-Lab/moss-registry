@@ -529,6 +529,19 @@ export async function captureLogin(): Promise<string | null | undefined> {
 }
 
 /**
+ * Sign out of Matters on this computer. moss forgets only the secrets a manifest
+ * declares, and this token is keyed by account at run time, so it is erased here,
+ * with the cookie a later login would otherwise capture again. Throws when the
+ * token survives, so moss reports the sign-out as failed instead of done.
+ */
+export async function logout(): Promise<{ success: true }> {
+  await clearStoredToken();
+  await clearPluginCookies();
+  if ((await getSessionState()) !== "none") throw new Error("Matters still has this folder's token");
+  return { success: true };
+}
+
+/**
  * Force-fresh login: clear THIS folder's stored token AND the matters-domain
  * cookies before opening the login webview, so the login screen is genuine and
  * only a freshly-logged-in token can be captured (captureLogin reads the stored

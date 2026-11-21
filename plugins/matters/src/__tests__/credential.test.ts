@@ -43,6 +43,7 @@ import {
   authHeaderToken,
   captureLogin,
   beginFreshLogin,
+  logout,
   bindStoredToken,
   getSessionState,
   clearTokenCache,
@@ -414,5 +415,35 @@ describe("beginFreshLogin", () => {
   it("does not create an auth.json for a folder that never had one", async () => {
     await beginFreshLogin();
     expect(files.has("auth.json")).toBe(false);
+  });
+});
+
+describe("logout", () => {
+  it("erases the account's token, the pending slot and the cookies, and a warm cache serves nothing", async () => {
+    bindFolderTo("alice");
+    keystore.secretStore.set("access_token:alice", "alice-token");
+    keystore.secretStore.set("access_token", "pending-token");
+    expect(await authHeaderToken()).toBe("alice-token");
+
+    await expect(logout()).resolves.toEqual({ success: true });
+
+    expect(keystore.secretStore.has("access_token:alice")).toBe(false);
+    expect(keystore.secretStore.has("access_token")).toBe(false);
+    expect(mockClearPluginCookies).toHaveBeenCalled();
+    expect(await authHeaderToken()).toBeNull();
+    expect(await getSessionState()).toBe("none");
+  });
+
+  it("fails when the cookies cannot be cleared, so moss does not report a sign-out that left the session", async () => {
+    bindFolderTo("alice");
+    mockClearPluginCookies.mockRejectedValueOnce(new Error("cookie store locked"));
+    await expect(logout()).rejects.toThrow("cookie store locked");
+  });
+
+  it("fails when the token cannot be erased", async () => {
+    bindFolderTo("alice");
+    keystore.secretStore.set("access_token:alice", "alice-token");
+    vi.spyOn(keystore, "setSecret").mockRejectedValue(new Error("keystore locked"));
+    await expect(logout()).rejects.toThrow("still has this folder's token");
   });
 });

@@ -6,6 +6,10 @@
 
 - A build no longer checks Matters for new posts. "Auto-Import Posts" imports when the folder opens, when you press Sync, and with `moss sync`.
 
+### Fixed
+
+- Sign out forgets the Matters sign-in: the token moss kept for the account and the Matters cookies a later sign-in would have picked up again. Before, Sign out left both on this computer.
+
 ## [1.7.3]
 
 ### Added

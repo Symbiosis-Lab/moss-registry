@@ -1008,3 +1008,4 @@ export async function process(context: ProcessContext): Promise<HookResult> {
 }
 
 export { publish_copy, find_copy, update_copy, copy_account } from "./copies";
+export { logout } from "./credential";
