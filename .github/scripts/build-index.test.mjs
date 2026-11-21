@@ -185,7 +185,7 @@ test("an entry carries the manifest's metadata and the zip's identity", () => {
   assert.equal(entry.download_url, "https://example.invalid/github-1.5.0.zip");
 });
 
-test("an entry names the kinds the manifest contributes, and nothing of their bodies", () => {
+test("an entry names the contributions the manifest declares, and nothing of their bodies", () => {
   const channel = { ...manifest, capabilities: undefined, contributes: { jobs: { syndicate: {} }, channel: { login: true } } };
   const entry = toEntry(candidate, channel, { sha256: "a", sizeBytes: 1 });
   assert.deepEqual(entry.contributes, ["channel", "jobs"]);
