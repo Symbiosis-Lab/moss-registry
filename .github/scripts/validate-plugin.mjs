@@ -12,6 +12,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, basename, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { runInNewContext } from "node:vm";
 import {
   ID_RE,
   SEMVER_RE,
@@ -363,6 +364,20 @@ if (manifest?.entry) {
       fail(`${id}: bundle references __TAURI_INTERNALS__ — use the moss-api SDK instead`);
     }
 
+    // Sign out runs the plugin's `logout`; moss treats a missing one as
+    // nothing to do, so a channel with sign-in and no logout ships with a
+    // sign-out that leaves the plugin's own session behind.
+    const channel = manifest.contributes?.channel;
+    if ((channel?.login ?? channel?.requires_login) && !manifest.global_name) {
+      fail(`${id}: a channel with sign-in names its bundle's global in manifest.global_name, so its logout can be checked`);
+    } else if (channel?.login ?? channel?.requires_login) {
+      const hooks = loadedHooks(bundle, manifest.global_name);
+      if (hooks.error) fail(`${id}: the bundle throws when loaded, so its logout cannot be checked: ${hooks.error}`);
+      else if (typeof hooks.instance?.logout !== "function") {
+        fail(`${id}: contributes.channel.login declares a sign-in, but the bundle exports no logout`);
+      }
+    }
+
     // Host capabilities must be declared. This is the static half of the
     // execute_binary gate: undeclared use is rejected here.
     const requires = Array.isArray(manifest.requires) ? manifest.requires : [];
@@ -394,6 +409,20 @@ if (manifest?.entry) {
         fail(`${id}: unknown entry in requires: "${cap}" (recognized: ${REQUIRES_GRAMMAR})`);
       }
     }
+  }
+}
+
+/** What moss's loader reads: the bundle evaluated, then the global it names. The sandbox holds the web globals
+ * moss's engine defines, so a bundle that builds an encoder at load is not mistaken for a broken one. */
+function loadedHooks(bundle, globalName) {
+  const { TextEncoder, TextDecoder, URL, URLSearchParams, atob, btoa, setTimeout, clearTimeout, crypto, console } = globalThis;
+  const sandbox = { TextEncoder, TextDecoder, URL, URLSearchParams, atob, btoa, setTimeout, clearTimeout, crypto, console };
+  sandbox.window = sandbox;
+  try {
+    runInNewContext(`${bundle}\n;globalThis.__moss_loaded = ${globalName};`, sandbox, { timeout: 2000 });
+    return { instance: sandbox.__moss_loaded };
+  } catch (e) {
+    return { error: String(e?.message ?? e) };
   }
 }
 
