@@ -1,13 +1,16 @@
 {
   "name": "ipfs",
   "display_name": "IPFS",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Publish your site to IPFS (Pinata or a local Kubo node)",
   "author": "moss team",
   "entry": "main.bundle.js",
   "capabilities": [
     "deploy"
   ],
+  "contributes": {
+    "deploy_target": {}
+  },
   "global_name": "IpfsPlugin",
   "domain": "pinata.cloud",
   "icon": "icon.svg",

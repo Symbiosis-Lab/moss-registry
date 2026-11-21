@@ -158,13 +158,13 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   if (manifest.preview === true) entry.preview = true;
   if (manifest.requires_stack === true) entry.requires_stack = true;
 
-  // Which kinds of thing the plugin contributes, by name only: a client
+  // Which contributions the plugin declares, by name only: a client
   // offers a channel where channels are added and a host where hosts are, and
   // has to know which this is before anything is installed. `capabilities`
   // cannot say it: manifests declare `contributes` instead and leave that
   // list out.
-  const kinds = Object.keys(manifest.contributes ?? {}).sort();
-  if (kinds.length) entry.contributes = kinds;
+  const contributions = Object.keys(manifest.contributes ?? {}).sort();
+  if (contributions.length) entry.contributes = contributions;
 
   return entry;
 }

@@ -1,5 +1,9 @@
 # Changelog — moss-plugin-ipfs
 
+## 0.1.1
+
+- The manifest declares `contributes.deploy_target`, so moss lists IPFS as a host from the registry index itself. The old `capabilities` list stays for older moss versions.
+
 ## 0.1.0
 
 Initial release.
