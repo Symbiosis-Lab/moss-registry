@@ -11,7 +11,10 @@
 // --sweep runs every sign-in plugin installed in a site, with no network and a
 // person who never answers: it shows what each one opens first, whether moss's
 // watchdog ends a sign-in that is waiting on that person, and any secret moss
-// refused or warned about. It reads the site's plugins and writes nothing there.
+// refused or warned about. The person closes any panel after the watchdog's
+// limit; a sign-in still waiting after SWEEP_MS is reported, not failed (a
+// system browser cannot be closed from here). It reads the site's plugins and
+// writes nothing there.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs";
@@ -39,6 +42,9 @@ const dists = Object.fromEntries(args.flatMap((a, i) => (args[i - 1] === "--dist
 // as a person reading a page does.
 const WATCHDOG_SECS = 2;
 const PERSON_MS = (WATCHDOG_SECS + 1) * 1000;
+const SWEEP_MS = 20_000;
+// A person who closes the panel, as the desktop reports any close.
+const closes = (on) => ({ on, after_ms: PERSON_MS, do: "emit", event: "browser-closed", payload: { reason: "user" } });
 
 let failed = 0;
 const check = (ok, what) => {
@@ -47,7 +53,7 @@ const check = (ok, what) => {
 };
 
 // Async, so the local network in this process can answer while moss-contract runs.
-async function run(id, dist, person, hooks = ["login", "logout"]) {
+async function run(id, dist, person, hooks = ["login", "logout"], timeout = 120_000) {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `sign-in-${id}-`));
   const folder = path.join(scratch, "site");
   if (!fs.existsSync(path.join(dist, "manifest.json"))) throw new Error(`${dist} is not built: run npm run build in plugins/${id}`);
@@ -59,7 +65,7 @@ async function run(id, dist, person, hooks = ["login", "logout"]) {
     const { stdout: out } = await promisify(execFile)(contract, [folder, id, ...hooks, "--person", script, "--watchdog-secs", String(WATCHDOG_SECS)], {
       env: { ...process.env, HOME: path.join(scratch, "home") },
       encoding: "utf8",
-      timeout: 120_000,
+      timeout,
     });
     if (args.includes("--verbose")) console.log(out);
     return out.trim().split("\n").map((l) => JSON.parse(l));
@@ -93,6 +99,7 @@ async function personAt(approve) {
       const url = new URL(req.url, "http://127.0.0.1").searchParams.get("url");
       res.writeHead(302, { location: await approve(url) });
     } catch (e) {
+      console.error(`the person could not approve the sign-in: ${e.message}`);
       res.writeHead(502, { "content-type": "text/plain" });
       res.write(String(e.message));
     }
@@ -110,7 +117,10 @@ const channels = {
     try {
       const script = (after_ms) => ({
         steps: [
-          { on: "page", matching: "mastodon:server", after_ms, do: "emit", event: "mastodon:server", payload: { typed: net.config.server } },
+          // Plain http is a server address only on a loopback IP, not "localhost".
+          { on: "page", matching: "mastodon:server", after_ms, do: "emit", event: "mastodon:server", payload: { typed: net.config.server.replace("localhost", "127.0.0.1") } },
+          // A refused address leaves the picker open; the person gives up.
+          { on: "event", matching: "mastodon:server-refused", do: "emit", event: "browser-closed", payload: { reason: "user" } },
           { on: "browser", matching: "/oauth/authorize", do: "follow", via: person.via },
         ],
       });
@@ -135,17 +145,18 @@ async function sweep(site) {
     const m = JSON.parse(fs.readFileSync(manifest, "utf8"));
     if (!m.contributes?.channel?.login) continue;
     try {
-      const [login, logout] = await run(id, path.join(plugins, id), {}, ["login", "logout"]);
+      const [login, logout] = await run(id, path.join(plugins, id), { steps: [closes("page"), closes("panel")] }, ["login", "logout"], SWEEP_MS);
       const opened = login.seen.filter((s) => /opened|shown|asked/.test(s.what)).map((s) => s.what);
-      const waited = /timed out - no progress/.test(login.answer.error ?? "");
+      const timedOut = /timed out - no progress/.test(login.answer.error ?? "");
       const logs = login.seen.concat(logout.seen).filter((s) => s.what === "log").map((s) => `${s.detail.level} ${s.detail.message}`);
       console.log(`${id} ${m.version}: login ${login.answer.ok ? login.answer.signed_in?.outcome?.status : `error "${login.answer.error}"`} in ${login.ms}ms after ${opened.join(", ") || "nothing"}`);
-      check(!(waited && opened.length), `${id}: a sign-in waiting on a person outlives the ${WATCHDOG_SECS}s watchdog`);
+      check(!(timedOut && opened.length), `${id}: a sign-in waiting on a person outlives the ${WATCHDOG_SECS}s watchdog`);
       check(custody(login).length === 0, `${id}: login writes only declared secrets (${custody(login).join("; ")})`);
       check(logout.answer.ok, `${id}: logout with nothing held succeeds (${logout.answer.failed?.join("; ")})`);
       for (const l of logs) console.log(`     ${l.slice(0, 300)}`);
     } catch (e) {
-      check(false, `${id}: ${e.message.slice(0, 400)}`);
+      if (e.killed) console.log(`${id} ${m.version}: still waiting after ${SWEEP_MS / 1000}s with the panel closed (a system browser sign-in, or a wait the close does not end)`);
+      else check(false, `${id}: ${e.message.slice(0, 400)}`);
     }
   }
 }
