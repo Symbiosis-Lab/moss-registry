@@ -4,6 +4,7 @@
 //
 //   node sign-in.mjs --contract /path/to/moss-contract [--only mastodon] [--dist mastodon=/path/to/dist] [--keep] [--verbose]
 //   node sign-in.mjs --contract /path/to/moss-contract --sweep /path/to/site
+//   node sign-in.mjs --networks
 //
 // moss-contract is built from moss with `cargo build -p moss-cli --features contract --bin moss-contract`.
 // Each check prints one line; exit status 0 means every check passed.
@@ -31,8 +32,8 @@ const flag = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const contract = flag("--contract");
-if (!contract) {
-  console.error("usage: node sign-in.mjs --contract <moss-contract> [--only a,b] [--dist id=dir] [--keep] [--verbose] | --sweep <site>");
+if (!contract && !args.includes("--networks")) {
+  console.error("usage: node sign-in.mjs --contract <moss-contract> [--only a,b] [--dist id=dir] [--keep] [--verbose] | --sweep <site> | --networks");
   process.exit(2);
 }
 const only = flag("--only")?.split(",");
@@ -44,7 +45,7 @@ const WATCHDOG_SECS = 2;
 const PERSON_MS = (WATCHDOG_SECS + 1) * 1000;
 const SWEEP_MS = 20_000;
 // A person who closes the panel, as the desktop reports any close.
-const closes = (on) => ({ on, after_ms: PERSON_MS, do: "emit", event: "browser-closed", payload: { reason: "user" } });
+const closes = (on) => ({ on, matching: "", after_ms: PERSON_MS, do: "emit", event: "browser-closed", payload: { reason: "user" } });
 
 let failed = 0;
 const check = (ok, what) => {
@@ -74,8 +75,8 @@ async function run(id, dist, person, hooks = ["login", "logout"], timeout = 120_
   }
 }
 
-// moss's own lines about a secret the plugin wrote without declaring it.
-const custody = (report) => report.seen.filter((s) => s.what === "log" && /set_plugin_secret' refused|without declaring custody/.test(s.detail.message)).map((s) => s.detail.message);
+// moss's own lines about a secret the plugin wrote without declaring it, refused or allowed.
+const custody = (report) => report.seen.filter((s) => s.what === "log" && s.detail.target === "plugin::custody").map((s) => s.detail.message);
 
 // What every plugin that signs in owns, whatever its network.
 function signsInAndOut(id, [login, logout], { name, quick }) {
@@ -161,7 +162,10 @@ async function sweep(site) {
   }
 }
 
-if (flag("--sweep")) {
+if (args.includes("--networks")) {
+  // The channels signed in against a local copy of their network, which needs Docker.
+  console.log(Object.keys(channels).join("\n"));
+} else if (flag("--sweep")) {
   await sweep(flag("--sweep"));
 } else {
   for (const [id, channel] of Object.entries(channels)) {
