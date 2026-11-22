@@ -63,6 +63,14 @@ jobs:
                   printf '%s\n' "$dir"
                 fi
               done)
+          # The harness runs every channel that signs in (scripts/check-plugin),
+          # so a change to it checks them all again.
+          if git diff --name-only "$BASE_SHA"..."$HEAD_SHA" | grep -q '^harness/'; then
+            echo "harness/ changed: checking every plugin that signs in."
+            signs_in=$(grep -rlE --include=manifest.json --exclude-dir=node_modules --exclude-dir=dist '"login": *true' plugins \
+              | awk -F/ '{ print $1 "/" $2 }')
+            selected=$(printf '%s\n%s\n' "$selected" "$signs_in" | sed '/^$/d' | sort -u)
+          fi
           if [ -z "$selected" ]; then
             echo "No plugin directories touched."
             echo "any=false" >> "$GITHUB_OUTPUT"
@@ -120,9 +128,46 @@ jobs:
             echo "starters=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # moss's engine, with a scripted person in place of the desktop, built from
+  # the public moss commit harness/moss-contract.rev pins. A cache keyed on
+  # that commit builds it once per pin.
+  moss-contract:
+    name: moss-contract
+    needs: detect
+    if: needs.detect.outputs.js == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: pin
+        run: echo "rev=$(tr -d '[:space:]' < harness/moss-contract.rev)" >> "$GITHUB_OUTPUT"
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: moss-contract
+          key: moss-contract-${{ steps.pin.outputs.rev }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Symbiosis-Lab/moss
+          ref: ${{ steps.pin.outputs.rev }}
+          path: moss-src
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Build moss-contract
+        working-directory: moss-src
+        run: |
+          cargo build --release -p moss-cli --features contract --bin moss-contract
+          cp target/release/moss-contract ../moss-contract
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moss-contract
+          path: moss-contract
+          retention-days: 1
+
   validate:
     name: ${{ matrix.plugin }}
-    needs: detect
+    needs: [detect, moss-contract]
     if: needs.detect.outputs.js == 'true'
     runs-on: ubuntu-latest
     strategy:
@@ -140,8 +185,16 @@ jobs:
 
       # dist/ is gitignored, so what ships is always built here from the source
       # under review. The same script is the pre-push hook's (.githooks/pre-push).
+      - uses: actions/download-artifact@v4
+        with:
+          name: moss-contract
+          path: ${{ runner.temp }}/moss-contract
+
       - name: Install, build, unit-test and validate against registry rules
-        run: scripts/check-plugin "${{ matrix.plugin }}"
+        run: |
+          export MOSS_CONTRACT="$RUNNER_TEMP/moss-contract/moss-contract"
+          chmod +x "$MOSS_CONTRACT"
+          scripts/check-plugin "${{ matrix.plugin }}"
 
   # A plugin that is only a manifest plus a native program has nothing to npm
   # install. The registry builds it by running the plugin's own
@@ -384,7 +437,7 @@ jobs:
   # Anything else (failure, cancelled) fails here.
   all-checks:
     name: all checks
-    needs: [detect, validate, native-build, native, revocations, scripts, generated, starters]
+    needs: [detect, moss-contract, validate, native-build, native, revocations, scripts, generated, starters]
     if: always()
     runs-on: ubuntu-latest
     steps:

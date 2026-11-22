@@ -24,6 +24,12 @@ What one run does:
 
 Exit status 0 means every check passed; each check prints one line.
 
+## Signing in
+
+`sign-in.mjs` runs a channel's own sign-in and sign-out in moss's engine, with a scripted person in place of the desktop who is slower than moss's hook watchdog. It checks that the sign-in completes, writes only the secrets the manifest declares, names the account, and that sign-out leaves nothing behind. Every channel that signs in also gets a run with no network, where the person closes whatever opens.
+
+`scripts/check-plugin` runs both for a plugin that signs in, so CI and the pre-push hook do too. It needs `moss-contract`, built from the moss commit in [`../moss-contract.rev`](../moss-contract.rev) with `cargo build -p moss-cli --features contract --bin moss-contract`, in `MOSS_CONTRACT`, and Docker for a channel with a local network (`node sign-in.mjs --networks` lists them). Without them it prints `contract skipped:` and what is missing; that passes on your machine and fails on CI.
+
 ## Adding a network
 
 A network is one file, `providers/<plugin id>.mjs`, exporting `start()`, which starts the network's local copy and returns:
