@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Your site's domain can be your Bluesky handle: set your account ID, and moss writes `/.well-known/atproto-did` on every build; then choose your domain as your handle in Bluesky. Needs moss 0.15.27.
+
 ## 0.1.2
 
 - An interrupted send whose post is not on Bluesky is sent again once moss looks it up, with moss releases that send a copy again only when the network says outright it is not there.
