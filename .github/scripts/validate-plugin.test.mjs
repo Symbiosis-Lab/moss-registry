@@ -409,6 +409,7 @@ test("a newsletter service follows moss's own rules for it", () => {
   expectDeclaredFail(service((s) => (s.key.prefix = "SG ")), /key\.prefix is 1 to 10/);
   expectDeclaredFail(service((s) => (s.key.length = 3)), /key\.length is longer than the prefix/);
   expectDeclaredFail(service((s) => (s.key.length = 513)), /key\.length is longer than the prefix/);
+  expectDeclaredFail(service((s) => (s.key.name = "newsletter")), /key\.name is not read/);
   expectDeclaredFail(service((s) => (s.steps = [])), /steps holds 1 to 5 steps/);
   expectDeclaredFail(service((s) => (s.steps = ["a", "b", "c", "d", "e", "f"])), /steps holds 1 to 5 steps/);
 });

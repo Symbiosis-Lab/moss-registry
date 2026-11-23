@@ -266,6 +266,7 @@ function validateNewsletterService() {
   } else if (!Number.isInteger(key.length) || key.length <= key.prefix.length || key.length > 512) {
     fail(`${at}.key.length is longer than the prefix and at most 512`);
   }
+  if (key.name !== undefined) fail(`${at}.key.name is not read: moss names every key "moss"`);
   if (typeof key.permission !== "string") fail(`${at}.key.permission is the service's word for the access the key needs`);
   const steps = service.steps;
   if (!Array.isArray(steps) || steps.length < 1 || steps.length > 5 || !steps.every((s) => typeof s === "string")) {

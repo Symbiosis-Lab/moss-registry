@@ -4,7 +4,7 @@
   "display_name": "SendGrid",
   "description": "Copy your site's subscribers to your own SendGrid list, and send their mail from your SendGrid account",
   "author": "Symbiosis Lab",
-  "min_moss_version": "0.15.29",
+  "min_moss_version": "0.15.30",
   "preview": true,
   "contributes": {
     "newsletter_service": {
