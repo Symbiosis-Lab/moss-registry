@@ -8,3 +8,7 @@ service = "sendgrid"
 ```
 
 The pasted key is used once and never stored: moss's server makes a narrower key from it, and deletes the pasted one when it is named `moss`. The plugin holds no code; the SendGrid side runs on moss's server.
+
+## Network access
+
+None. The plugin makes no requests; moss's server calls `api.sendgrid.com` with the key.

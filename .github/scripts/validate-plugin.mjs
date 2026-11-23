@@ -115,6 +115,7 @@ if (manifest) {
   else validateJsPackage();
 
   validateIcon();
+  validateNewsletterService();
 
   // Version must move forward relative to what has already been released.
   let tags = [];
@@ -236,6 +237,39 @@ function validateDeclared() {
     if (!isRelativeInside(file) || !existsSync(join(dir, "assets", file))) {
       fail(`${id}: ${what} "${file}" is not in assets/ — the zip is assets/, so every file a manifest names must be there`);
     }
+  }
+}
+
+/**
+ * The rules moss applies when it reads contributes.newsletter_service, so a
+ * manifest moss would refuse is never listed.
+ */
+function validateNewsletterService() {
+  const service = manifest.contributes?.newsletter_service;
+  if (service === undefined) return;
+  const at = `${id}: contributes.newsletter_service`;
+  const https = (field, address) => {
+    let ok = false;
+    try {
+      const u = new URL(address);
+      ok = u.protocol === "https:" && u.host !== "";
+    } catch {}
+    if (!ok) fail(`${at}.${field} ${JSON.stringify(address)} is not an https address`);
+  };
+  const key = service.key ?? {};
+  https("key.url", key.url);
+  for (const field of ["webhooks_url", "senders_url"]) {
+    if (service[field] !== undefined) https(field, service[field]);
+  }
+  if (typeof key.prefix !== "string" || !/^[\x21-\x7e]{1,10}$/.test(key.prefix)) {
+    fail(`${at}.key.prefix is 1 to 10 printable ASCII characters`);
+  } else if (!Number.isInteger(key.length) || key.length <= key.prefix.length || key.length > 512) {
+    fail(`${at}.key.length is longer than the prefix and at most 512`);
+  }
+  if (typeof key.permission !== "string") fail(`${at}.key.permission is the service's word for the access the key needs`);
+  const steps = service.steps;
+  if (!Array.isArray(steps) || steps.length < 1 || steps.length > 5 || !steps.every((s) => typeof s === "string")) {
+    fail(`${at}.steps holds 1 to 5 steps`);
   }
 }
 

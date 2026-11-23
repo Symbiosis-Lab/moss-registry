@@ -390,6 +390,29 @@ test("a declared plugin has nothing that builds, and no derivations", () => {
   expectDeclaredFail(({ manifest }) => (manifest.contributes.derivations = {}), /contributes\.derivations must be absent/);
 });
 
+test("a newsletter service follows moss's own rules for it", () => {
+  const sendgrid = JSON.parse(readFileSync(join(here, "..", "..", "plugins", "sendgrid", "assets", "manifest.json"), "utf8"));
+  const service = (edit) => ({ manifest }) => {
+    manifest.contributes = { newsletter_service: structuredClone(sendgrid.contributes.newsletter_service) };
+    edit(manifest.contributes.newsletter_service);
+  };
+  const p = declaredPlugin(service(() => {}));
+  try {
+    const r = validate(p.dir);
+    assert.equal(r.ok, true, r.out);
+  } finally {
+    p.cleanup();
+  }
+  expectDeclaredFail(service((s) => (s.key.url = "http://app.example.com/keys")), /key\.url .* is not an https address/);
+  expectDeclaredFail(service((s) => (s.senders_url = "not a url")), /senders_url .* is not an https address/);
+  expectDeclaredFail(service((s) => (s.key.prefix = "")), /key\.prefix is 1 to 10/);
+  expectDeclaredFail(service((s) => (s.key.prefix = "SG ")), /key\.prefix is 1 to 10/);
+  expectDeclaredFail(service((s) => (s.key.length = 3)), /key\.length is longer than the prefix/);
+  expectDeclaredFail(service((s) => (s.key.length = 513)), /key\.length is longer than the prefix/);
+  expectDeclaredFail(service((s) => (s.steps = [])), /steps holds 1 to 5 steps/);
+  expectDeclaredFail(service((s) => (s.steps = ["a", "b", "c", "d", "e", "f"])), /steps holds 1 to 5 steps/);
+});
+
 test("an entry that is present but empty is a JavaScript plugin missing its entry", () => {
   expectDeclaredFail(({ manifest }) => (manifest.entry = ""), /manifest\.entry is required/);
 });
