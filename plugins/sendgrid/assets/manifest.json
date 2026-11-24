@@ -7,20 +7,28 @@
   "min_moss_version": "0.15.30",
   "preview": true,
   "contributes": {
-    "newsletter_service": {
-      "key": {
-        "url": "https://app.sendgrid.com/settings/api_keys",
-        "prefix": "SG.",
-        "length": 69,
-        "permission": "Full Access"
-      },
-      "steps": [
-        "Open API Keys in SendGrid",
-        "Create API Key, name it {name}, keep {permission}, then Create & View",
-        "Copy the key and paste it here"
+    "provider": {
+      "part": "newsletter",
+      "addresses": [],
+      "credentials": [
+        {
+          "kind": "key",
+          "env": "SENDGRID_API_KEY",
+          "url": "https://app.sendgrid.com/settings/api_keys",
+          "prefix": "SG.",
+          "length": 69,
+          "permission": "Full Access"
+        }
       ],
-      "webhooks_url": "https://app.sendgrid.com/settings/mail_settings/webhook_settings",
-      "senders_url": "https://app.sendgrid.com/settings/sender_auth"
+      "newsletter": {
+        "steps": [
+          "Open API Keys in SendGrid",
+          "Create API Key, name it {name}, keep {permission}, then Create & View",
+          "Copy the key and paste it here"
+        ],
+        "webhooks_url": "https://app.sendgrid.com/settings/mail_settings/webhook_settings",
+        "senders_url": "https://app.sendgrid.com/settings/sender_auth"
+      }
     }
   },
   "translations": {
