@@ -206,14 +206,14 @@ beforeEach(() => {
 // ============================================================================
 
 describe("process hook auth routing", () => {
-  it("expired + background + userName → public fallback, no login window, NO toast (background must not interrupt)", async () => {
+  it("expired + no trigger (an older moss's build) + userName → public fallback, no login window, NO toast", async () => {
     // open-feedback-design (2026-09-15): a background rebuild's expired
     // session must not toast — the report was exactly this, a "login
     // expired" toast popping while the app was still on the post-open
     // waiting screen. notifySessionExpired still logs (console.warn) and
     // the receipt stays honest; only the TOAST is gated on isUserPresent.
     mockGetSessionState.mockResolvedValue("expired");
-    await processHook(makeContext("background"));
+    await processHook(makeContext(undefined));
     expect(mockOpenBrowser).not.toHaveBeenCalled();
     expect(mockApiConfig.queryMode).toBe("user");
     expect(mockApiConfig.testUserName).toBe("guo");
@@ -222,7 +222,7 @@ describe("process hook auth routing", () => {
     expect(String(mockTaskSucceeded.mock.calls[0][0])).toContain(". Matters session expired");
   });
 
-  it("expired + background + NO userName → silent success (no error badge, no toast, on background rebuild)", async () => {
+  it("expired + no trigger + NO userName → silent success (no error badge, no toast)", async () => {
     // Phase 4a B2: soft_fail on a background build should NOT show an error
     // badge — it would recur on every rebuild for unlogged-but-Matters-installed
     // folders. The standalone connect_account command + the Phase 4b auto-open
@@ -231,7 +231,7 @@ describe("process hook auth routing", () => {
     // is only ever reached on a non-user-present trigger.
     mockGetConfig.mockResolvedValue({ ...BOUND_CONFIG, userName: undefined });
     mockGetSessionState.mockResolvedValue("expired");
-    const result = await processHook(makeContext("background"));
+    const result = await processHook(makeContext(undefined));
     // B2: background "needs connection" → task.succeeded (not task.failed).
     expect(result.success).toBe(true);
     expect(mockTaskFailed).not.toHaveBeenCalled();
@@ -244,13 +244,13 @@ describe("process hook auth routing", () => {
     expect(mockOpenBrowser).not.toHaveBeenCalled();
   });
 
-  it("none + background + NO userName → silent success with a 'not connected' receipt naming Matters", async () => {
+  it("none + no trigger + NO userName → silent success with a 'not connected' receipt naming Matters", async () => {
     // The other soft_fail state (never logged in, as opposed to expired
     // above) — pins that the receipt text tracks sessionState instead of
     // being hardcoded to one string regardless of which state was reached.
     mockGetConfig.mockResolvedValue({ ...BOUND_CONFIG, userName: undefined });
     mockGetSessionState.mockResolvedValue("none");
-    const result = await processHook(makeContext("background"));
+    const result = await processHook(makeContext(undefined));
     expect(result.success).toBe(true);
     expect(mockTaskFailed).not.toHaveBeenCalled();
     expect(String(mockTaskSucceeded.mock.calls[0][0])).toBe("Matters not connected");
@@ -278,9 +278,9 @@ describe("process hook auth routing", () => {
     expect(mockShowToast).not.toHaveBeenCalled(); // no session event, no toast
   });
 
-  it("valid + background → proceeds in viewer mode, no toast, no login", async () => {
+  it("valid + no trigger → proceeds in viewer mode, no toast, no login", async () => {
     mockGetSessionState.mockResolvedValue("valid");
-    const result = await processHook(makeContext("background"));
+    const result = await processHook(makeContext(undefined));
     expect(mockOpenBrowser).not.toHaveBeenCalled();
     expect(mockShowToast).not.toHaveBeenCalled();
     expect(mockApiConfig.queryMode).toBe("viewer");
@@ -292,10 +292,10 @@ describe("process hook auth routing", () => {
     // public_fallback flips queryMode to "user" and a later valid-session
     // run must start back in "viewer".
     mockGetSessionState.mockResolvedValue("expired");
-    await processHook(makeContext("background"));
+    await processHook(makeContext(undefined));
     expect(mockApiConfig.queryMode).toBe("user");
     mockGetSessionState.mockResolvedValue("valid");
-    await processHook(makeContext("background"));
+    await processHook(makeContext(undefined));
     expect(mockApiConfig.queryMode).toBe("viewer");
   });
 
@@ -337,11 +337,21 @@ describe("process hook auth routing", () => {
   });
 });
 
+describe("a build's run", () => {
+  it("background → returns at once: no task, no session check, no import", async () => {
+    mockGetSessionState.mockResolvedValue("valid");
+    const result = await processHook(makeContext("background"));
+    expect(result).toEqual({ success: true, message: "Matters imports on Sync" });
+    expect(mockStartTask).not.toHaveBeenCalled();
+    expect(mockGetSessionState).not.toHaveBeenCalled();
+  });
+});
+
 describe("binding guard trigger gating", () => {
-  it("unbound + background → quiet clean success, NO login window", async () => {
+  it("unbound + no trigger → quiet clean success, NO login window", async () => {
     mockGetConfig.mockResolvedValue({}); // no boundUserName
     mockDetectBoundUser.mockResolvedValue(null);
-    const result = await processHook(makeContext("background"));
+    const result = await processHook(makeContext(undefined));
     expect(mockOpenBrowser).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.message).toContain("No Matters account bound");
@@ -361,13 +371,13 @@ describe("mid-sync auth failure (process)", () => {
     mockGetSessionState.mockResolvedValue("valid"); // passes pre-flight...
   });
 
-  it("MattersAuthError during fetch, background trigger → clean session-expired failure, NO toast", async () => {
+  it("MattersAuthError during fetch, no trigger → clean session-expired failure, NO toast", async () => {
     // ...then the server revokes mid-run, on an ordinary background rebuild —
     // this must not interrupt with a toast (open-feedback-design, 2026-09-15).
     mockFetchAllArticlesSince.mockRejectedValueOnce(
       new MattersAuthError("TOKEN_INVALID", "Matters rejected the session (TOKEN_INVALID)")
     );
-    const result = await processHook(makeContext("background"));
+    const result = await processHook(makeContext(undefined));
     expect(result.success).toBe(false);
     const failedMsg = String(mockTaskFailed.mock.calls[0][0]);
     expect(failedMsg).toContain("session expired");
@@ -409,7 +419,7 @@ describe("mid-sync auth failure (process)", () => {
     mockFetchAllArticlesSince.mockRejectedValueOnce(
       new Error("GraphQL request failed (502): upstream connect error")
     );
-    const result = await processHook(makeContext("background"));
+    const result = await processHook(makeContext(undefined));
     expect(result.success).toBe(false);
     const failedMsg = String(mockTaskFailed.mock.calls[0][0]);
     expect(failedMsg).toContain("502");

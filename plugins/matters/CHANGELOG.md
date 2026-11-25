@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.4]
+
+### Changed
+
+- A build no longer checks Matters for new posts. "Auto-Import Posts" imports when the folder opens, when you press Sync, and with `moss sync`.
+
 ## [1.7.3]
 
 ### Added

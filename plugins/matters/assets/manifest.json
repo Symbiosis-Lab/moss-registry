@@ -1,6 +1,6 @@
 {
   "name": "matters",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "display_name": "Matters",
   "description": "Publish copies of your posts to Matters.town: short posts as moments and long posts as articles",
   "author": "moss team",
@@ -37,7 +37,7 @@
     "sync_on_build": "Auto-Import Posts"
   },
   "config_descriptions": {
-    "sync_on_build": "Automatically check Matters.town for new posts and drafts each time your site rebuilds."
+    "sync_on_build": "Check Matters.town for new posts and drafts when the folder opens and when you Sync."
   },
   "contributes": {
     "channel": {

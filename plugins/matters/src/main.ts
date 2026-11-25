@@ -508,6 +508,12 @@ export async function process(context: ProcessContext): Promise<HookResult> {
     return { success: true, message: "Matters auto-import off" };
   }
 
+  // A build reaches no network. The import runs in a run the person started:
+  // when the folder opens, on Sync, and with `moss sync`.
+  if (context.trigger === "background") {
+    return { success: true, message: "Matters imports on Sync" };
+  }
+
   clearTokenCache();
   await initializeDomain();
 
