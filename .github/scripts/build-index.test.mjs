@@ -9,6 +9,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   selectReleases,
@@ -19,6 +21,7 @@ import {
   toStarterEntry,
   buildStarterEntries,
   verifyReleaseArtifacts,
+  codeSha256,
 } from "./build-index.mjs";
 import { parseReleaseTag, cmpSemver, tagFor, assetNameFor, parseStarterTag } from "./registry-rules.mjs";
 
@@ -194,6 +197,31 @@ test("an entry names the contributions the manifest declares, and nothing of the
   for (const none of [manifest, { ...manifest, contributes: {} }]) {
     assert.equal("contributes" in toEntry(candidate, none, { sha256: "a", sizeBytes: 1 }), false);
   }
+});
+
+// Expected values are what `moss plugin hash <dir>` (moss 0.15.27) prints for
+// these fixture folders; moss signs for a plugin only when the two agree.
+const readDir = (dir) => (file) => {
+  const path = join(import.meta.dirname, "fixtures", "code-hash", dir, file);
+  return existsSync(path) ? readFileSync(path) : null;
+};
+
+test("the code hash is moss's: manifest, entry and block assets, a missing asset included", () => {
+  assert.equal(codeSha256(readDir("with-entry")), "e4b862f1d8df4cfd8d4665f61e8e5ec754caa65efc40c8b2a6ab8abc3fede68b");
+});
+
+test("the code hash of a plugin with no entry is moss's", () => {
+  assert.equal(codeSha256(readDir("blocks-only")), "2cd1923c0b69358f797a2bd918312dbf98a57f4ff05345d680b1caa04e65f80d");
+});
+
+test("no code hash when the declared entry is missing", () => {
+  const read = readDir("with-entry");
+  assert.equal(codeSha256((file) => (file === "main.js" ? null : read(file))), null);
+});
+
+test("an entry carries the code hash when there is one", () => {
+  assert.equal(toEntry(candidate, manifest, { sha256: "a", sizeBytes: 1, codeSha256: "c0de" }).code_sha256, "c0de");
+  assert.equal("code_sha256" in toEntry(candidate, manifest, { sha256: "a", sizeBytes: 1 }), false);
 });
 
 test("a manifest that disagrees with its tag throws rather than dropping the package", () => {
