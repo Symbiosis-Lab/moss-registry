@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Added
+
+- The manifest lists the hosts the plugin contacts (`network`), so moss can refuse a request to any other host.
+
 ## 0.2.0
 
 - Your site's domain can be your Bluesky handle: set your account ID, and moss writes `/.well-known/atproto-did` on every build; then choose your domain as your handle in Bluesky. Needs moss 0.15.27.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+### Added
+
+- The manifest lists the hosts the plugin contacts (`network`), so moss can refuse a request to any other host.
+
 ## 0.2.1
 
 - With API keys, tells moss which account it is signed in to, so copies posted from one account are left alone while another is signed in. This costs one read from X's API in each publish that has copies for X.

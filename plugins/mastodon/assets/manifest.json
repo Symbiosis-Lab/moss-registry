@@ -1,12 +1,18 @@
 {
   "name": "mastodon",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "display_name": "Mastodon",
   "description": "Post a copy of each new post to your Mastodon account, linked back to your site",
   "author": "Symbiosis Lab",
   "min_moss_version": "0.15.27",
   "preview": true,
   "entry": "main.bundle.js",
+  "network": {
+    "hosts": [],
+    "setting_hosts": [
+      "server"
+    ]
+  },
   "global_name": "MastodonPlugin",
   "icon": "icon.svg",
   "contributes": {

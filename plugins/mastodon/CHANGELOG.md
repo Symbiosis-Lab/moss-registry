@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Added
+
+- The manifest lists the hosts the plugin contacts (`network`), so moss can refuse a request to any other host.
+
 ## 0.2.0
 
 - Set your account, and every page links to your Mastodon profile with `rel="me"` (add your site's address to your profile to get the verified mark there) and credits you on link previews with `fediverse:creator`. Needs moss 0.15.27.
