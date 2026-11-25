@@ -97,7 +97,7 @@ export function selectReleases(releases) {
  * skipped, because dropping the package instead would read to every client as a
  * deliberate withdrawal.
  */
-export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
+export function toEntry(candidate, manifest, { sha256, sizeBytes, codeSha256 }) {
   const { id, version, tag, zip, icon } = candidate;
 
   if (manifest.name !== id) {
@@ -129,6 +129,7 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
     sha256,
     size_bytes: sizeBytes,
   };
+  if (codeSha256) entry.code_sha256 = codeSha256;
 
   // Optional fields are omitted rather than emitted empty: clients ignore
   // unknown fields, but an empty string is a value that renders.
@@ -167,6 +168,40 @@ export function toEntry(candidate, manifest, { sha256, sizeBytes }) {
   if (contributions.length) entry.contributes = contributions;
 
   return entry;
+}
+
+/**
+ * moss's code hash of a plugin (`code_hash` in moss's
+ * crates/moss-build/src/plugins/bundled.rs): SHA-256 over manifest.json, the
+ * entry file and each block script and stylesheet. moss treats a plugin as
+ * listed, and signs for it, only when its installed copy hashes to the
+ * catalog's `code_sha256`. moss also hashes a `path` derivation binary, which
+ * the registry never carries: validate-plugin.mjs accepts only "download".
+ *
+ * `read(path)` returns the file's bytes, or null when the zip has none.
+ * Returns null when manifest.json or the declared entry is missing, which moss
+ * never treats as a match.
+ */
+export function codeSha256(read) {
+  const manifestBytes = read("manifest.json");
+  if (!manifestBytes) return null;
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const entry = manifest.entry ?? "";
+  const entryBytes = entry ? read(entry) : Buffer.alloc(0);
+  if (!entryBytes) return null;
+
+  const blocks = Object.values(manifest.contributes?.blocks ?? {});
+  const assets = [...new Set(blocks.flatMap((b) => [b.script, b.stylesheet]).filter((p) => typeof p === "string"))]
+    .sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+
+  const hash = createHash("sha256");
+  hash.update("manifest.json").update(manifestBytes).update(entry).update(entryBytes);
+  for (const path of assets) {
+    const bytes = read(path);
+    const digest = bytes ? createHash("sha256").update(bytes).digest("hex") : "missing";
+    hash.update("local-binary").update(`block-asset:${path}:${digest}`);
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -482,13 +517,23 @@ async function downloadAsset(asset, token, dir) {
   return { path, bytes };
 }
 
-/** Read one file out of a zip without a dependency. `unzip` is on every runner. */
+/**
+ * One file's bytes from a zip, or null when it has none (unzip exits 11).
+ * `unzip` is on every runner, so this needs no dependency.
+ */
+function readFromZip(zipPath, file) {
+  try {
+    return execFileSync("unzip", ["-p", zipPath, file], { maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+  } catch (e) {
+    if (e.status === 11) return null;
+    throw e;
+  }
+}
+
 function readManifestFromZip(zipPath) {
-  const raw = execFileSync("unzip", ["-p", zipPath, "manifest.json"], {
-    encoding: "utf8",
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  return JSON.parse(raw);
+  const raw = readFromZip(zipPath, "manifest.json");
+  if (!raw) throw new Error(`${zipPath} has no manifest.json`);
+  return JSON.parse(raw.toString("utf8"));
 }
 
 async function main(argv) {
@@ -511,7 +556,8 @@ async function main(argv) {
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const manifest = readManifestFromZip(path);
     await verifyReleaseArtifacts(candidate, manifest, (asset) => downloadAsset(asset, token, dir));
-    entries.push(toEntry(candidate, manifest, { sha256, sizeBytes: bytes.length }));
+    const codeHash = codeSha256((file) => readFromZip(path, file));
+    entries.push(toEntry(candidate, manifest, { sha256, sizeBytes: bytes.length, codeSha256: codeHash }));
     console.log(`index ${candidate.tag} (${bytes.length} bytes, sha256 ${sha256.slice(0, 12)}…)`);
   }
 
