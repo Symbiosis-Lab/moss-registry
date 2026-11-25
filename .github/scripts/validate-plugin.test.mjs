@@ -54,7 +54,7 @@ function jsPlugin(edit = () => {}) {
   const dir = join(root, "js-plugin");
   mkdirSync(join(dir, "assets"), { recursive: true });
   mkdirSync(join(dir, "dist"));
-  const manifest = { name: "js-plugin", version: "1.0.0", entry: "main.bundle.js", global_name: "JsPlugin", capabilities: ["deploy"] };
+  const manifest = { name: "js-plugin", version: "1.0.0", entry: "main.bundle.js", global_name: "JsPlugin", capabilities: ["deploy"], network: { hosts: [] } };
   const files = {
     "package.json": { name: "@x/js-plugin", version: "1.0.0" },
     "package-lock.json": { lockfileVersion: 3 },
@@ -68,6 +68,43 @@ function jsPlugin(edit = () => {}) {
 }
 
 // ------------------------------------------------------------ JavaScript --
+
+test("a code plugin declares its network hosts, each named in the README", () => {
+  const passes = (edit) => {
+    const p = jsPlugin(edit);
+    try { return validate(p.dir); } finally { p.cleanup(); }
+  };
+  const readme = (text) => ({ dir }) => writeFileSync(join(dir, "README.md"), `# js\n\n## Network access\n\n${text}\n\n## Other\n\napi.other.net\n`);
+  assert.match(passes(({ manifest }) => delete manifest.network).out, /needs a "network" field/);
+  assert.match(passes(({ manifest }) => (manifest.network = { hosts: ["https://api.example.com"] })).out, /is not a host name/);
+  assert.match(passes(({ manifest }) => (manifest.network = { hosts: ["*"] })).out, /is not a host name/);
+  assert.match(passes(({ manifest }) => (manifest.network = { hostz: [] })).out, /unknown key in "network": "hostz"/);
+  assert.match(passes((ctx) => { ctx.manifest.network = { hosts: ["api.other.net"] }; readme("None.")(ctx); }).out, /does not mention api\.other\.net/);
+  const ok = passes((ctx) => {
+    ctx.manifest.network = { hosts: ["api.example.com", "*.media.example.com"], setting_hosts: ["server"], site: true };
+    ctx.manifest.config_schema = { server: "string" };
+    readme("- api.example.com and media.example.com: posts.\n- Your server setting.")(ctx);
+  });
+  assert.equal(ok.ok, true, ok.out);
+  for (const [schema, why] of [[{}, /not a setting the manifest declares/], [{ server: "secret" }, /it is secret/]]) {
+    assert.match(passes((ctx) => { ctx.manifest.network = { hosts: [], setting_hosts: ["server"] }; ctx.manifest.config_schema = schema; readme("server")(ctx); }).out, why);
+  }
+  const hidden = passes((ctx) => {
+    ctx.manifest.network = { hosts: [], setting_hosts: ["api"] };
+    ctx.manifest.contributes = { channel: { setup: { settings: [{ key: "api", type: "string", hidden: true }] } } };
+    readme("api")(ctx);
+  });
+  assert.match(hidden.out, /it is hidden/);
+  const askedAtSignIn = passes((ctx) => {
+    ctx.manifest.network = { hosts: [], setting_hosts: ["server"] };
+    ctx.manifest.contributes = { deploy_target: { setup: { settings: [
+      { key: "server", type: "string", label: "Your server", default: "mastodon.social", at_sign_in: true },
+      { key: "access_token", type: "secret", hidden: true },
+    ] } } };
+    readme("Your server setting.")(ctx);
+  });
+  assert.equal(askedAtSignIn.ok, true, askedAtSignIn.out);
+});
 
 test("a built JavaScript plugin passes", () => {
   const p = jsPlugin();

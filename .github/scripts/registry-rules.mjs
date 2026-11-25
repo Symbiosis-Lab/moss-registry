@@ -226,3 +226,57 @@ export function classifyRequirement(entry) {
 
 /** The grammar, for an error message that tells a contributor what to write. */
 export const REQUIRES_GRAMMAR = 'execute_binary:<binary> (e.g. "execute_binary:git"), or the deprecated blanket execute_binary';
+
+const HOST_RE = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+const NETWORK_KEYS = new Set(["hosts", "setting_hosts", "site"]);
+
+/** Every setting a manifest declares, by key: its type and whether it is hidden. */
+function declaredSettings(manifest) {
+  const settings = new Map();
+  for (const [key, type] of Object.entries(manifest.config_schema ?? {})) settings.set(key, { type, hidden: false });
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node.setup?.settings)) {
+      for (const s of node.setup.settings) if (s?.key) settings.set(s.key, { type: s.type, hidden: s.hidden === true });
+    }
+    for (const child of Object.values(node)) if (child && typeof child === "object" && !Array.isArray(child)) visit(child);
+  };
+  visit(manifest.contributes);
+  return settings;
+}
+
+/**
+ * What is wrong with a code plugin's `network` declaration, read against its
+ * README's "Network access" section. moss reaches only the hosts declared
+ * here, so a missing field means the plugin reaches nothing.
+ */
+export function networkProblems(manifest, readmeSection) {
+  const net = manifest.network;
+  if (net === undefined) {
+    return ['manifest needs a "network" field listing the hosts the plugin contacts, e.g. "network": { "hosts": ["api.example.com"] } (or { "hosts": [] } if it makes no requests); moss refuses every request to a host not listed']; 
+  }
+  if (!net || typeof net !== "object" || Array.isArray(net)) return ['manifest "network" must be an object: { "hosts": [...], "setting_hosts": [...], "site": true }'];
+  const problems = [];
+  for (const key of Object.keys(net)) if (!NETWORK_KEYS.has(key)) problems.push(`unknown key in "network": "${key}" (known: hosts, setting_hosts, site)`);
+  const hosts = net.hosts ?? [];
+  const settingHosts = net.setting_hosts ?? [];
+  if (!Array.isArray(hosts)) problems.push('"network.hosts" must be a list of host names');
+  if (!Array.isArray(settingHosts)) problems.push('"network.setting_hosts" must be a list of setting keys');
+  if (net.site !== undefined && typeof net.site !== "boolean") problems.push('"network.site" must be true or false');
+  const text = readmeSection.toLowerCase();
+  for (const host of Array.isArray(hosts) ? hosts : []) {
+    if (typeof host !== "string" || !HOST_RE.test(host)) {
+      problems.push(`"network.hosts" entry ${JSON.stringify(host)} is not a host name: write "api.example.com" or "*.example.com", with no scheme, port or path`);
+    } else if (!text.includes(host.replace(/^\*\./, ""))) {
+      problems.push(`README's "Network access" section does not mention ${host}, which the manifest declares; say what the plugin does there`);
+    }
+  }
+  const settings = declaredSettings(manifest);
+  for (const key of Array.isArray(settingHosts) ? settingHosts : []) {
+    const setting = settings.get(key);
+    if (!setting) problems.push(`"network.setting_hosts" names "${key}", which is not a setting the manifest declares`);
+    else if (setting.type !== "string" || setting.hidden) problems.push(`"network.setting_hosts" names "${key}", but only a declared string setting that is neither hidden nor secret, one the person types (in settings or at sign-in), may name a host (it is ${setting.hidden ? "hidden" : setting.type})`);
+    else if (!text.includes(key.toLowerCase())) problems.push(`README's "Network access" section does not mention the "${key}" setting, whose host the plugin contacts`);
+  }
+  return problems;
+}

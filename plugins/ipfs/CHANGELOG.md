@@ -1,5 +1,11 @@
 # Changelog — moss-plugin-ipfs
 
+## 0.1.2
+
+### Added
+
+- The manifest lists the hosts the plugin contacts (`network`), so moss can refuse a request to any other host.
+
 ## 0.1.1
 
 - The manifest declares `contributes.deploy_target`, so moss lists IPFS as a host from the registry index itself. The old `capabilities` list stays for older moss versions.

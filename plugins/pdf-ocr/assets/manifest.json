@@ -1,5 +1,6 @@
 {
   "name": "pdf-ocr",
+  "network": { "hosts": [] },
   "display_name": "PDF OCR",
   "version": "0.2.8",
   "min_moss_version": "0.15.11",
