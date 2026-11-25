@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+
+- A Calendar row in Booking's settings in moss: paste the calendar's secret iCal address and its busy times close those slots. The address is kept in the computer's secret store, never in the site's folder; the row shows its host, a fingerprint and the last read, with Replace and Disconnect. Needs moss 0.15.30; older moss leaves the row out.
+
 ## 0.4.1
 
 - A logo for moss's plugin list: a calendar with a check.
