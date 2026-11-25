@@ -1,6 +1,6 @@
 {
   "name": "booking",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "display_name": "Booking",
   "icon": "icon.svg",
   "description": "Let people choose a time, pay and manage a booking on your site",
@@ -544,6 +544,18 @@
           "method": "POST",
           "path": "/sites/{site}/stripe/onboarding"
         }
+      ],
+      "secrets": [
+        {
+          "id": "calendar",
+          "label": "iCal address",
+          "group": "Calendar",
+          "service": "commerce",
+          "path": "/sites/{site}/calendar",
+          "placeholder": "https://calendar.google.com/…/basic.ics",
+          "pattern": "^(https|webcal)://",
+          "pattern_message": "Paste the calendar's secret address in iCal format."
+        }
       ]
     }
   },
@@ -615,7 +627,10 @@
       "Route": "路线",
       "Quoted by the desk": "由前台报价",
       "Add quoted service": "添加报价服务",
-      "Visitor wording": "访客措辞"
+      "Visitor wording": "访客措辞",
+      "Calendar": "日历",
+      "Paste the calendar's secret address in iCal format.": "粘贴日历的 iCal 格式私密地址。",
+      "iCal address": "iCal 地址"
     }
   }
 }
