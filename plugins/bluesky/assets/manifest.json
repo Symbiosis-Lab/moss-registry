@@ -1,12 +1,20 @@
 {
   "name": "bluesky",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "display_name": "Bluesky",
   "description": "Post a copy of each new post to your Bluesky account, linked back to your site",
   "author": "Symbiosis Lab",
   "min_moss_version": "0.15.27",
   "preview": true,
   "entry": "main.bundle.js",
+  "network": {
+    "hosts": [
+      "bsky.social"
+    ],
+    "setting_hosts": [
+      "service"
+    ]
+  },
   "global_name": "BlueskyPlugin",
   "icon": "icon.svg",
   "domains": ["bsky.app"],
