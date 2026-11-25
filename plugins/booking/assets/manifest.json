@@ -548,7 +548,7 @@
       "secrets": [
         {
           "id": "calendar",
-          "label": "Calendar",
+          "label": "iCal address",
           "group": "Calendar",
           "service": "commerce",
           "path": "/sites/{site}/calendar",
@@ -629,7 +629,8 @@
       "Add quoted service": "添加报价服务",
       "Visitor wording": "访客措辞",
       "Calendar": "日历",
-      "Paste the calendar's secret address in iCal format.": "粘贴日历的 iCal 格式私密地址。"
+      "Paste the calendar's secret address in iCal format.": "粘贴日历的 iCal 格式私密地址。",
+      "iCal address": "iCal 地址"
     }
   }
 }
