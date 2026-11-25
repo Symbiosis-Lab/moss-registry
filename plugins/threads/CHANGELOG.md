@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+### Added
+
+- The manifest lists the hosts the plugin contacts (`network`), so moss can refuse a request to any other host.
+
 ## 0.1.2
 
 - Shows the Threads mark in moss instead of a letter.
