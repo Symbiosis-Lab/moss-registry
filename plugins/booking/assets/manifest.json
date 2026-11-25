@@ -1,7 +1,8 @@
 {
   "name": "booking",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "display_name": "Booking",
+  "icon": "icon.svg",
   "description": "Let people choose a time, pay and manage a booking on your site",
   "author": "Symbiosis Lab",
   "min_moss_version": "0.15.23",

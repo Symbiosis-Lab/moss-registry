@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- A logo for moss's plugin list: a calendar with a check.
+
 ## 0.4.0
 
 - A press that sends makes every control in the booking inert until its answer is drawn, and the pressed button turns; this covers Continue, the hours, Book, Pay, Move, Cancel and Decline, and a failed answer releases it. What the visitor types while it waits is kept. The move screen reads its times once.
