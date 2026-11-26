@@ -1,7 +1,7 @@
 {
   "name": "ipfs",
   "display_name": "IPFS",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Publish your site to IPFS (Pinata or a local Kubo node)",
   "author": "moss team",
   "entry": "main.bundle.js",
@@ -65,7 +65,10 @@
       "ipfs.io",
       "ipfs.filebase.io",
       "127.0.0.1",
-      "localhost"
+      "localhost",
+      "127.0.0.1:5001",
+      "localhost:5001",
+      "*.ipfs.localhost:8080"
     ],
     "setting_hosts": [
       "gateway",
