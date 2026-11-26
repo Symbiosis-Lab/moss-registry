@@ -1,5 +1,11 @@
 # Changelog — moss-plugin-ipfs
 
+## 0.1.3
+
+### Changed
+
+- The local node is listed with its ports (`127.0.0.1:5001`, `localhost:5001`, `127.0.0.1:8080`), so a moss that matches ports reaches only the Kubo RPC and gateway, not every service on the computer. The bare `127.0.0.1` and `localhost` stay for older moss.
+
 ## 0.1.2
 
 ### Added
