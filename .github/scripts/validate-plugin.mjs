@@ -115,6 +115,7 @@ if (manifest) {
   else validateJsPackage();
 
   validateIcon();
+  validateProvider();
 
   // Version must move forward relative to what has already been released.
   let tags = [];
@@ -236,6 +237,51 @@ function validateDeclared() {
     if (!isRelativeInside(file) || !existsSync(join(dir, "assets", file))) {
       fail(`${id}: ${what} "${file}" is not in assets/ — the zip is assets/, so every file a manifest names must be there`);
     }
+  }
+}
+
+/**
+ * The rules moss applies when it reads contributes.provider, so a manifest
+ * moss would refuse is never listed.
+ */
+function validateProvider() {
+  const provider = manifest.contributes?.provider;
+  if (provider === undefined) return;
+  const at = `${id}: contributes.provider`;
+  const https = (field, address) => {
+    let ok = false;
+    try {
+      const u = new URL(address);
+      ok = u.protocol === "https:" && u.host !== "";
+    } catch {}
+    if (!ok) fail(`${at}.${field} ${JSON.stringify(address)} is not an https address`);
+  };
+  for (const address of provider.addresses ?? []) https("addresses", address);
+  if (provider.part !== "newsletter") return fail(`${at}.part is "newsletter", the one part moss reads`);
+  const body = provider.newsletter;
+  const credentials = provider.credentials ?? [];
+  if (body === undefined || credentials.length !== 1) {
+    return fail(`${at}: a newsletter provider has a \`newsletter\` body and exactly one credential`);
+  }
+  const [key] = credentials;
+  if (key.kind !== "key") fail(`${at}.credentials.kind is "key"`);
+  https("credentials.url", key.url);
+  for (const field of ["webhooks_url", "senders_url"]) {
+    if (body[field] !== undefined) https(`newsletter.${field}`, body[field]);
+  }
+  if (typeof key.prefix !== "string" || !/^[\x21-\x7e]{1,10}$/.test(key.prefix)) {
+    fail(`${at}.credentials.prefix is 1 to 10 printable ASCII characters`);
+  } else if (!Number.isInteger(key.length) || key.length <= key.prefix.length || key.length > 512) {
+    fail(`${at}.credentials.length is longer than the prefix and at most 512`);
+  }
+  if (key.env !== undefined && !/^[A-Z][A-Z0-9_]{0,63}$/.test(key.env)) {
+    fail(`${at}.credentials.env is an environment variable name such as SERVICE_API_KEY`);
+  }
+  if (key.name !== undefined) fail(`${at}.credentials.name is not read: moss names every key "moss"`);
+  if (typeof key.permission !== "string") fail(`${at}.credentials.permission is the service's word for the access the key needs`);
+  const steps = body.steps;
+  if (!Array.isArray(steps) || steps.length < 1 || steps.length > 5 || !steps.every((s) => typeof s === "string")) {
+    fail(`${at}.newsletter.steps holds 1 to 5 steps`);
   }
 }
 

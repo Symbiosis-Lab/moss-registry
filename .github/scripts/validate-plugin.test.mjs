@@ -390,6 +390,36 @@ test("a declared plugin has nothing that builds, and no derivations", () => {
   expectDeclaredFail(({ manifest }) => (manifest.contributes.derivations = {}), /contributes\.derivations must be absent/);
 });
 
+test("a newsletter provider follows moss's own rules for it", () => {
+  const sendgrid = JSON.parse(readFileSync(join(here, "..", "..", "plugins", "sendgrid", "assets", "manifest.json"), "utf8"));
+  const provider = (edit) => ({ manifest }) => {
+    manifest.contributes = { provider: structuredClone(sendgrid.contributes.provider) };
+    const p = manifest.contributes.provider;
+    edit(p, p.credentials[0], p.newsletter);
+  };
+  const p = declaredPlugin(provider(() => {}));
+  try {
+    const r = validate(p.dir);
+    assert.equal(r.ok, true, r.out);
+  } finally {
+    p.cleanup();
+  }
+  expectDeclaredFail(provider((p) => (p.part = "comments")), /part is "newsletter"/);
+  expectDeclaredFail(provider((p) => (p.addresses = ["http://api.example.com"])), /addresses .* is not an https address/);
+  expectDeclaredFail(provider((p) => (p.credentials = [])), /exactly one credential/);
+  expectDeclaredFail(provider((p) => delete p.newsletter), /has a `newsletter` body/);
+  expectDeclaredFail(provider((_, k) => (k.url = "http://app.example.com/keys")), /credentials\.url .* is not an https address/);
+  expectDeclaredFail(provider((_, __, n) => (n.senders_url = "not a url")), /senders_url .* is not an https address/);
+  expectDeclaredFail(provider((_, k) => (k.prefix = "")), /prefix is 1 to 10/);
+  expectDeclaredFail(provider((_, k) => (k.prefix = "SG ")), /prefix is 1 to 10/);
+  expectDeclaredFail(provider((_, k) => (k.length = 3)), /length is longer than the prefix/);
+  expectDeclaredFail(provider((_, k) => (k.length = 513)), /length is longer than the prefix/);
+  expectDeclaredFail(provider((_, k) => (k.env = "sendgrid key")), /env is an environment variable name/);
+  expectDeclaredFail(provider((_, k) => (k.name = "newsletter")), /name is not read/);
+  expectDeclaredFail(provider((_, __, n) => (n.steps = [])), /steps holds 1 to 5 steps/);
+  expectDeclaredFail(provider((_, __, n) => (n.steps = ["a", "b", "c", "d", "e", "f"])), /steps holds 1 to 5 steps/);
+});
+
 test("an entry that is present but empty is a JavaScript plugin missing its entry", () => {
   expectDeclaredFail(({ manifest }) => (manifest.entry = ""), /manifest\.entry is required/);
 });

@@ -1,0 +1,51 @@
+{
+  "name": "sendgrid",
+  "version": "0.1.0",
+  "display_name": "SendGrid",
+  "description": "Copy your site's subscribers to your own SendGrid list, and send their mail from your SendGrid account",
+  "author": "Symbiosis Lab",
+  "min_moss_version": "0.15.30",
+  "preview": true,
+  "contributes": {
+    "provider": {
+      "part": "newsletter",
+      "addresses": [],
+      "credentials": [
+        {
+          "kind": "key",
+          "env": "SENDGRID_API_KEY",
+          "url": "https://app.sendgrid.com/settings/api_keys",
+          "prefix": "SG.",
+          "length": 69,
+          "permission": "Full Access"
+        }
+      ],
+      "newsletter": {
+        "steps": [
+          "Open API Keys in SendGrid",
+          "Create API Key, name it {name}, keep {permission}, then Create & View",
+          "Copy the key and paste it here"
+        ],
+        "webhooks_url": "https://app.sendgrid.com/settings/mail_settings/webhook_settings",
+        "senders_url": "https://app.sendgrid.com/settings/sender_auth"
+      }
+    }
+  },
+  "translations": {
+    "de": {
+      "Open API Keys in SendGrid": "API Keys in SendGrid öffnen",
+      "Copy the key and paste it here": "Den Schlüssel kopieren und hier einfügen",
+      "Create API Key, name it {name}, keep {permission}, then Create & View": "Create API Key, Name {name}, {permission} lassen, dann Create & View"
+    },
+    "zh-hans": {
+      "Open API Keys in SendGrid": "在 SendGrid 打开 API Keys",
+      "Copy the key and paste it here": "复制密钥，粘贴到这里",
+      "Create API Key, name it {name}, keep {permission}, then Create & View": "点 Create API Key，命名为 {name}，保留 {permission}，再点 Create & View"
+    },
+    "zh-hant": {
+      "Open API Keys in SendGrid": "在 SendGrid 開啟 API Keys",
+      "Copy the key and paste it here": "複製金鑰，貼到這裡",
+      "Create API Key, name it {name}, keep {permission}, then Create & View": "點 Create API Key，命名為 {name}，保留 {permission}，再點 Create & View"
+    }
+  }
+}
