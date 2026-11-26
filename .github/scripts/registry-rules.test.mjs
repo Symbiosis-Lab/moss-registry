@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyRequirement, nativeBuildMatrix, pluginKind } from "./registry-rules.mjs";
+import { classifyRequirement, nativeBuildMatrix, networkProblems, pluginKind } from "./registry-rules.mjs";
 
 test("a named grant carries the binary it grants", () => {
   assert.deepEqual(classifyRequirement("execute_binary:git"), { kind: "named", binary: "git" });
@@ -47,4 +47,36 @@ test("the shape of a manifest decides its kind", () => {
   assert.equal(pluginKind({ contributes: { blocks: {} } }), "declared");
   assert.equal(pluginKind({ contributes: { derivations: {} } }), "declared");
   assert.equal(pluginKind({}), "declared");
+});
+
+const hostsProblems = (hosts, readme = hosts.join(" ")) => networkProblems({ network: { hosts } }, readme);
+
+test("a host entry may name its port", () => {
+  assert.deepEqual(hostsProblems(["api.example.com:8443", "*.example.com:443", "127.0.0.1:5001", "localhost:5001", "[::1]:5001"]), []);
+});
+
+test("a port moss could never match, a scheme or a path is refused", () => {
+  for (const entry of ["api.example.com:0", "api.example.com:65536", "api.example.com:05001", "api.example.com:", "https://api.example.com", "api.example.com/v1", "[::1]", "::1", "[nothost]:80"]) {
+    assert.equal(hostsProblems([entry]).length, 1, entry);
+  }
+});
+
+test("a loopback entry without a port is refused, since it reaches every local service", () => {
+  for (const entry of ["localhost", "app.localhost", "*.localhost", "127.0.0.1", "127.5.6.7", "0.0.0.0"]) {
+    assert.match(hostsProblems([entry]).join(), /loopback/, entry);
+  }
+});
+
+test("a portless loopback entry stays beside the same host with a port, for moss that compares whole entries", () => {
+  assert.deepEqual(hostsProblems(["127.0.0.1", "127.0.0.1:5001", "*.localhost", "*.localhost:8080"]), []);
+  assert.match(hostsProblems(["127.0.0.1", "localhost:5001"]).join(), /loopback/);
+});
+
+test("a portless public host is still any port", () => {
+  assert.deepEqual(hostsProblems(["api.example.com", "*.example.com", "127.0.0.1.nip.io"]), []);
+});
+
+test("the README names a ported host without its port", () => {
+  assert.deepEqual(hostsProblems(["127.0.0.1:5001", "[::1]:5001"], "the local node at 127.0.0.1 and ::1"), []);
+  assert.match(hostsProblems(["api.example.com:8443"], "nothing here").join(), /does not mention api\.example\.com/);
 });

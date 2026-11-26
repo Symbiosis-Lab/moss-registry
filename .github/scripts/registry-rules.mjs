@@ -230,6 +230,31 @@ export const REQUIRES_GRAMMAR = 'execute_binary:<binary> (e.g. "execute_binary:g
 const HOST_RE = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 const NETWORK_KEYS = new Set(["hosts", "setting_hosts", "site"]);
 
+/**
+ * A `network.hosts` entry as moss reads it: a host name with an optional
+ * `:<port>`, or a bracketed IPv6 literal with one. Null when it is neither.
+ */
+function hostEntry(entry) {
+  if (typeof entry !== "string") return null;
+  const v6 = /^\[([0-9a-f:.]+)\]:(\d+)$/.exec(entry);
+  const [, host, port] = v6 ?? /^([^:]*)(?::(\d+))?$/.exec(entry) ?? [];
+  if (host === undefined || (v6 ? !URL.canParse(`http://[${host}]/`) : !HOST_RE.test(host))) return null;
+  if (port !== undefined && !(/^[1-9]\d*$/.test(port) && Number(port) <= 65535)) return null;
+  return { host, port };
+}
+
+/**
+ * Whether a host pattern names only loopback addresses, as moss decides it:
+ * localhost and names under it, 127.0.0.0/8 and 0.0.0.0, in any spelling the
+ * URL parser accepts. IPv6 needs no case: it is only written with a port.
+ */
+function isLoopback(host) {
+  const name = host.replace(/^\*\./, "");
+  if (!URL.canParse(`http://${name}/`)) return false;
+  const h = new URL(`http://${name}/`).hostname;
+  return h === "localhost" || h.endsWith(".localhost") || /^127\.\d+\.\d+\.\d+$/.test(h) || h === "0.0.0.0";
+}
+
 /** Every setting a manifest declares, by key: its type and whether it is hidden. */
 function declaredSettings(manifest) {
   const settings = new Map();
@@ -264,11 +289,18 @@ export function networkProblems(manifest, readmeSection) {
   if (!Array.isArray(settingHosts)) problems.push('"network.setting_hosts" must be a list of setting keys');
   if (net.site !== undefined && typeof net.site !== "boolean") problems.push('"network.site" must be true or false');
   const text = readmeSection.toLowerCase();
-  for (const host of Array.isArray(hosts) ? hosts : []) {
-    if (typeof host !== "string" || !HOST_RE.test(host)) {
-      problems.push(`"network.hosts" entry ${JSON.stringify(host)} is not a host name: write "api.example.com" or "*.example.com", with no scheme, port or path`);
-    } else if (!text.includes(host.replace(/^\*\./, ""))) {
-      problems.push(`README's "Network access" section does not mention ${host}, which the manifest declares; say what the plugin does there`);
+  const entries = (Array.isArray(hosts) ? hosts : []).map((raw) => ({ raw, entry: hostEntry(raw) }));
+  const ported = new Set(entries.filter(({ entry }) => entry?.port).map(({ entry }) => entry.host));
+  for (const { raw, entry } of entries) {
+    if (!entry) {
+      problems.push(`"network.hosts" entry ${JSON.stringify(raw)} is not a host name: write "api.example.com", "*.example.com" or "127.0.0.1:5001", with no scheme or path`);
+      continue;
+    }
+    if (!entry.port && isLoopback(entry.host) && !ported.has(entry.host)) {
+      problems.push(`"network.hosts" entry "${raw}" is a loopback address with no port, which would reach every service on the person's computer: list it with the port the plugin uses, e.g. "${raw}:5001" (the bare entry may stay beside it, for older moss)`);
+    }
+    if (!text.includes(entry.host.replace(/^\*\./, ""))) {
+      problems.push(`README's "Network access" section does not mention ${entry.host}, which the manifest declares; say what the plugin does there`);
     }
   }
   const settings = declaredSettings(manifest);
