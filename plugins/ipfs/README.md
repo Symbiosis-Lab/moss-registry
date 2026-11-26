@@ -48,7 +48,7 @@ Endpoints this plugin talks to, and why:
 - `https://api.pinata.cloud/data/testAuthentication` — JWT pre-flight check (Pinata).
 - `<node_rpc>/api/v0/*` (default `http://127.0.0.1:5001`, also tried as `localhost:5001`) — local provider: add,
   verification (`ls`), keys, IPNS `name/publish`, and identity-IPNS `routing/put`.
-- `http://127.0.0.1:8080` / `https://dweb.link` / `https://ipfs.io` /
+- `http://<cid>.ipfs.localhost:8080` (the local node's gateway) / `https://dweb.link` / `https://ipfs.io` /
   `https://ipfs.filebase.io` — read-only gateway checks (structure verification and the
   informational liveness probe) and the View-site links surfaced to the user.
 No other hosts are contacted. The named binary grants (`execute_binary:ipfs`,

@@ -4,7 +4,7 @@
 
 ### Changed
 
-- The local node is listed with its ports (`127.0.0.1:5001`, `localhost:5001`, `127.0.0.1:8080`), so a moss that matches ports reaches only the Kubo RPC and gateway, not every service on the computer. The bare `127.0.0.1` and `localhost` stay for older moss.
+- The local node is listed with its ports (`127.0.0.1:5001`, `localhost:5001`, `*.ipfs.localhost:8080`), so a moss that matches ports reaches only the Kubo RPC and the gateway the reachability check opens, not every service on the computer. The bare `127.0.0.1` and `localhost` stay for older moss.
 
 ## 0.1.2
 
