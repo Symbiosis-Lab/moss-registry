@@ -2,7 +2,11 @@
 # Check one plugin directory as the registry's validate workflow does: a JavaScript plugin is
 # installed without lifecycle scripts, built, unit-tested and validated; a declared plugin has its
 # test/*.test.mjs run on Node and is validated; a native plugin is validated (its programs are
-# built per platform only on CI).
+# built per platform only on CI). A channel that signs in is then run in moss's own engine
+# (harness/syndication/sign-in.mjs): with no network for every such channel, and against a local
+# copy of its network for those the harness has one of. That needs a moss-contract binary in
+# $MOSS_CONTRACT and, for a local network, Docker; without them it says what it skipped, which
+# fails only on CI.
 #
 #   scripts/check-plugin plugins/<id>
 set -euo pipefail
@@ -29,3 +33,33 @@ elif [ "$kind" = js ]; then
     fi )
 fi
 node "$root/.github/scripts/validate-plugin.mjs" "$dir"
+
+# A skipped contract is never a pass: on CI it is a failure.
+skip() {
+  echo "contract skipped: $1"
+  if [ -n "${CI:-}" ]; then echo "::error::$dir: contract skipped: $1"; exit 1; fi
+}
+dist=$dir/dist
+[ -f "$dist/manifest.json" ] || dist=$dir
+id=$(basename "$dir")
+signs_in=$(node -e 'process.stdout.write(String(!!JSON.parse(require("fs").readFileSync(process.argv[1] + "/manifest.json", "utf8")).contributes?.channel?.login))' "$dist")
+if [ "$signs_in" = true ]; then
+  harness=$root/harness/syndication/sign-in.mjs
+  build="build it in moss with \`cargo build -p moss-cli --features contract --bin moss-contract\` and set MOSS_CONTRACT to it"
+  if [ -z "${MOSS_CONTRACT:-}" ] || [ ! -x "$MOSS_CONTRACT" ]; then
+    skip "no moss-contract: $build"
+  else
+    site=$(mktemp -d)
+    trap 'rm -rf "$site"' EXIT
+    mkdir -p "$site/.moss/plugins"
+    cp -R "$dist" "$site/.moss/plugins/$id"
+    node "$harness" --contract "$MOSS_CONTRACT" --sweep "$site"
+    if node "$harness" --networks | grep -qx "$id"; then
+      if docker info >/dev/null 2>&1; then
+        node "$harness" --contract "$MOSS_CONTRACT" --only "$id" --dist "$id=$dist"
+      else
+        skip "$id's local network needs Docker, which is not running"
+      fi
+    fi
+  fi
+fi

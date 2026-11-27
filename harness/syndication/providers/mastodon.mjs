@@ -24,8 +24,12 @@ const freePort = () =>
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Signs `user` in through the server's OAuth pages and returns an access token. */
-async function token(base, user) {
+/**
+ * Does what a person does on the server's own OAuth pages for `authorizeUrl`:
+ * signs `user` in and allows the app. Returns where the server redirects, the
+ * app's `redirect_uri` with the code.
+ */
+export async function approve(base, user, authorizeUrl) {
   const jar = new Map();
   const req = async (p, init = {}) => {
     const r = await fetch(new URL(p, base), { ...init, redirect: "manual", headers: { ...(init.headers ?? {}), cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") } });
@@ -37,15 +41,23 @@ async function token(base, user) {
     return r;
   };
   const form = { "content-type": "application/x-www-form-urlencoded" };
-  const oob = "urn:ietf:wg:oauth:2.0:oob";
-  const app = await (await req("/api/v1/apps", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "moss", redirect_uris: oob, scopes: "read write" }) })).json();
-  await req(`/oauth/authorize?client_id=${app.client_id}&redirect_uri=${encodeURIComponent(oob)}&response_type=code&scope=read+write`);
+  await req(authorizeUrl);
   const signedIn = await req("/auth/sign_in", { method: "POST", headers: form, body: `username=${user}%40example.org&password=${PASSWORD}` });
   if (signedIn.status !== 302) throw new Error(`signing ${user} in: ${signedIn.status}`);
   await req("/oauth/authorize");
   const allowed = await req("/oauth/authorize", { method: "POST", headers: form, body: "" });
-  const code = new URL(allowed.headers.get("location") ?? "", base).searchParams.get("code");
-  if (!code) throw new Error(`authorizing ${user}: no code (${allowed.status})`);
+  const location = allowed.headers.get("location");
+  if (!location) throw new Error(`authorizing ${user}: no redirect (${allowed.status})`);
+  return new URL(location, base).toString();
+}
+
+/** Signs `user` in through the server's OAuth pages and returns an access token. */
+async function token(base, user) {
+  const oob = "urn:ietf:wg:oauth:2.0:oob";
+  const app = await (await fetch(new URL("/api/v1/apps", base), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "harness", redirect_uris: oob, scopes: "read write" }) })).json();
+  const back = await approve(base, user, `/oauth/authorize?client_id=${app.client_id}&redirect_uri=${encodeURIComponent(oob)}&response_type=code&scope=read+write`);
+  const code = new URL(back).searchParams.get("code");
+  if (!code) throw new Error(`authorizing ${user}: no code in ${back}`);
   const t = await (await fetch(new URL("/oauth/token", base), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ grant_type: "authorization_code", code, client_id: app.client_id, client_secret: app.client_secret, redirect_uri: oob }) })).json();
   if (!t.access_token) throw new Error(`token for ${user}: ${JSON.stringify(t)}`);
   return t.access_token;
@@ -103,6 +115,10 @@ export async function start({ scratch }) {
 
     return {
       config: { server: base },
+      // A person signing the author in on these pages, for a sign-in the plugin starts itself.
+      approve: (authorizeUrl) => approve(base, "alex", authorizeUrl),
+      // Apps other than the harness's own that hold a token to the author's account.
+      appTokens: async () => (await api(author, "/api/v1/tokens")).filter((t) => t.application?.name !== "harness"),
       secrets: { access_token: author },
       // After a lost answer: found by its text, which the edit step changed in place.
       recovers: "adopt",
