@@ -71,6 +71,7 @@ const CONTEXT = {
   project_info: {},
   config: {},
   site_files: ["index.html"],
+  site_dir: "/tmp/moss-deploy/gen-1",
 } as unknown as DeployContext;
 
 beforeEach(() => {
@@ -99,7 +100,7 @@ describe("deploy — success", () => {
     const result = await deploy(CONTEXT);
 
     expect(result.success).toBe(true);
-    expect(mockPack).toHaveBeenCalledWith("moss-123", ["index.html"]);
+    expect(mockPack).toHaveBeenCalledWith("moss-123", "/tmp/moss-deploy/gen-1", ["index.html"]);
     expect(mockUpload).toHaveBeenCalledWith(
       "http://127.0.0.1:8080/wp-json/onionpress/v1",
       "moss-123",
@@ -158,6 +159,28 @@ describe("deploy — no receiver", () => {
       outcome: "error",
       title: expect.stringContaining("OnionPress"),
     });
+  });
+});
+
+describe("deploy — moss's site copy", () => {
+  it("stops before looking for OnionPress when moss gives no site_dir", async () => {
+    const result = await deploy({ ...CONTEXT, site_dir: undefined } as DeployContext);
+
+    expect(result.success).toBe(false);
+    expect(mockDiscover).not.toHaveBeenCalled();
+    expect(mockPack).not.toHaveBeenCalled();
+  });
+
+  it("packs from site_dir and uploads nothing when the pack refuses", async () => {
+    mockDiscover.mockResolvedValue(endpoint());
+    mockPack.mockRejectedValue(new Error("Could not package the built site, so nothing was uploaded."));
+
+    const result = await deploy(CONTEXT);
+
+    expect(mockPack).toHaveBeenCalledWith(expect.any(String), "/tmp/moss-deploy/gen-1", ["index.html"]);
+    expect(result.success).toBe(false);
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(mockCommit).not.toHaveBeenCalled();
   });
 });
 

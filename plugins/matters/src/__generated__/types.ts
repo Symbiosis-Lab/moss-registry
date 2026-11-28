@@ -5311,7 +5311,7 @@ export type UserArticlesQueryVariables = Exact<{
 }>;
 
 
-export type UserArticlesQuery = { user?: { id: string, userName?: string | null | undefined, articles: { totalCount: number, pageInfo: { endCursor?: string | null | undefined, hasNextPage: boolean }, edges?: Array<{ node: { id: string, title: string, slug: string, shortHash: string, content: string, summary: string, language?: string | null | undefined, createdAt: any, revisedAt?: any | null | undefined, cover?: string | null | undefined, tags?: Array<{ id: string, content: string }> | null | undefined } }> | null | undefined } } | null | undefined };
+export type UserArticlesQuery = { user?: { id: string, userName?: string | null | undefined, articles: { totalCount: number, pageInfo: { endCursor?: string | null | undefined, hasNextPage: boolean }, edges?: Array<{ node: { id: string, title: string, slug: string, shortHash: string, content: string, summary: string, summaryCustomized: boolean, language?: string | null | undefined, createdAt: any, revisedAt?: any | null | undefined, cover?: string | null | undefined, tags?: Array<{ id: string, content: string }> | null | undefined } }> | null | undefined } } | null | undefined };
 
 export type UserCollectionsQueryVariables = Exact<{
   userName: Scalars['String']['input'];
@@ -5333,7 +5333,7 @@ export type ViewerArticlesQueryVariables = Exact<{
 }>;
 
 
-export type ViewerArticlesQuery = { viewer?: { id: string, userName?: string | null | undefined, articles: { totalCount: number, pageInfo: { endCursor?: string | null | undefined, hasNextPage: boolean }, edges?: Array<{ node: { id: string, title: string, slug: string, shortHash: string, content: string, summary: string, createdAt: any, revisedAt?: any | null | undefined, cover?: string | null | undefined, tags?: Array<{ id: string, content: string }> | null | undefined } }> | null | undefined } } | null | undefined };
+export type ViewerArticlesQuery = { viewer?: { id: string, userName?: string | null | undefined, articles: { totalCount: number, pageInfo: { endCursor?: string | null | undefined, hasNextPage: boolean }, edges?: Array<{ node: { id: string, title: string, slug: string, shortHash: string, content: string, summary: string, summaryCustomized: boolean, createdAt: any, revisedAt?: any | null | undefined, cover?: string | null | undefined, tags?: Array<{ id: string, content: string }> | null | undefined } }> | null | undefined } } | null | undefined };
 
 export type ViewerDraftsQueryVariables = Exact<{
   after?: InputMaybe<Scalars['String']['input']>;

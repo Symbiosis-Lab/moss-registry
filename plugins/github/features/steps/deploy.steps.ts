@@ -95,6 +95,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario, AfterEachScenario }) =
       moss_dir: `${projectPath}/.moss`,
       output_dir: `${projectPath}/.moss/build/site`,
       site_files: scenarioSiteFiles,
+      site_dir: "/tmp/moss-deploy/gen-1",
+      index_file: "/tmp/moss-deploy/gen-1.index",
       project_info: {
         total_files: 10,
         homepage_file: "index.md",

@@ -1,10 +1,14 @@
 /**
  * Unit tests for the OnionPress receiver client.
  *
- * The host-fn surface (`executeBinary`) is mocked — these tests never shell out.
+ * The host-fn surface (`executeBinary`) is mocked; one pack test runs real tar.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Mock the moss-api host-fn surface used by receiver.ts
 vi.mock("@symbiosis-lab/moss-api", () => ({
@@ -160,17 +164,18 @@ describe("discoverReceiver", () => {
 
 describe("packGeneration", () => {
   const SITE_FILES = ["index.html", "assets/site.css"];
+  const SITE_DIR = "/Users/test/Library/Caches/moss/deploy/gen-1";
 
-  it("tars exactly the files moss lists from the current generation to /tmp/<genId>.tar", async () => {
+  it("tars exactly the files moss lists from its site copy to /tmp/<genId>.tar", async () => {
     mockExecuteBinary.mockResolvedValueOnce(exec(true));
 
-    const tarPath = await packGeneration("moss-42", SITE_FILES);
+    const tarPath = await packGeneration("moss-42", SITE_DIR, SITE_FILES);
 
     expect(tarPath).toBe("/tmp/moss-42.tar");
     expect(mockExecuteBinary).toHaveBeenCalledWith(
       expect.objectContaining({
         binaryPath: "tar",
-        args: ["-cf", "/tmp/moss-42.tar", "-C", ".moss/build.nosync/current", "--null", "-T", "-"],
+        args: ["-cf", "/tmp/moss-42.tar", "-C", SITE_DIR, "--null", "-T", "-"],
         stdin: "index.html\0assets/site.css\0",
         workingDir: ".",
       }),
@@ -178,32 +183,31 @@ describe("packGeneration", () => {
   });
 
   it("packs with COPYFILE_DISABLE=1 so bsdtar emits no AppleDouble members", async () => {
-    // Regression: without this, Apple's tar writes a `._<name>` sibling for every
-    // entry carrying an xattr (moss build output all carries com.apple.provenance).
-    // Apple's tar re-absorbs them on extract, but the receiver unpacks with
-    // PharData on Linux and publishes them as junk files.
+    // Without it, Apple's tar writes a `._<name>` sibling for every entry
+    // carrying an xattr; the receiver unpacks with PharData on Linux and
+    // publishes them as junk files.
     mockExecuteBinary.mockResolvedValueOnce(exec(true));
 
-    await packGeneration("moss-42", SITE_FILES);
+    await packGeneration("moss-42", SITE_DIR, SITE_FILES);
 
     expect(mockExecuteBinary.mock.calls[0][0].env).toEqual({ COPYFILE_DISABLE: "1" });
   });
 
-  it("falls back to the layout moss used before 0.15.1", async () => {
-    mockExecuteBinary
-      .mockResolvedValueOnce(exec(false, "", "tar: could not chdir to '.moss/build.nosync/current'"))
-      .mockResolvedValueOnce(exec(true));
+  it("refuses, with real tar, a copy that lost a listed file", async () => {
+    const root = mkdtempSync(join(tmpdir(), "onionpress-pack-"));
+    try {
+      mkdirSync(join(root, "assets"));
+      writeFileSync(join(root, "index.html"), "<h1>home</h1>");
+      mockExecuteBinary.mockImplementationOnce(async (o) => {
+        const r = spawnSync(o.binaryPath, o.args, { input: o.stdin, env: { ...process.env, ...o.env }, encoding: "utf8" });
+        return exec(r.status === 0, r.stdout, r.stderr);
+      });
 
-    await expect(packGeneration("moss-42", SITE_FILES)).resolves.toBe("/tmp/moss-42.tar");
-    expect(mockExecuteBinary.mock.calls[1][0].args).toEqual(["-cf", "/tmp/moss-42.tar", "-C", ".moss/build/current", "--null", "-T", "-"]);
-  });
-
-  it("throws a build-first error naming the current layout when no build exists", async () => {
-    mockExecuteBinary
-      .mockResolvedValueOnce(exec(false, "", "tar: could not chdir to '.moss/build.nosync/current'"))
-      .mockResolvedValueOnce(exec(false, "", "tar: could not chdir to '.moss/build/current'"));
-
-    await expect(packGeneration("moss-42", SITE_FILES)).rejects.toThrow(/Run a build first.*build\.nosync/);
+      await expect(packGeneration(`moss-test-${process.pid}`, root, SITE_FILES)).rejects.toThrow(/nothing was uploaded.*assets\/site\.css/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(`/tmp/moss-test-${process.pid}.tar`, { force: true });
+    }
   });
 });
 

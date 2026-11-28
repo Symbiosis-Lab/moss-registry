@@ -184,8 +184,12 @@ export interface DeployViaGitPushOptions {
   gitPath: string;
   /** Custom domain to include as CNAME file in gh-pages branch */
   domain?: string;
-  /** The files to publish, relative to the generation: DeployContext.site_files, which leaves out drafts. */
+  /** The files to publish, relative to `siteDir`: DeployContext.site_files, which leaves out drafts. */
   siteFiles: readonly string[];
+  /** DeployContext.site_dir: moss's read-only copy holding exactly `siteFiles`. */
+  siteDir: string;
+  /** DeployContext.index_file: the index to stage `siteDir` into, so the project's own stays untouched. */
+  indexFile: string;
 }
 
 /**
@@ -258,36 +262,16 @@ function parsePushProgress(
 }
 
 /**
- * Where moss keeps the build, newest layout first: `.moss/build.nosync/` since
- * moss 0.15.1, `.moss/build/` before. The old one never sits beside a new one:
- * moss renames it into the new layout at the start of its first build.
+ * The paths in `staged` that `expected` lacks, and those of `expected` that
+ * `staged` lacks, compared in NFC: git on macOS precomposes the names it reads.
  */
-const BUILD_ROOTS = [".moss/build.nosync", ".moss/build"] as const;
-
-/**
- * The current generation's directory, relative to the project root, such as
- * `.moss/build.nosync/generations/abc123`: the real directory behind the
- * `current` symlink, since `git write-tree --prefix` does not follow symlinks.
- *
- * @throws {Error} if no layout has a resolvable `current`
- */
-export async function resolveCurrentGenDir(): Promise<string> {
-  for (const root of BUILD_ROOTS) {
-    // `readlink` on macOS has no -f, but moss writes the target absolute.
-    const result = await executeBinary({
-      binaryPath: "readlink",
-      args: [`${root}/current`],
-      workingDir: ".",
-      timeoutMs: 5_000,
-      env: {},
-    });
-    const genId = result.success ? result.stdout.trim().split("/").filter(Boolean).pop() : undefined;
-    if (genId) return `${root}/generations/${genId}`;
-  }
-  throw new Error(
-    `Cannot locate current generation: ${BUILD_ROOTS[0]}/current is missing or unresolvable. ` +
-    "Run a build first before deploying."
-  );
+export function diffFileSets(staged: readonly string[], expected: readonly string[]): { extra: string[]; missing: string[] } {
+  const want = new Set(expected.map((f) => f.normalize("NFC")));
+  const got = new Set(staged.map((f) => f.normalize("NFC")));
+  return {
+    extra: [...got].filter((f) => !want.has(f)),
+    missing: [...want].filter((f) => !got.has(f)),
+  };
 }
 
 /** Whether a page source's front matter says `draft: true`, which moss never publishes. */
@@ -299,14 +283,13 @@ export function isDraftSource(text: string): boolean {
 /**
  * Deploy site to GitHub Pages via a single git repo.
  *
- * Uses one git repo at the project root. Stages site files from the current
- * generation directory (`current` → `generations/<id>/` under moss's build directory),
- * extracts the generation tree as an orphan commit and pushes it to gh-pages,
- * then backs up source files to main. This gives GitHub Pages the site content
- * at the branch root while keeping source on main.
+ * Uses one git repo at the project root. Stages moss's deploy copy (`siteDir`)
+ * into a separate index, commits that tree to gh-pages, then backs up source
+ * files to main. This gives GitHub Pages the site content at the branch root
+ * while keeping source on main.
  *
  * Enforces GitHub's 100MB per-file limit:
- * - Site files (current generation dir): ABORT if any exceed 100MB
+ * - Site files: ABORT if any exceed 100MB
  * - Source files (project root): SKIP >100MB files with a warning toast
  *
  * @param options - Deploy options
@@ -440,37 +423,38 @@ export async function deployViaGitPush(options: DeployViaGitPushOptions): Promis
       workingDir: ".", timeoutMs: 5_000, env: {},
     });
 
-    // ── 2. Resolve current generation dir and stage its files ────────────
-    // Only the files moss lists: the generation also holds drafts built for
-    // the preview. moss gitignores its build directory, hence -f; literal
-    // pathspecs, so a file name is never read as a pattern.
+    // ── 2. Stage moss's deploy copy into its own index ───────────────────
+    // siteDir holds exactly siteFiles (drafts left out); -f because the
+    // user's global excludes still apply to a work tree outside the project.
     onProgress(5, "Staging site files...");
-    const genDir = await resolveCurrentGenDir();
-    const staged = await executeBinary({
+    const gitDir = await git(["rev-parse", "--absolute-git-dir"]);
+    if (!gitDir.success) throw new Error(`Failed to locate the git directory: ${sanitize(gitDir.stderr, token)}`);
+    const siteGit = (args: string[]) => executeBinary({
       binaryPath: options.gitPath,
-      args: ["add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"],
-      stdin: options.siteFiles.map((f) => `:(literal)${genDir}/${f}\0`).join(""),
-      workingDir: ".",
+      args: [`--git-dir=${gitDir.stdout.trim()}`, "--work-tree=.", ...args],
+      workingDir: options.siteDir,
       timeoutMs: 600_000,
-      env: { GIT_TERMINAL_PROMPT: "0" },
+      env: { GIT_TERMINAL_PROMPT: "0", GIT_INDEX_FILE: options.indexFile },
     });
+    const staged = await siteGit(["add", "-A", "-f"]);
     if (!staged.success) throw new Error(`Failed to stage the built site: ${sanitize(staged.stderr, token)}`);
 
-    // ── 3. Get site tree SHA directly from index ─────────────────────────
-    // Remove index.lock again: iCloud can re-lock the index between git add
-    // (which releases it) and write-tree (which needs to read it). The lock
-    // file is zero-bytes with iCloud extended attributes — not a real git lock.
-    await executeBinary({
-      binaryPath: "rm", args: ["-f", ".git/index.lock"],
-      workingDir: ".", timeoutMs: 5_000, env: {},
-    });
+    // A copy that lost files since moss made it (a purge of its root) must
+    // not publish a site with holes: what is staged is exactly siteFiles.
+    const listed = await siteGit(["ls-files", "-z"]);
+    if (!listed.success) throw new Error(`Failed to list the staged site: ${sanitize(listed.stderr, token)}`);
+    const { extra, missing } = diffFileSets(listed.stdout.split("\0").filter(Boolean), options.siteFiles);
+    if (extra.length > 0 || missing.length > 0) {
+      throw new Error(
+        `The site copy changed during the publish, so nothing was pushed (missing: ${missing.slice(0, 5).join(", ") || "none"}; ` +
+        `unexpected: ${extra.slice(0, 5).join(", ") || "none"}). Publish again.`
+      );
+    }
+
+    // ── 3. Get site tree SHA from that index ─────────────────────────────
     onProgress(10, "Preparing gh-pages...");
-    const writeTree = await git(["write-tree", `--prefix=${genDir}/`]);
+    const writeTree = await siteGit(["write-tree"]);
     if (!writeTree.success) throw new Error(`Failed to write site tree: ${sanitize(writeTree.stderr, token)}`);
-    // Out of the index again, or the source backup's `add --all` below would commit the build to main.
-    const buildRoot = genDir.slice(0, genDir.indexOf("/generations/"));
-    const unstaged = await git(["rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", `${buildRoot}/`]);
-    if (!unstaged?.success) throw new Error(`Failed to unstage the built site: ${sanitize(unstaged?.stderr ?? "", token)}`);
 
     // Inject .nojekyll (always) and CNAME (when domain is set) into the
     // gh-pages tree. Without .nojekyll, GitHub runs Jekyll which may skip

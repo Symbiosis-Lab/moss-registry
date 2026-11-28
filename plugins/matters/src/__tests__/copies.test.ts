@@ -448,8 +448,8 @@ describe("lookup, edits and removal", () => {
   it("requires a previous ID for an update", async () => {
     await expect(update_copy(job())).rejects.toThrow("ID is missing");
   });
-  it("short and teaser copies are confirmed moments", async () => {
-    for (const form of ["short", "teaser"] as const) expect(await publish_copy({ ...job(), form, parts: [{ text: "hello", links: [] }] })).toMatchObject({ success: true, copy: { id: "moment-id", url: "https://matters.town/m/mhash" } });
+  it("a short copy is a confirmed moment", async () => {
+    for (const form of ["short"] as const) expect(await publish_copy({ ...job(), form, parts: [{ text: "hello", links: [] }] })).toMatchObject({ success: true, copy: { id: "moment-id", url: "https://matters.town/m/mhash" } });
     vi.mocked(api.putMoment).mockResolvedValue({ id: "", shortHash: "" });
     await expect(publish_copy({ ...job(), form: "short", parts: [{ text: "hi", links: [] }] })).rejects.toThrow("moment's ID");
     expect(momentHtml('A < B\n\nhttps://a.test', ['https://a.test'])).toBe('<p>A &lt; B</p><p><a href="https://a.test">https://a.test</a></p>');

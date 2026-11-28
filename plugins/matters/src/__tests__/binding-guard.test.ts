@@ -208,6 +208,28 @@ describe("process hook binding guard", () => {
     expect(mockOpenBrowser).not.toHaveBeenCalled();
   });
 
+  it("leaves a folder the person signed out unbound in a background build, even with Matters articles in it", async () => {
+    mockGetConfig.mockResolvedValue({ signedOut: true, userName: "bob" });
+    mockDetectBoundUser.mockResolvedValue("bob");
+
+    const result = await process(baseContext);
+
+    expect(result.success).toBe(true);
+    expect(mockDetectBoundUser).not.toHaveBeenCalled();
+    expect(mockSaveConfig).not.toHaveBeenCalled();
+    expect(mockOpenBrowser).not.toHaveBeenCalled();
+  });
+
+  it("asks a person who starts a run in a signed-out folder to sign in, rather than binding it from its articles", async () => {
+    mockGetConfig.mockResolvedValue({ signedOut: true, userName: "bob" });
+    mockDetectBoundUser.mockResolvedValue("bob");
+
+    await process({ ...baseContext, trigger: "settings_manual" });
+
+    expect(mockDetectBoundUser).not.toHaveBeenCalled();
+    expect(mockOpenBrowser).toHaveBeenCalled();
+  });
+
   it("skips sync gracefully when user closes login window on unbound project", async () => {
     mockGetConfig.mockResolvedValue({}); // no boundUserName
     mockDetectBoundUser.mockResolvedValue(null); // no existing articles

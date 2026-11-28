@@ -107,7 +107,7 @@ async function rememberPublished(file: string, draft: MattersDraftWithArticle): 
 export async function publish_copy(job: CopyJob): Promise<HookResult> {
   const blocked = await initialize("publish_copy");
   if (blocked) return blocked;
-  if ((job.form === "short" || job.form === "teaser") && job.parts?.[0]) {
+  if (job.form === "short" && job.parts?.[0]) {
     try {
       const moment = await putMoment(momentHtml(job.parts[0].text, job.parts[0].links));
       if (!moment.id || !moment.shortHash) throw new Error("Matters has not confirmed the moment's ID and address");
