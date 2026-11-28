@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Changed (`0.4.3`): the manifest declares `contributes.deploy_target`, so moss lists OnionPress as a host from the registry index itself. The old `capabilities` list stays for moss 0.15.24 and earlier.
+- Fixed (`0.4.3`): publishing reads the copy of your site that moss sets aside for the publish, so a build or cleanup that runs meanwhile can no longer change what goes to OnionPress; if that copy loses a file, nothing is uploaded. Needs moss 0.15.20 or newer.
 - Changed (in moss, no plugin release): a fix to which OnionPress version gets installed can now ship as an ordinary plugin update, instead of waiting for the next moss release. The plugin's manifest carries its own stack pin — version, download url and checksum — rather than moss compiling that pin into the app.
 
 ## [0.4.2] - 2026-11-07

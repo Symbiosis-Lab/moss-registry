@@ -1055,7 +1055,8 @@ export async function syncToLocalFiles(
 
       const frontmatter = generateFrontmatter({
         title: article.title,
-        description: article.summary,
+        // Matters writes a summary from the first lines when the author wrote none; that is an excerpt, not a description.
+        description: article.summaryCustomized ? article.summary : undefined,
         date: article.createdAt,
         updated: article.revisedAt,
         // Matters tag strings can carry leading/trailing whitespace (e.g.

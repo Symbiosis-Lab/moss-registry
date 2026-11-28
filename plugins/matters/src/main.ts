@@ -330,11 +330,12 @@ async function affirmBindingFromProfile(): Promise<void> {
     // app-global store by account, not by folder).
     await bindStoredToken(profile.userName);
     const config = await getConfig();
-    if (config.boundUserName !== profile.userName || config.userName !== profile.userName) {
+    if (config.boundUserName !== profile.userName || config.userName !== profile.userName || config.signedOut) {
       // Persist the profile language too, so the login-success toast localizes
       // correctly on the FIRST login (before the process hook's Phase-5 save).
       await saveConfig({
         ...config,
+        signedOut: undefined,
         boundUserName: profile.userName,
         userName: profile.userName,
         language: profile.language,
@@ -552,7 +553,8 @@ export async function process(context: ProcessContext): Promise<HookResult> {
           console.log(`🧪 Matters: auto-bound to @${testProfile} (test profile)`);
         }
       } else if (!bindingConfig.boundUserName) {
-        const detectedUser = await detectBoundUser();
+        // A folder the person signed out is not bound from its articles.
+        const detectedUser = bindingConfig.signedOut ? null : await detectBoundUser();
         if (detectedUser) {
           // Auto-bind from existing articles
           await saveConfig({ ...bindingConfig, boundUserName: detectedUser, userName: detectedUser });
@@ -1002,3 +1004,4 @@ export async function process(context: ProcessContext): Promise<HookResult> {
 }
 
 export { publish_copy, find_copy, update_copy, copy_account } from "./copies";
+export { logout } from "./credential";

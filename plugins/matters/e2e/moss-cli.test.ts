@@ -216,7 +216,7 @@ describe("Matters Plugin E2E Tests", () => {
 
       expect(manifest.name).toBe("matters");
       expect(manifest.capabilities).toContain("process");
-      expect(manifest.contributes.channel.syndication.forms).toEqual(["short", "teaser", "long"]);
+      expect(manifest.contributes.channel.syndication.forms).toEqual(["short", "long"]);
       expect(manifest.domain).toBe("matters.town");
       expect(manifest.entry).toBe("main.bundle.js");
     });

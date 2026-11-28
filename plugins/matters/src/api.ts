@@ -91,6 +91,7 @@ query MePublishedArticles($after: String) {
           shortHash
           content
           summary
+          summaryCustomized
           createdAt
           revisedAt
           tags {
@@ -216,6 +217,7 @@ query UserArticles($userName: String!, $after: String) {
           shortHash
           content
           summary
+          summaryCustomized
           language
           createdAt
           revisedAt
@@ -736,6 +738,7 @@ async function fetchUserArticles(userName: string): Promise<{
           shortHash: edge.node.shortHash,
           content: edge.node.content,
           summary: edge.node.summary,
+          summaryCustomized: edge.node.summaryCustomized,
           language: edge.node.language ?? undefined,
           createdAt: edge.node.createdAt,
           revisedAt: edge.node.revisedAt ?? undefined,

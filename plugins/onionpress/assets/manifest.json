@@ -1,8 +1,9 @@
 {
   "name": "onionpress",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Publish moss sites to a self-hosted OnionPress (.onion) receiver",
   "author": "moss team",
+  "min_moss_version": "0.15.20",
   "entry": "main.bundle.js",
   "capabilities": ["deploy"],
   "global_name": "OnionpressPlugin",
@@ -11,6 +12,7 @@
   "requires_stack": true,
   "preview": true,
   "contributes": {
+    "deploy_target": {},
     "stack": {
       "id": "onionpress",
       "display_name": "OnionPress",

@@ -189,7 +189,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
   // Pre-flight: find git; if this machine has none, offer its download and wait.
   await reportProgress("configuring", 1, 10, "Checking git...");
   const gitPath = (await resolveGitPath()) ?? (await waitForGit());
-  // Publishing runs readlink, rm and sh, which Windows lacks; a moss-resolved
+  // Publishing runs rm and sh, which Windows lacks; a moss-resolved
   // git at a drive-letter path is how a plugin can tell it is on Windows.
   if (gitPath && /^[A-Za-z]:[\\/]/.test(gitPath)) {
     const msg = "Publishing to GitHub Pages from Windows arrives in the next moss update.";
@@ -212,6 +212,12 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       return { success: false, message: msg };
     }
     console.log(`   Site files: ${context.site_files.length} files ready`);
+    const { site_dir: siteDir, index_file: indexFile } = context;
+    if (!siteDir || !indexFile) {
+      const msg = "Update moss to publish with this plugin.";
+      await reportError(msg, "validation", true);
+      return { success: false, message: msg };
+    }
 
     // Phase 0: the account, before anything that needs it. Signing in is the
     // setup gate's job — `check_setup` ran on the Publish click and offered
@@ -289,8 +295,6 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       }
     }
 
-    // Single deploy: commits source + .moss/build/site/, pushes to main,
-    // then extracts .moss/build/site/ tree as orphan commit → gh-pages
     deployResult = await deployViaGitPush({
       owner,
       repo: repoName,
@@ -298,6 +302,8 @@ async function deploy(context: DeployContext): Promise<HookResult> {
       gitPath,
       domain,
       siteFiles: context.site_files,
+      siteDir,
+      indexFile,
       onProgress: (percent, message) => {
         // The plugin emits percent=100 once when gh-pages push lands
         // ("Deployed!"), then again with a different message for the

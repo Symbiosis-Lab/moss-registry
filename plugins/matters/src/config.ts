@@ -22,6 +22,11 @@ import {
 export interface MattersPluginConfig {
   /** Matters username this project is bound to (guards auto-sync) */
   boundUserName?: string;
+  /**
+   * The person signed this folder out: the process hook neither binds it from
+   * its articles nor asks to sign in, until a sign-in from Settings.
+   */
+  signedOut?: boolean;
   /** Matters.town username (allows unauthenticated mode when cookie unavailable) */
   userName?: string;
   /** User's language preference (e.g., "zh_hans", "zh_hant", "en") */

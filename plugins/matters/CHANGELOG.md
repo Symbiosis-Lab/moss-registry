@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.7.3]
+
+### Changed
+
+- Import keeps an article's summary as its description only when the author wrote it. The summary Matters makes from the first lines is an excerpt (it can start with a heading's text, such as a stray "1"), so it is left out.
+- Matters no longer declares a teaser form: a page too long for a moment is sent as an article or refused, never as a moment with a link.
+
+### Fixed
+
+- Signing out in moss forgets the folder's Matters token. A sign-out that cannot erase it says so, and the folder stops using it either way.
+
 ## [1.7.2]
 
 ### Fixed

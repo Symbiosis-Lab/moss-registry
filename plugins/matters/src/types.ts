@@ -35,6 +35,8 @@ export interface MattersArticle {
   shortHash: string;
   content: string; // HTML content
   summary: string;
+  /** False when Matters wrote the summary from the article's first lines. */
+  summaryCustomized?: boolean;
   createdAt: string;
   revisedAt?: string;
   tags: MattersTag[];

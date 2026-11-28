@@ -8,10 +8,8 @@
  * the tar upload (moss-api only offers multipart; the receiver reads a raw tar
  * from `php://input`).
  *
- * All commands run with the default working directory (the project root), the
- * same way the github plugin resolves `project_path`: `execute_binary` reads it
- * from the injected internal context. Paths handed to the receiver are therefore
- * project-root-relative (`.moss/build.nosync/current`); `/tmp/<genid>.tar` is absolute.
+ * All commands run in the project root; the site is read from moss's deploy
+ * copy (`context.site_dir`, absolute) and packed to `/tmp/<genid>.tar`.
  *
  * @module receiver
  */
@@ -21,7 +19,6 @@ import {
   RECEIVER_PORTS,
   RECEIVER_API_PATH,
   STATUS_PROBE_TIMEOUT_SECONDS,
-  CURRENT_BUILD_PATHS,
   REACHABILITY_POLL_TIMEOUT_MS,
   REACHABILITY_POLL_INTERVAL_MS,
 } from "./constants";
@@ -262,36 +259,29 @@ export async function discoverReceiver(
 const PACK_ENV: Record<string, string> = { COPYFILE_DISABLE: "1" };
 
 /**
- * Tar `siteFiles` from the current generation to `/tmp/<genId>.tar`, from the
- * first of `buildPaths` tar can enter. The archive holds `index.html`,
- * `assets/…` at its root, the shape the receiver extracts via `PharData`.
+ * Tar `siteFiles` from moss's deploy copy `siteDir` to `/tmp/<genId>.tar`,
+ * with `index.html`, `assets/…` at its root, the shape the receiver extracts
+ * via `PharData`.
  *
- * `siteFiles` is the deploy context's list, never the whole directory: moss
- * builds drafts into the generation for the preview and leaves them off it.
+ * tar packs the list moss gave and fails on a listed file it cannot stat, so
+ * a copy that lost files since moss made it is never uploaded with holes.
  *
  * @returns absolute path to the created tar.
- * @throws if no build path can be packed (no build yet).
  */
-export async function packGeneration(
-  genId: string,
-  siteFiles: readonly string[],
-  buildPaths: readonly string[] = CURRENT_BUILD_PATHS,
-): Promise<string> {
+export async function packGeneration(genId: string, siteDir: string, siteFiles: readonly string[]): Promise<string> {
   const tarPath = `/tmp/${genId}.tar`;
-  let firstError = "";
-  for (const buildPath of buildPaths) {
-    const result = await executeBinary({
-      binaryPath: "tar",
-      args: ["-cf", tarPath, "-C", buildPath, "--null", "-T", "-"],
-      stdin: siteFiles.map((f) => `${f}\0`).join(""),
-      workingDir: ".",
-      timeoutMs: 300_000, // 5 min — large media generations can be slow to archive
-      env: PACK_ENV,
-    });
-    if (result.success) return tarPath;
-    firstError ||= result.stderr.trim();
+  const result = await executeBinary({
+    binaryPath: "tar",
+    args: ["-cf", tarPath, "-C", siteDir, "--null", "-T", "-"],
+    stdin: siteFiles.map((f) => `${f}\0`).join(""),
+    workingDir: ".",
+    timeoutMs: 300_000, // 5 min — large media generations can be slow to archive
+    env: PACK_ENV,
+  });
+  if (!result.success) {
+    throw new Error(`Could not package the built site, so nothing was uploaded. Publish again. (${result.stderr.trim()})`);
   }
-  throw new Error(`Could not package the built site. Run a build first, then Publish again. (${firstError})`);
+  return tarPath;
 }
 
 // ============================================================================

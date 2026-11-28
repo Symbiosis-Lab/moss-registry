@@ -1,6 +1,6 @@
 {
   "name": "matters",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "display_name": "Matters",
   "description": "Publish copies of your posts to Matters.town: short posts as moments and long posts as articles",
   "author": "moss team",
@@ -36,7 +36,6 @@
       "syndication": {
         "forms": [
           "short",
-          "teaser",
           "long"
         ],
         "max_chars": 240,

@@ -43,6 +43,7 @@ import {
   authHeaderToken,
   captureLogin,
   beginFreshLogin,
+  logout,
   bindStoredToken,
   getSessionState,
   clearTokenCache,
@@ -414,5 +415,31 @@ describe("beginFreshLogin", () => {
   it("does not create an auth.json for a folder that never had one", async () => {
     await beginFreshLogin();
     expect(files.has("auth.json")).toBe(false);
+  });
+});
+
+describe("logout", () => {
+  it("erases the token filed under the account the folder is signed in to", async () => {
+    bindFolderTo("alice");
+    keystore.secretStore.set("access_token:alice", "token");
+    expect(await logout()).toEqual({ success: true });
+    expect(keystore.secretStore.has("access_token:alice")).toBe(false);
+    expect(mockClearPluginCookies).not.toHaveBeenCalled();
+    expect(JSON.parse(files.get("config.json")!)).toMatchObject({ signedOut: true });
+  });
+
+  it("marks the folder signed out and fails when the token store refuses the erase", async () => {
+    bindFolderTo("alice");
+    vi.spyOn(keystore, "setSecret").mockRejectedValue(new Error("keychain refused"));
+    await expect(logout()).rejects.toThrow("keychain refused");
+    expect(JSON.parse(files.get("config.json")!)).toMatchObject({ signedOut: true });
+  });
+
+  it("empties an unmigrated auth.json even when the token store refuses", async () => {
+    bindFolderTo("alice");
+    files.set("auth.json", JSON.stringify({ accessToken: "old" }));
+    vi.spyOn(keystore, "setSecret").mockRejectedValue(new Error("keychain refused"));
+    await expect(logout()).rejects.toThrow("keychain refused");
+    expect(files.get("auth.json")).toBe("{}");
   });
 });

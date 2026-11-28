@@ -104,6 +104,8 @@ function createMockContext(overrides?: Partial<DeployContext>): DeployContext {
     moss_dir: "/test/project/.moss",
     output_dir: "/test/project/.moss/build/site",
     site_files: ["index.html", "style.css"],
+    site_dir: "/tmp/moss-deploy/gen-1",
+    index_file: "/tmp/moss-deploy/gen-1.index",
     project_info: {
       total_files: 10,
       homepage_file: "index.md",
@@ -266,6 +268,14 @@ describe("on_deploy integration", () => {
       expect(result.message).toMatch(/site.*empty|build.*first/i);
     });
 
+    it.each(["site_dir", "index_file"])("stops before deploying when moss gives no %s", async (field) => {
+      const result = await on_deploy(createMockContext({ [field]: undefined }));
+
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/Update moss/);
+      expect(vi.mocked(deployViaGitPush)).not.toHaveBeenCalled();
+    });
+
     it("passes validation when context.site_files has files", async () => {
       setupDeployMocks(ctx, { hasChanges: true });
 
@@ -348,6 +358,8 @@ describe("on_deploy integration", () => {
       const deployCall = vi.mocked(deployViaGitPush).mock.calls[0][0];
       expect(deployCall.owner).toBe("user");
       expect(deployCall.repo).toBe("repo");
+      expect(deployCall.siteDir).toBe("/tmp/moss-deploy/gen-1");
+      expect(deployCall.indexFile).toBe("/tmp/moss-deploy/gen-1.index");
     });
 
     it("handles git push errors gracefully", async () => {

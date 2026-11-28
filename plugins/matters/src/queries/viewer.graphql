@@ -19,6 +19,7 @@ query ViewerArticles($after: String) {
           shortHash
           content
           summary
+          summaryCustomized
           createdAt
           revisedAt
           tags {

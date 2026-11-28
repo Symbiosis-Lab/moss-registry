@@ -189,6 +189,17 @@ describe("force-fresh login", () => {
     expect(mockCloseBrowser.mock.invocationCallOrder[0]).toBeGreaterThan(mockOpenBrowserHoisted.mock.invocationCallOrder[0]);
   });
 
+  it("signing in again to the same account lifts a sign out", async () => {
+    mockGetConfig.mockResolvedValue({ userName: "alice", signedOut: true });
+    mockGetAccessToken.mockResolvedValueOnce(null).mockResolvedValue("fresh-token");
+    mockFetchUserProfile.mockResolvedValue({ userName: "alice", displayName: "Alice" });
+
+    await login({ trigger: "settings_manual" } as never);
+    const saved = mockSaveConfig.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(saved).toMatchObject({ boundUserName: "alice" });
+    expect(saved.signedOut).toBeUndefined();
+  });
+
   it("calls beginFreshLogin BEFORE opening the login browser", async () => {
     // Unbound fresh folder — will reach promptLogin() via the binding-guard path.
     mockGetConfig.mockResolvedValue({});

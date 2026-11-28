@@ -45,7 +45,7 @@ import {
   setSecret,
 } from "@symbiosis-lab/moss-api";
 import { accessTokenCookieName } from "./domain";
-import { getConfig } from "./config";
+import { getConfig, saveConfig } from "./config";
 
 // ============================================================================
 // Token storage (moss keystore = SSOT)
@@ -144,27 +144,32 @@ export async function bindStoredToken(userName: string): Promise<void> {
 }
 
 /**
- * Forget this folder's stored token and its stamps.
+ * Forget this folder's stored token and its stamps. Every copy is erased even
+ * when one fails; the error names each that failed.
  */
-async function clearStoredToken(): Promise<void> {
+async function eraseStoredToken(): Promise<void> {
   cachedAccessToken = null;
-  try {
-    await setSecret(await tokenKey(), "");
-    // Also the pending slot: an unbound folder whose first login captured a
-    // token but never got a profile back would otherwise short-circuit the
-    // retry with the stale one (captureLogin reads storage first).
-    await setSecret(PENDING_TOKEN_KEY, "");
-    await saveAuthState({});
+  const steps: [string, () => Promise<unknown>][] = [
+    ["the token", async () => setSecret(await tokenKey(), "")],
+    // An unbound folder whose first login captured a token but never got a
+    // profile back would otherwise short-circuit the retry with the stale one
+    // (captureLogin reads storage first).
+    ["the pending token", () => setSecret(PENDING_TOKEN_KEY, "")],
+    ["its stamps", () => saveAuthState({})],
     // A folder whose migration failed still has its token in auth.json, and
-    // loadAuthRecord still reads it. Leaving it here would resurrect the old
-    // token straight after a "fresh" login. Only touched when it exists, so a
+    // loadAuthRecord still reads it. Only touched when it exists, so a
     // post-migration folder never grows the file back.
-    if (await pluginFileExists(LEGACY_AUTH_FILE)) {
-      await writePluginFile(LEGACY_AUTH_FILE, "{}");
+    ["auth.json", async () => (await pluginFileExists(LEGACY_AUTH_FILE)) && writePluginFile(LEGACY_AUTH_FILE, "{}")],
+  ];
+  const failed: string[] = [];
+  for (const [what, erase] of steps) {
+    try {
+      await erase();
+    } catch (e) {
+      failed.push(`${what}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  } catch {
-    // Ignore write failures
   }
+  if (failed.length > 0) throw new Error(`could not erase ${failed.join("; ")}`);
 }
 
 // ============================================================================
@@ -185,7 +190,7 @@ let migration: Promise<void> | null = null;
  * forced re-login or a token that lost its invalidatedAt on the way.
  *
  * The file is emptied rather than deleted because the plugin seam has no delete
- * verb; `{}` is what `clearStoredToken` has always written, and it holds nothing
+ * verb; `{}` is what `eraseStoredToken` has always written, and it holds nothing
  * an attacker wants.
  */
 async function migrateLegacyAuthFile(): Promise<boolean> {
@@ -529,13 +534,29 @@ export async function captureLogin(): Promise<string | null | undefined> {
 }
 
 /**
+ * The `logout` hook. The mark goes first, so the folder stops using the token
+ * even when the erase fails; a failed erase throws, and moss names it. The
+ * token is keyed by the account's name, which moss clears after this returns,
+ * so the token is erased here or never.
+ */
+export async function logout(): Promise<{ success: boolean }> {
+  await saveConfig({ ...(await getConfig()), signedOut: true });
+  await eraseStoredToken();
+  return { success: true };
+}
+
+/**
  * Force-fresh login: clear THIS folder's stored token AND the matters-domain
  * cookies before opening the login webview, so the login screen is genuine and
  * only a freshly-logged-in token can be captured (captureLogin reads the stored
  * token before the cookie). Cookie-clear failure is non-fatal.
  */
 export async function beginFreshLogin(): Promise<void> {
-  await clearStoredToken();
+  try {
+    await eraseStoredToken();
+  } catch (e) {
+    console.warn(`⚠️ Failed to erase the stored matters token before login: ${e}`);
+  }
   try {
     await clearPluginCookies();
   } catch (e) {

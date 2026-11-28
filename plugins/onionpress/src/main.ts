@@ -49,6 +49,13 @@ async function deploy(context: DeployContext): Promise<HookResult> {
 
   console.log("OnionPress Deployer: Starting deployment...");
 
+  const siteDir = context.site_dir;
+  if (!siteDir) {
+    const message = "Update moss to publish with this plugin.";
+    await reportError(message, "validation", true);
+    return { success: false, message };
+  }
+
   // ── 1. Discover the receiver ────────────────────────────────────────────
   await reportProgress("configuring", 1, 10, "Looking for OnionPress...");
   const endpoint = await discoverReceiver();
@@ -74,7 +81,7 @@ async function deploy(context: DeployContext): Promise<HookResult> {
   try {
     // ── 2. Pack the sealed generation ─────────────────────────────────────
     await reportProgress("deploying", 3, 10, "Packing your site...");
-    tarPath = await packGeneration(genId, context.site_files);
+    tarPath = await packGeneration(genId, siteDir, context.site_files);
 
     // ── 3. Upload (aborts before commit on any failure) ───────────────────
     await reportProgress("deploying", 6, 10, "Uploading to OnionPress...");

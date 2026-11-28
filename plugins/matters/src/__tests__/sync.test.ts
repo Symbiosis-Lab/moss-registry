@@ -681,6 +681,48 @@ describe("syncToLocalFiles - tag whitespace trimming", () => {
   });
 });
 
+describe("syncToLocalFiles - description only from the author's own summary", () => {
+  let ctx: MockTauriContext;
+
+  beforeEach(() => {
+    ctx = setupMockTauri({ projectPath: "/test-project" });
+  });
+
+  afterEach(() => {
+    ctx.cleanup();
+  });
+
+  async function importOne(summaryCustomized: boolean) {
+    const { syncToLocalFiles } = await import("../sync");
+    await syncToLocalFiles(
+      [
+        {
+          id: "a1", title: "Numbered", slug: "numbered", shortHash: "num123",
+          content: "<h2>1</h2><p>First line of the body.</p>",
+          summary: "1First line of the body.", summaryCustomized,
+          createdAt: "2024-01-01T00:00:00Z", tags: [],
+        },
+      ],
+      [],
+      [],
+      "testuser",
+      {},
+      { displayName: "Test User", userName: "testuser", description: "", pinnedWorks: [] }
+    );
+    return ctx.filesystem.getFile(`${ctx.projectPath}/articles/numbered.md`)?.content ?? "";
+  }
+
+  it("leaves out the summary Matters made from the first lines", async () => {
+    const article = await importOne(false);
+    expect(article).toContain('title: "Numbered"');
+    expect(article).not.toContain("description:");
+  });
+
+  it("keeps a summary the author wrote", async () => {
+    expect(await importOne(true)).toContain('description: "1First line of the body."');
+  });
+});
+
 describe("syncToLocalFiles - skip unchanged content", () => {
   let ctx: MockTauriContext;
 

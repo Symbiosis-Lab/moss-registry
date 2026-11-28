@@ -31,12 +31,3 @@ export const REACHABILITY_POLL_TIMEOUT_MS = 20_000;
 
 /** Interval between `/status` polls while waiting for `onion_reachable`. */
 export const REACHABILITY_POLL_INTERVAL_MS = 2_000;
-
-/**
- * Where moss keeps the sealed generation to publish, newest layout first:
- * `.moss/build.nosync/` since moss 0.15.1, `.moss/build/` before. Each is a
- * symlink into the generation's directory; `tar -C` follows it, so the archive
- * holds the generation's contents at its root (`index.html`, `assets/…`).
- * Relative to the project root, the cwd `executeBinary` runs in.
- */
-export const CURRENT_BUILD_PATHS: readonly string[] = [".moss/build.nosync/current", ".moss/build/current"];
